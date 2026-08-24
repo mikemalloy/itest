@@ -1,0 +1,304 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.4",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "data.aws_availability_zones.available",
+          "mode": "data",
+          "type": "aws_availability_zones",
+          "name": "available",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "state": "available",
+            "names": ["us-east-1a", "us-east-1b"]
+          }
+        },
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "vpc-0demo00000000001",
+            "cidr_block": "10.0.0.0/16",
+            "enable_dns_support": true,
+            "enable_dns_hostnames": true,
+            "tags": {
+              "Name": "itest-demo-vpc",
+              "Project": "itest-demo",
+              "Environment": "demo",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "subnet-0demo0000000000a",
+            "vpc_id": "vpc-0demo00000000001",
+            "cidr_block": "10.0.1.0/24",
+            "availability_zone": "us-east-1a"
+          }
+        },
+        {
+          "address": "aws_subnet.b",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "b",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "subnet-0demo0000000000b",
+            "vpc_id": "vpc-0demo00000000001",
+            "cidr_block": "10.0.2.0/24",
+            "availability_zone": "us-east-1b"
+          }
+        },
+        {
+          "address": "aws_security_group.alb",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "alb",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "sg-0demoalb00000001",
+            "name": "itest-demo-alb",
+            "description": "Allow HTTPS from the internet to the load balancer",
+            "vpc_id": "vpc-0demo00000000001",
+            "ingress": [
+              {
+                "description": "HTTPS from anywhere",
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "egress": [
+              {
+                "description": "",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "tags": {
+              "Name": "itest-demo-alb-sg",
+              "Project": "itest-demo",
+              "Environment": "demo",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.web",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "sg-0demoweb00000002",
+            "name": "itest-demo-web",
+            "description": "Allow HTTP from the ALB to the web servers",
+            "vpc_id": "vpc-0demo00000000001",
+            "ingress": [],
+            "egress": [
+              {
+                "description": "",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "tags": {
+              "Name": "itest-demo-web-sg",
+              "Project": "itest-demo",
+              "Environment": "demo",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group_rule.web_from_alb",
+          "mode": "managed",
+          "type": "aws_security_group_rule",
+          "name": "web_from_alb",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 2,
+          "values": {
+            "id": "sgrule-web000000001",
+            "type": "ingress",
+            "description": "HTTP from the ALB",
+            "from_port": 80,
+            "to_port": 80,
+            "protocol": "tcp",
+            "security_group_id": "sg-0demoweb00000002",
+            "source_security_group_id": "sg-0demoalb00000001",
+            "cidr_blocks": null,
+            "ipv6_cidr_blocks": null,
+            "prefix_list_ids": null,
+            "self": false
+          }
+        },
+        {
+          "address": "aws_security_group.db",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "sg-0demodb000000003",
+            "name": "itest-demo-db",
+            "description": "Allow Postgres from the web tier to the database",
+            "vpc_id": "vpc-0demo00000000001",
+            "ingress": [],
+            "egress": [
+              {
+                "description": "",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "tags": {
+              "Name": "itest-demo-db-sg",
+              "Project": "itest-demo",
+              "Environment": "demo",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group_rule.db_from_web",
+          "mode": "managed",
+          "type": "aws_security_group_rule",
+          "name": "db_from_web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 2,
+          "values": {
+            "id": "sgrule-db0000000001",
+            "type": "ingress",
+            "description": "Postgres from the web tier",
+            "from_port": 5432,
+            "to_port": 5432,
+            "protocol": "tcp",
+            "security_group_id": "sg-0demodb000000003",
+            "source_security_group_id": "sg-0demoweb00000002",
+            "cidr_blocks": null,
+            "ipv6_cidr_blocks": null,
+            "prefix_list_ids": null,
+            "self": false
+          }
+        },
+        {
+          "address": "aws_lb.app",
+          "mode": "managed",
+          "type": "aws_lb",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "itest-demo-alb",
+            "internal": false,
+            "load_balancer_type": "application",
+            "security_groups": ["sg-0demoalb00000001"],
+            "subnets": ["subnet-0demo0000000000a", "subnet-0demo0000000000b"]
+          }
+        },
+        {
+          "address": "aws_instance.web[0]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "index": 0,
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "ami": "ami-0c02fb55956c7d316",
+            "instance_type": "t3.micro",
+            "subnet_id": "subnet-0demo0000000000a",
+            "vpc_security_group_ids": ["sg-0demoweb00000002"],
+            "tags": {
+              "Name": "itest-demo-web-0",
+              "Project": "itest-demo",
+              "Environment": "demo",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_instance.web[1]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "index": 1,
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "ami": "ami-0c02fb55956c7d316",
+            "instance_type": "t3.micro",
+            "subnet_id": "subnet-0demo0000000000b",
+            "vpc_security_group_ids": ["sg-0demoweb00000002"],
+            "tags": {
+              "Name": "itest-demo-web-1",
+              "Project": "itest-demo",
+              "Environment": "demo",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_db_instance.postgres",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "postgres",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 2,
+          "values": {
+            "identifier": "itest-demo-db",
+            "engine": "postgres",
+            "engine_version": "16",
+            "instance_class": "db.t3.micro",
+            "allocated_storage": 20,
+            "db_name": "app",
+            "username": "app",
+            "vpc_security_group_ids": ["sg-0demodb000000003"],
+            "skip_final_snapshot": true
+          }
+        }
+      ]
+    }
+  }
+}

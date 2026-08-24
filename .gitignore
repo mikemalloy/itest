@@ -13,3 +13,9 @@ env/
 
 # ITest artifacts
 .itest/plan.json
+
+# Terraform working artifacts
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
