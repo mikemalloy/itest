@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,7 @@ EXAMPLE = REPO_ROOT / "docs" / "manifest-example.yaml"
 
 
 def _sample_manifest() -> Manifest:
-    ts = datetime(2026, 8, 24, 17, 30, tzinfo=timezone.utc)
+    ts = datetime(2026, 8, 24, 17, 30, tzinfo=UTC)
     point = IntegrationPoint(
         id="a1b2c3d4",
         type="sg_edge",

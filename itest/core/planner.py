@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -55,16 +54,16 @@ def diagram_path(base_dir: Path) -> Path:
     return base_dir / ITEST_DIR / DIAGRAM_NAME
 
 
-def load_plan_json(tf_json: Optional[Path], base_dir: Path) -> dict:
+def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
     """Obtain the terraform plan JSON, from a file or by running terraform."""
     if tf_json is not None:
         path = Path(tf_json)
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            raise PlanInputError(f"--tf-json file not found: {path}")
+            raise PlanInputError(f"--tf-json file not found: {path}") from None
         except json.JSONDecodeError as exc:
-            raise PlanInputError(f"--tf-json file is not valid JSON: {exc}")
+            raise PlanInputError(f"--tf-json file is not valid JSON: {exc}") from exc
 
     try:
         proc = subprocess.run(
@@ -77,7 +76,7 @@ def load_plan_json(tf_json: Optional[Path], base_dir: Path) -> dict:
         raise PlanInputError(
             "terraform not found on PATH. Pass --tf-json PATH pointing at the "
             "output of `terraform show -json` instead."
-        )
+        ) from None
     if proc.returncode != 0:
         raise PlanInputError(
             "`terraform show -json` failed:\n"
@@ -89,7 +88,7 @@ def load_plan_json(tf_json: Optional[Path], base_dir: Path) -> dict:
     except json.JSONDecodeError as exc:
         raise PlanInputError(
             f"`terraform show -json` did not return valid JSON: {exc}"
-        )
+        ) from exc
 
 
 def compute_changeset(
@@ -115,7 +114,7 @@ def compute_changeset(
     )
 
 
-def run_plan(tf_json: Optional[Path], base_dir: Path) -> Changeset:
+def run_plan(tf_json: Path | None, base_dir: Path) -> Changeset:
     """Full plan flow: detect, diff, and write plan.json + diagram.mmd.
 
     Does not touch the manifest or any test file.
@@ -162,7 +161,9 @@ def render_changeset(changeset: Changeset) -> str:
     if changeset.new_points:
         for p in changeset.new_points:
             attrs = p.attributes
-            tag = f"{attrs.get('protocol')}:{attrs.get('ports')} {attrs.get('direction')}"
+            tag = (
+                f"{attrs.get('protocol')}:{attrs.get('ports')} {attrs.get('direction')}"
+            )
             out.append(f"  + [{tag}] {p.source} -> {p.target}")
             out.append(f"      id={p.id}  hcl={p.hcl_address}")
     else:

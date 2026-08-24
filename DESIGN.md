@@ -55,6 +55,15 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 - Never mark a "Done when" criterion satisfied without having literally run
   the commands it names and observed the results.
 
+### Linting
+- `ruff check` and `ruff format --check` must pass before any task is called
+  done, alongside the test suite.
+- Ruff is configured in `pyproject.toml` (target py311, line length 88, rule
+  sets E, F, I, B, UP). Generated demo output (`.itest/`, `itest_tests/`) is
+  excluded — it is tool output, not authored source, and must not gate lint.
+- When a rule fights an intentional pattern, silence it with a targeted
+  per-line `# noqa: RULE` plus a comment saying why. Never a blanket ignore.
+
 ## Out of scope for v0.1 (do not build)
 - IAM/DNS/event detectors, labels/filtering, disable/enable commands,
   `itest add`, saved-plan consumption beyond the implicit flow, shorthand

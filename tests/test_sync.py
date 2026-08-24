@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -28,9 +27,7 @@ def _sync(*extra: str):
 
 
 def test_first_sync_creates_three_stubs(workdir: Path) -> None:
-    result = runner.invoke(
-        app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)]
-    )
+    result = runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
     assert result.exit_code == 0, result.output
     assert "added 3 stub(s)" in result.output
 
@@ -51,9 +48,7 @@ def test_second_sync_is_noop(workdir: Path) -> None:
     runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
     before = (workdir / STUB_FILE).read_text()
 
-    result = runner.invoke(
-        app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)]
-    )
+    result = runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
     assert result.exit_code == 0
     assert "No changes to apply" in result.output
 

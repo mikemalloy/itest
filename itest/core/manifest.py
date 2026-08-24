@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -45,7 +45,7 @@ class TestEntry(BaseModel):
     ownership_hash: str
     status: Literal["stub", "implemented", "orphaned"] = "stub"
     disabled: bool = False
-    disabled_reason: Optional[str] = None
+    disabled_reason: str | None = None
     labels: list[str] = Field(default_factory=list)
 
     @property
@@ -74,7 +74,7 @@ class Manifest(BaseModel):
     points: list[IntegrationPoint] = Field(default_factory=list)
     tests: list[TestEntry] = Field(default_factory=list)
 
-    def get_point(self, point_id: str) -> Optional[IntegrationPoint]:
+    def get_point(self, point_id: str) -> IntegrationPoint | None:
         """Return the point with ``point_id``, or ``None``."""
         for point in self.points:
             if point.id == point_id:
@@ -109,7 +109,7 @@ def load_manifest(path: str | Path) -> Manifest:
     Raises ``ValueError`` if the file declares a schema version newer than this
     build understands.
     """
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
 
     version = data.get("schema_version")

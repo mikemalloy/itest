@@ -170,6 +170,22 @@ detector and three commands.
 - **Saved-plan review flow** beyond the current implicit plan.
 - **An agent/skill layer** over the engine.
 
+## Development
+
+Install the dev extras, then run the test suite and the linter:
+
+```sh
+pip install -e ".[dev]"
+
+pytest                  # the test suite
+ruff check .            # lint
+ruff format --check .   # formatting
+```
+
+`ruff format .` (without `--check`) rewrites files in place. All three
+commands must pass before a change is considered done — see
+[DESIGN.md](DESIGN.md).
+
 ## Contributing
 
 The extension point is the detector interface in

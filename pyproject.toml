@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "ruff>=0.6",
 ]
 
 [project.scripts]
@@ -24,3 +25,19 @@ itest = "itest.cli:app"
 
 [tool.setuptools.packages.find]
 include = ["itest*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+# Generated demo output must not gate lint: .itest/ and itest_tests/ are
+# produced by running the quickstart, not authored here.
+exclude = [".venv", ".itest", "itest_tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]

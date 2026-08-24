@@ -8,7 +8,7 @@ edges); more are registered by appending to :data:`DETECTORS`.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Iterator
+from collections.abc import Iterator
 
 from itest.core.manifest import IntegrationPoint
 
@@ -36,8 +36,7 @@ def iter_resources(plan_json: dict) -> Iterator[dict]:
     """Yield every resource in the plan, descending into child modules."""
 
     def walk(module: dict) -> Iterator[dict]:
-        for resource in module.get("resources", []) or []:
-            yield resource
+        yield from module.get("resources", []) or []
         for child in module.get("child_modules", []) or []:
             yield from walk(child)
 

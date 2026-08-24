@@ -20,7 +20,7 @@ stable across runs.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from itest.core.manifest import IntegrationPoint
 
@@ -43,7 +43,7 @@ def _point_id(
 def _make_point(
     source: str, target: str, protocol: str, ports: str, direction: str, hcl: str
 ) -> IntegrationPoint:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return IntegrationPoint(
         id=_point_id(source, target, protocol, ports, direction),
         type="sg_edge",

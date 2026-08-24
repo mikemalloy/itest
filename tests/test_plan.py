@@ -55,7 +55,10 @@ def test_plan_writes_artifacts(workdir: Path) -> None:
 def test_plan_does_not_touch_manifest(workdir: Path) -> None:
     manifest_file = workdir / ".itest" / "manifest.yaml"
     manifest_file.parent.mkdir(parents=True)
-    sentinel = "schema_version: 1\ngenerated_at: '2026-01-01T00:00:00+00:00'\npoints: []\ntests: []\n"
+    sentinel = (
+        "schema_version: 1\ngenerated_at: '2026-01-01T00:00:00+00:00'\n"
+        "points: []\ntests: []\n"
+    )
     manifest_file.write_text(sentinel)
 
     runner.invoke(app, ["plan", "--tf-json", str(FIXTURE)])
@@ -65,9 +68,7 @@ def test_plan_does_not_touch_manifest(workdir: Path) -> None:
 
 
 def test_plan_json_output(workdir: Path) -> None:
-    result = runner.invoke(
-        app, ["plan", "--tf-json", str(FIXTURE), "--output", "json"]
-    )
+    result = runner.invoke(app, ["plan", "--tf-json", str(FIXTURE), "--output", "json"])
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert len(payload["new_points"]) == 3

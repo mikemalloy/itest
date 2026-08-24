@@ -9,9 +9,8 @@ rewrites or deletes a function in it.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -35,7 +34,7 @@ class SyncResult(BaseModel):
         )
 
 
-def prepare(tf_json: Optional[Path], base_dir: Path) -> tuple[Changeset, Optional[str]]:
+def prepare(tf_json: Path | None, base_dir: Path) -> tuple[Changeset, str | None]:
     """Obtain a current changeset, re-planning when needed.
 
     Re-plans (and refreshes plan.json/diagram.mmd) when plan.json is missing,
@@ -52,7 +51,9 @@ def prepare(tf_json: Optional[Path], base_dir: Path) -> tuple[Changeset, Optiona
 
     if need_replan:
         changeset = planner.run_plan(tf_json, base_dir)
-        return changeset, "Ran plan first (plan.json missing, stale, or --tf-json given)."
+        return changeset, (
+            "Ran plan first (plan.json missing, stale, or --tf-json given)."
+        )
 
     changeset = Changeset.model_validate_json(plan_file.read_text(encoding="utf-8"))
     return changeset, None
@@ -65,7 +66,7 @@ def is_noop(changeset: Changeset) -> bool:
 
 def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
     """Apply the changeset: generate stubs, flag orphans, rewrite the manifest."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     manifest_file = planner.manifest_path(base_dir)
     if manifest_file.exists():
         manifest = load_manifest(manifest_file)
@@ -97,7 +98,9 @@ def _refresh_point_registry(
             first_seen = existing[point.id].first_seen
         else:
             first_seen = now
-        registry.append(point.model_copy(update={"first_seen": first_seen, "last_seen": now}))
+        registry.append(
+            point.model_copy(update={"first_seen": first_seen, "last_seen": now})
+        )
     manifest.points = registry
 
 
@@ -118,9 +121,7 @@ def _generate_stubs(
     file_rel = stubgen.STUB_FILE_REL
     file_abs = stubgen.stub_file_path(base_dir)
 
-    recorded_hashes = {
-        t.ownership_hash for t in manifest.tests if t.path == file_rel
-    }
+    recorded_hashes = {t.ownership_hash for t in manifest.tests if t.path == file_rel}
     human_modified = False
     if file_abs.exists() and recorded_hashes:
         if stubgen.file_hash(file_abs) not in recorded_hashes:
