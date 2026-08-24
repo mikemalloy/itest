@@ -132,6 +132,48 @@ from the Terraform (a rule was removed), the tests that covered it are flagged
 `orphaned` in the manifest — never silently deleted. You decide whether to
 remove the test or the assumption behind it.
 
+## Agent skill
+
+`itest sync` gets you stubs; something still has to write the assertions.
+`skills/itest-implementer/` is a bundled agent skill that does that part: it
+reads the manifest, finds the points still marked `[STUB]`, interviews you
+once, and fills in the bodies with real checks against your live account.
+
+It asks four questions, batched into a single prompt and saved to
+`.itest/skill-answers.yaml` so a second run is silent:
+
+1. Which AWS profile and region should the checks use?
+2. Where is the Terraform directory this manifest describes?
+3. Read-only API checks only, or also active probes that send real traffic?
+4. Which environment is this — dev, staging, or prod?
+
+**Generated checks are read-only by default** (`describe*`/`get*`/`list*`).
+Active probes require an explicit yes, and answering "prod" to (4) forces the
+read-only tier regardless. The skill never creates, modifies, or deletes AWS
+resources, and shows you every generated body before running anything.
+
+To use it from Claude Code in a consumer project, put it where the agent looks
+for skills:
+
+```sh
+# symlink, so the skill tracks this repo
+ln -s /path/to/itest/skills/itest-implementer .claude/skills/itest-implementer
+
+# or copy it, to pin a version
+cp -r /path/to/itest/skills/itest-implementer .claude/skills/
+```
+
+Then ask for what you want — "implement the ITest stubs", "make verify green"
+— and the skill picks it up.
+
+Add `.itest/skill-answers.yaml` to your `.gitignore`: it records local paths
+and account details.
+
+**It supports `sg_edge` points only**, because that is the only detector v0.1
+ships. Points of any other type are reported and skipped, never guessed at.
+Each future detector gets its own recipe under
+[`references/recipes/`](skills/itest-implementer/references/recipes/).
+
 ## Design decisions
 
 **Why `plan` / `sync` mirrors Terraform.** Infrastructure engineers already
@@ -168,7 +210,9 @@ detector and three commands.
 - **`itest add`** to declare integration points a detector can't infer.
 - **`disable` / `enable`** commands for muting points with a recorded reason.
 - **Saved-plan review flow** beyond the current implicit plan.
-- **An agent/skill layer** over the engine.
+- **More of the agent/skill layer.** `itest-implementer` (above) ships and
+  covers `sg_edge`; a recipe per new detector, and any deeper agent
+  integration, are still to come.
 
 ## Development
 

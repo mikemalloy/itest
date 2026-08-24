@@ -40,6 +40,12 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   rule content, not array indices).
 - Unknown resource types are reported as "not analyzed", never silently skipped.
 
+## Skill layer
+- The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
+  the manifest: recipes hold policy (what a good assertion for a point type
+  looks like), the CLI holds mechanism (detection, sync, verify). The skill
+  never reimplements detection or sync logic.
+
 ## Stack
 - Python 3.11+, typer, pydantic v2 for schema, PyYAML, pytest + boto3 for
   generated tests. No other runtime dependencies without asking.

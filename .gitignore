@@ -18,6 +18,11 @@ env/
 /itest_tests/
 itest-results.xml
 
+# Answers recorded by the itest-implementer skill. May name accounts,
+# profiles, regions, and local paths, so consumers should ignore it too —
+# it is machine-local configuration, not shared project state.
+.itest/skill-answers.yaml
+
 # Terraform working artifacts
 .terraform/
 *.tfstate
