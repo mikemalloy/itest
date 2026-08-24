@@ -1,0 +1,77 @@
+# Example ITest manifest (.itest/manifest.yaml)
+# ---------------------------------------------
+# This file is hand-written to document every field of the schema. ITest
+# generates and rewrites this file automatically; you normally do not edit it
+# by hand except to adjust `disabled`/`disabled_reason` or `labels`.
+
+# Schema version of this document. Loading a manifest whose version is greater
+# than the build understands is a hard error.
+schema_version: 1
+
+# When ITest last wrote this manifest (ISO-8601).
+generated_at: "2026-08-24T17:30:00+00:00"
+
+# Inventory of detected integration points. One entry per primitive edge.
+points:
+  # Point 1: the ALB accepts HTTPS from the public internet.
+  - id: "a1b2c3d4"                       # stable hash of (type, src, tgt, proto, ports, dir)
+    type: "sg_edge"                      # v0.1 ships only the security-group edge detector
+    source: "0.0.0.0/0"                  # a CIDR here; may also be another SG address
+    target: "aws_security_group.alb"     # the SG receiving the traffic
+    attributes:                          # detector-specific, free-form dict
+      protocol: "tcp"
+      ports: "443"
+      direction: "ingress"
+    hcl_address: "aws_security_group.alb.ingress[0]"  # where the rule lives in HCL
+    origin: "detected"                   # "detected" (by a detector) or "declared" (by a human)
+    first_seen: "2026-08-20T09:00:00+00:00"
+    last_seen: "2026-08-24T17:30:00+00:00"
+
+  # Point 2: the database accepts Postgres from the web tier's SG.
+  - id: "e5f6a7b8"
+    type: "sg_edge"
+    source: "aws_security_group.web"     # SG-to-SG reference, not a CIDR
+    target: "aws_security_group.db"
+    attributes:
+      protocol: "tcp"
+      ports: "5432"
+      direction: "ingress"
+    hcl_address: "aws_security_group_rule.db_from_web"
+    origin: "detected"
+    first_seen: "2026-08-20T09:00:00+00:00"
+    last_seen: "2026-08-24T17:30:00+00:00"
+
+# Registry of tests and how they map back to points.
+tests:
+  # A generated stub covering point 1, not yet implemented.
+  - id: "t-0001"
+    point_id: "a1b2c3d4"                 # FK to points[].id
+    path: "itest_tests/test_sg_edges.py"
+    test_name: "test_sg_internet_to_alb_443"
+    ownership_hash: "9f2c1e00a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e"
+    status: "stub"                       # "stub" | "implemented" | "orphaned"
+    disabled: false
+    disabled_reason: null
+    labels: []
+
+  # A human-implemented test covering point 2, tagged and passing in CI.
+  - id: "t-0002"
+    point_id: "e5f6a7b8"
+    path: "itest_tests/test_sg_edges.py"
+    test_name: "test_sg_web_to_db_5432"
+    ownership_hash: "1122334455667788990011223344556677889900112233445566778899001122"
+    status: "implemented"
+    disabled: false
+    disabled_reason: null
+    labels: ["smoke", "data-tier"]
+
+  # A second test on point 2, temporarily disabled with a reason recorded.
+  - id: "t-0003"
+    point_id: "e5f6a7b8"
+    path: "itest_tests/test_sg_edges.py"
+    test_name: "test_sg_web_to_db_tls_required"
+    ownership_hash: "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+    status: "implemented"
+    disabled: true
+    disabled_reason: "TLS enforcement not yet rolled out to the db subnet"
+    labels: ["data-tier"]
