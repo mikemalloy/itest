@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Optional
+
 import typer
 
 from itest import __version__
@@ -31,10 +34,30 @@ def main(
 
 
 @app.command()
-def plan() -> None:
+def plan(
+    tf_json: Optional[Path] = typer.Option(
+        None,
+        "--tf-json",
+        help="Path to a `terraform show -json` file. If omitted, runs terraform.",
+    ),
+    output: str = typer.Option(
+        "human", "--output", help="Output format: human or json."
+    ),
+) -> None:
     """Detect integration points and propose a changeset."""
-    typer.echo("not implemented")
-    raise typer.Exit(code=1)
+    from itest.core import planner
+
+    base_dir = Path.cwd()
+    try:
+        changeset = planner.run_plan(tf_json, base_dir)
+    except planner.PlanInputError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+
+    if output == "json":
+        typer.echo(changeset.model_dump_json(indent=2))
+    else:
+        typer.echo(planner.render_changeset(changeset))
 
 
 @app.command()
