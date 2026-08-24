@@ -100,10 +100,39 @@ def sync(
 
 
 @app.command()
-def verify() -> None:
+def verify(
+    output: str = typer.Option(
+        "human", "--output", help="Output format: human, json, or junit."
+    ),
+) -> None:
     """Run the test suite and report point-level coverage."""
-    typer.echo("not implemented")
-    raise typer.Exit(code=1)
+    from itest.core import verifier
+
+    base_dir = Path.cwd()
+    try:
+        report = verifier.run_verify(base_dir, output=output)
+    except verifier.VerifyConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2)
+
+    if output == "json":
+        typer.echo(report.model_dump_json(indent=2))
+    elif output == "junit":
+        typer.echo(f"Wrote JUnit XML to {verifier.JUNIT_NAME}")
+        typer.echo(render_verify_line(report))
+    else:
+        typer.echo(verifier.render_human(report))
+
+    if report.exit_code != 0:
+        raise typer.Exit(code=report.exit_code)
+
+
+def render_verify_line(report) -> str:
+    return (
+        f"{report.total_points} integration points: "
+        f"{report.passing} passing, {report.failing} failing, "
+        f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests."
+    )
 
 
 if __name__ == "__main__":
