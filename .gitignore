@@ -11,8 +11,12 @@ dist/
 venv/
 env/
 
-# ITest artifacts
-.itest/plan.json
+# ITest artifacts. In a real project you commit .itest/manifest.yaml and your
+# itest_tests/; in *this* repo they are throwaway output from running the demo
+# quickstart, so they are ignored here.
+.itest/
+/itest_tests/
+itest-results.xml
 
 # Terraform working artifacts
 .terraform/
