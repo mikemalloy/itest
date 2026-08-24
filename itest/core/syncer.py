@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -24,12 +25,19 @@ class SyncResult(BaseModel):
 
     added_stubs: int = 0
     flagged_orphans: int = 0
+    resurrected_tests: int = 0
     human_modified_files: int = 0
 
     def summary(self) -> str:
+        resurrected = (
+            f"resurrected {self.resurrected_tests} test(s), "
+            if self.resurrected_tests
+            else ""
+        )
         return (
             f"Applied: added {self.added_stubs} stub(s), "
             f"flagged {self.flagged_orphans} orphan(s), "
+            f"{resurrected}"
             f"{self.human_modified_files} human-modified file(s) preserved."
         )
 
@@ -60,8 +68,13 @@ def prepare(tf_json: Path | None, base_dir: Path) -> tuple[Changeset, str | None
 
 
 def is_noop(changeset: Changeset) -> bool:
-    """True when there is nothing to apply: no new points and no orphans."""
-    return not changeset.new_points and not changeset.orphan_candidates
+    """True when there is nothing to apply: no new points, resurrections, or
+    orphans."""
+    return not (
+        changeset.new_points
+        or changeset.resurrected_points
+        or changeset.orphan_candidates
+    )
 
 
 def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
@@ -74,6 +87,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         manifest = Manifest(generated_at=now, points=[], tests=[])
 
     _refresh_point_registry(manifest, changeset, now)
+    resurrected = _resurrect_tests(manifest, changeset, base_dir)
     flagged = _flag_orphans(manifest, changeset)
     added, human_modified = _generate_stubs(manifest, changeset, base_dir)
 
@@ -83,6 +97,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
     return SyncResult(
         added_stubs=added,
         flagged_orphans=flagged,
+        resurrected_tests=resurrected,
         human_modified_files=1 if human_modified else 0,
     )
 
@@ -102,6 +117,44 @@ def _refresh_point_registry(
             point.model_copy(update={"first_seen": first_seen, "last_seen": now})
         )
     manifest.points = registry
+
+
+def _status_from_body(path: Path, test_name: str) -> Literal["stub", "implemented"]:
+    """Classify a test by whether its body still holds the generated skip line.
+
+    Read back from disk rather than trusted from the manifest: the whole point
+    of a resurrection is that a human may have implemented the test in the
+    meantime.
+    """
+    if not path.exists():
+        return "stub"
+    text = path.read_text(encoding="utf-8")
+    start = text.find(f"def {test_name}(")
+    if start == -1:
+        return "stub"
+    # The function body runs to the next top-level def, or to end of file.
+    rest = text[start:]
+    next_def = rest.find("\ndef ", 1)
+    body = rest if next_def == -1 else rest[:next_def]
+    return "stub" if stubgen.STUB_SKIP_LINE in body else "implemented"
+
+
+def _resurrect_tests(manifest: Manifest, changeset: Changeset, base_dir: Path) -> int:
+    """Un-orphan the tests of points that have come back.
+
+    A returning point already has a test on disk, so it is re-linked to that
+    test instead of being given a fresh stub.
+    """
+    returning_ids = {p.id for p in changeset.resurrected_points}
+    if not returning_ids:
+        return 0
+
+    resurrected = 0
+    for test in manifest.tests:
+        if test.point_id in returning_ids and test.status == "orphaned":
+            test.status = _status_from_body(base_dir / test.path, test.test_name)
+            resurrected += 1
+    return resurrected
 
 
 def _flag_orphans(manifest: Manifest, changeset: Changeset) -> int:

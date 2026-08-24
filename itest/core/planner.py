@@ -33,13 +33,14 @@ class Changeset(BaseModel):
 
     new_points: list[IntegrationPoint] = Field(default_factory=list)
     unchanged_points: list[IntegrationPoint] = Field(default_factory=list)
+    resurrected_points: list[IntegrationPoint] = Field(default_factory=list)
     orphan_candidates: list[TestEntry] = Field(default_factory=list)
     unanalyzed: dict[str, int] = Field(default_factory=dict)
 
     @property
     def detected_points(self) -> list[IntegrationPoint]:
-        """All points detected this run (new + unchanged)."""
-        return self.new_points + self.unchanged_points
+        """All points detected this run (new + unchanged + resurrected)."""
+        return self.new_points + self.unchanged_points + self.resurrected_points
 
 
 def manifest_path(base_dir: Path) -> Path:
@@ -99,8 +100,21 @@ def compute_changeset(
 ) -> Changeset:
     """Diff detected points against what the manifest already knows."""
     detected_ids = {p.id for p in points}
-    new_points = [p for p in points if p.id not in existing_point_ids]
-    unchanged_points = [p for p in points if p.id in existing_point_ids]
+    # A detected point whose id matches an orphaned test's point_id is
+    # returning, not new: sync drops vanished points from the registry, so the
+    # id is unknown here, but the test that covered it still exists on disk and
+    # must be re-linked rather than re-stubbed.
+    orphaned_point_ids = {t.point_id for t in existing_tests if t.status == "orphaned"}
+    resurrected_points = [p for p in points if p.id in orphaned_point_ids]
+    resurrected_ids = {p.id for p in resurrected_points}
+    new_points = [
+        p
+        for p in points
+        if p.id not in existing_point_ids and p.id not in resurrected_ids
+    ]
+    unchanged_points = [
+        p for p in points if p.id in existing_point_ids and p.id not in resurrected_ids
+    ]
     orphan_candidates = [
         t
         for t in existing_tests
@@ -109,6 +123,7 @@ def compute_changeset(
     return Changeset(
         new_points=new_points,
         unchanged_points=unchanged_points,
+        resurrected_points=resurrected_points,
         orphan_candidates=orphan_candidates,
         unanalyzed=unanalyzed,
     )
@@ -148,14 +163,27 @@ def render_changeset(changeset: Changeset) -> str:
     """Human, Terraform-plan-style summary. Counts first, then detail."""
     n_new = len(changeset.new_points)
     n_unchanged = len(changeset.unchanged_points)
+    n_resurrected = len(changeset.resurrected_points)
     n_orphan = len(changeset.orphan_candidates)
 
     out: list[str] = []
+    # The resurrection clause and section appear only when something actually
+    # came back, so the common case reads exactly as it always has.
+    resurrected_clause = (
+        f"{n_resurrected} test(s) resurrected, " if n_resurrected else ""
+    )
     out.append(
         f"ITest plan: {n_new} new, {n_unchanged} unchanged, "
-        f"{n_orphan} orphaned test(s)."
+        f"{resurrected_clause}{n_orphan} orphaned test(s)."
     )
     out.append("")
+
+    if changeset.resurrected_points:
+        out.append(f"Resurrected ({n_resurrected}):")
+        for p in changeset.resurrected_points:
+            out.append(f"  ^ [returning] {p.source} -> {p.target}")
+            out.append(f"      id={p.id}  re-linked to its existing test")
+        out.append("")
 
     out.append(f"New integration points ({n_new}):")
     if changeset.new_points:

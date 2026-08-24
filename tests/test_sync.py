@@ -109,3 +109,70 @@ def test_human_edit_preserved_and_orphan_flagged(workdir: Path) -> None:
 
     # The point itself is gone from the registry.
     assert all(p.target != "aws_security_group.db" for p in manifest.points)
+
+
+def test_orphaned_test_is_resurrected_when_point_returns(workdir: Path) -> None:
+    """A point that vanishes and comes back re-links to its existing test.
+
+    Regression: the returning point was classified as new, so sync generated a
+    duplicate stub and left the human-implemented test orphaned — verify then
+    reported the point as a STUB even though a passing test for it existed.
+    """
+    # (1) Sync, then implement the web->db test by hand so it really passes.
+    runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
+    stub_path = workdir / STUB_FILE
+    original = stub_path.read_text()
+
+    marker = "def test_sg_web_to_db_5432():"
+    idx = original.index(marker)
+    stub_path.write_text(
+        original[:idx]
+        + marker
+        + '\n    """human implemented"""\n'
+        + "    assert 1 + 1 == 2  # real assertion, no pytest.skip\n"
+    )
+    implemented = stub_path.read_text()
+
+    # (2) Drop db_from_web: the point vanishes and its test is flagged orphaned.
+    fixture_copy = workdir / "plan-without-db-rule.json"
+    data = json.loads(FIXTURE.read_text())
+    resources = data["planned_values"]["root_module"]["resources"]
+    data["planned_values"]["root_module"]["resources"] = [
+        r for r in resources if r["address"] != "aws_security_group_rule.db_from_web"
+    ]
+    fixture_copy.write_text(json.dumps(data))
+    runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(fixture_copy)])
+
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    orphaned = [t for t in manifest.tests if t.test_name == "test_sg_web_to_db_5432"]
+    assert len(orphaned) == 1
+    assert orphaned[0].status == "orphaned"
+    point_id = orphaned[0].point_id
+
+    # (3) Re-add the identical resource: the point returns with the same id.
+    result = runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
+    assert result.exit_code == 0, result.output
+
+    # It is a resurrection, not a new point: no stub is generated.
+    assert "resurrected" in result.output
+    assert "added 0 stub(s)" in result.output
+
+    # No duplicate stub, and the human's implementation is untouched.
+    text = stub_path.read_text()
+    assert text == implemented
+    assert text.count("def test_sg_") == 3
+    assert "test_sg_web_to_db_5432_" not in text
+
+    # The one existing entry is un-orphaned, and counts as implemented because
+    # its body no longer contains the generated pytest.skip line.
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    entries = [t for t in manifest.tests if t.point_id == point_id]
+    assert len(entries) == 1
+    assert entries[0].status == "implemented"
+
+    # The point is back in the registry.
+    assert any(p.id == point_id for p in manifest.points)
+
+    # End to end: verify credits the point to the passing human test.
+    verified = runner.invoke(app, ["verify"])
+    assert "[PASS] aws_security_group.web -> aws_security_group.db" in verified.output
