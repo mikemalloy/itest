@@ -169,8 +169,9 @@ Then ask for what you want — "implement the ITest stubs", "make verify green"
 Add `.itest/skill-answers.yaml` to your `.gitignore`: it records local paths
 and account details.
 
-**It supports `sg_edge` points only**, because that is the only detector v0.1
-ships. Points of any other type are reported and skipped, never guessed at.
+**It supports `sg_edge` points only**, because that is the only detector ITest
+ships today. Points of any other type are reported and skipped, never guessed
+at.
 Each future detector gets its own recipe under
 [`references/recipes/`](skills/itest-implementer/references/recipes/).
 
@@ -192,16 +193,17 @@ repo, in a file you can read, diff, and code-review. That makes ITest adoptable
 one team at a time and keeps the manifest honest — it changes only when someone
 commits a change.
 
-**Why primitives before services.** v0.1 ships exactly one detector — the
-security-group edge — and models it as a typed primitive (source, target,
+**Why primitives before services.** ITest ships exactly one detector today —
+the security-group edge — and models it as a typed primitive (source, target,
 protocol, ports, direction). Higher-level "service" mappings and composite
 checks are far more useful once the primitive layer is solid, so the primitive
 layer comes first.
 
 ## Roadmap
 
-All of the following are **planned, not built**. v0.1 is intentionally a single
-detector and three commands.
+All of the following are **planned, not built**. ITest is intentionally a
+single detector and three commands. DESIGN.md's Scope ledger is the
+authoritative record of what ships and what does not.
 
 - **Detector tiers.** Tier 1 remainder: IAM edges, endpoint availability, DNS,
   and event wiring. Then composite detectors, and service mappings (e.g.
@@ -238,4 +240,5 @@ The extension point is the detector interface in
 handle, and register your detector in `DETECTORS`. See
 [`itest/core/detectors/sg_edges.py`](itest/core/detectors/sg_edges.py) for the
 reference implementation and [`DESIGN.md`](DESIGN.md) for the decisions that
-bound v0.1.
+bound the project — its Scope ledger lists what is shipped and what is not to
+be built without explicit instruction.

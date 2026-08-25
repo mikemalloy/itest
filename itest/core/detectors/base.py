@@ -1,8 +1,8 @@
 """Detector interface, shared plan-walking helpers, and the registry.
 
 A detector consumes parsed ``terraform show -json`` output and emits typed
-primitive integration points. v0.1 ships a single detector (security-group
-edges); more are registered by appending to :data:`DETECTORS`.
+primitive integration points. ITest ships a single detector today
+(security-group edges); more are registered by appending to :data:`DETECTORS`.
 """
 
 from __future__ import annotations

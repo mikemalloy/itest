@@ -49,16 +49,21 @@ consumer project you would commit `.itest/manifest.yaml` and `itest_tests/`.
 - **Commit granularity:** one commit per task, message = the task title.
 - **No cowboy programming:** nothing is "done" until its tests are written and
   actually run with visible passing output (DESIGN.md).
-- **Scope discipline:** v0.1 is deliberately one detector + three commands.
-  The "Out of scope for v0.1" list in DESIGN.md is a hard boundary — if asked
-  to add a fourth command or a new dependency, point back to DESIGN.md.
+- **Scope discipline:** ITest is deliberately one detector + three commands.
+  The "Not yet built" list in DESIGN.md's Scope ledger is a hard boundary — if
+  asked to add a fourth command or a new dependency, point back to DESIGN.md.
 
 ## What is intentionally NOT built (the roadmap, all planned)
 
-From DESIGN.md "Out of scope" and README "Roadmap": additional detector tiers
-(IAM, endpoint availability, DNS, events), composite/service detectors, labels
-& filtering, `itest add`, `disable`/`enable`, a saved-plan review flow, and any
-agent/skill layer. None of these exist yet — do not claim they do.
+From DESIGN.md's Scope ledger ("Not yet built") and README "Roadmap":
+additional detector tiers (IAM, endpoint availability, DNS, events),
+composite/service detectors, labels & filtering, `itest add`,
+`disable`/`enable`, a saved-plan review flow, and cross-stack analysis. None
+of these exist yet — do not claim they do.
+
+The Scope ledger in DESIGN.md is the authoritative list; check it rather than
+this note. (The agent/skill layer was once on this list and has since shipped
+as `skills/itest-implementer/` — the ledger records it under "Shipped".)
 
 ## Two design calls worth knowing before you extend
 

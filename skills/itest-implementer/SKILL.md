@@ -156,6 +156,7 @@ reflects reality is the tool working.
 ## Scope
 
 One recipe ships today: `sg_edge`, covering security-group edges. That is also
-the only detector ITest v0.1 has. When ITest grows detectors, each gets its own
+the only detector ITest has today — DESIGN.md's Scope ledger is the
+authoritative list. When ITest grows detectors, each gets its own
 recipe file here; this skill's job is policy — what a good assertion looks like
 — while the CLI keeps the mechanism.
