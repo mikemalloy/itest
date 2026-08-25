@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 
 import typer
@@ -129,6 +131,74 @@ def verify(
 
     if report.exit_code != 0:
         raise typer.Exit(code=report.exit_code)
+
+
+@app.command()
+def redact(
+    # B008: see the note on `plan` above — typer requires the call here.
+    input_path: Path | None = typer.Argument(  # noqa: B008
+        None,
+        metavar="[INPUT]",
+        help="Plan or state JSON to sanitize. Reads stdin when omitted or '-'.",
+    ),
+    out: Path | None = typer.Option(  # noqa: B008
+        None,
+        "-o",
+        "--out",
+        help="Where to write the sanitized copy. Writes stdout when omitted.",
+    ),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Report findings and exit nonzero without writing anything.",
+    ),
+    output: str = typer.Option(
+        "human", "--output", help="Findings format for --check: human or json."
+    ),
+) -> None:
+    """Sanitize plan/state JSON so it is safe to share."""
+    from itest.core import redact as redact_engine
+
+    if input_path is None or str(input_path) == "-":
+        raw = sys.stdin.read()
+        source = "<stdin>"
+    else:
+        source = str(input_path)
+        if not input_path.exists():
+            typer.echo(f"Input file not found: {source}", err=True)
+            raise typer.Exit(code=2)
+        raw = input_path.read_text(encoding="utf-8")
+
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"{source} is not valid JSON: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
+    clean, findings = redact_engine.redact_document(document)
+
+    if check:
+        if output == "json":
+            result = redact_engine.RedactionResult(
+                finding_count=len(findings), findings=findings
+            )
+            typer.echo(result.model_dump_json(indent=2))
+        else:
+            typer.echo(redact_engine.render_findings(findings))
+        if findings:
+            raise typer.Exit(code=1)
+        return
+
+    payload = json.dumps(clean, indent=2) + "\n"
+    if out is None:
+        typer.echo(payload, nl=False)
+    else:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(payload, encoding="utf-8")
+        typer.echo(
+            f"Wrote sanitized copy to {out} ({len(findings)} redaction(s)).",
+            err=True,
+        )
 
 
 def render_verify_line(report) -> str:

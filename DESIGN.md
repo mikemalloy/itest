@@ -80,6 +80,8 @@ Shipped:
 - Mermaid diagram generation (`.itest/diagram.mmd`)
 - Machine-readable output (`--output json` on plan and verify, `--output
   junit` on verify)
+- `itest redact` — sanitizes plan/state JSON for safe sharing (sensitive_values,
+  Lambda env allowlist, credential patterns, account pseudonymization, `--check`)
 - Ruff lint/format as part of Development discipline
 - itest-implementer agent skill (sg_edge recipe, interview, read-only
   default)
