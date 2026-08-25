@@ -91,6 +91,29 @@ environment: dev
 Tell the user this file may contain environment details and belongs in their
 `.gitignore`.
 
+**Before leaving this step, check that `boto3` imports.** The generated checks
+import it, and `itest verify` runs them with the same interpreter ITest itself
+runs from. If `boto3` is missing there, every generated test fails collection —
+`itest verify` reports those points as `[ERROR]` and exits 2, so you would hand
+the user a suite that cannot run.
+
+Find that interpreter and test the import in it:
+
+```sh
+python -c "import sys; print(sys.executable)"
+python -c "import boto3; print(boto3.__version__)"
+```
+
+If the import fails, give the user the exact command for **that** interpreter,
+not a bare `pip install boto3` that may land in a different environment:
+
+```sh
+/path/to/.venv/bin/python -m pip install boto3
+```
+
+Do not generate test bodies until `boto3` imports. A suite that cannot import
+its dependencies produces errors, not findings.
+
 ### 4. Generate
 
 For each stub that has a matching recipe: read the recipe file, then write the

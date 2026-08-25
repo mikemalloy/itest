@@ -7,6 +7,7 @@ point-level coverage. Output is available as a human table, JSON, or JUnit XML.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -28,7 +29,7 @@ class VerifyConfigError(Exception):
 
 class TestResult(BaseModel):
     canonical: str
-    outcome: str  # passed | failed | skipped | missing
+    outcome: str  # passed | failed | skipped | error | missing
     point_id: str | None = None
     detail: str = ""
 
@@ -38,13 +39,14 @@ class PointResult(BaseModel):
     source: str
     target: str
     attributes: dict = Field(default_factory=dict)
-    status: str  # passing | failing | stub
+    status: str  # passing | failing | error | stub
 
 
 class VerifyReport(BaseModel):
     total_points: int = 0
     passing: int = 0
     failing: int = 0
+    errored: int = 0
     stubs: int = 0
     orphaned_tests: int = 0
     points: list[PointResult] = Field(default_factory=list)
@@ -53,11 +55,50 @@ class VerifyReport(BaseModel):
 
     @property
     def exit_code(self) -> int:
+        # An errored point means the suite could not run, which is a config
+        # problem (exit 2) rather than a test result (exit 1).
+        if self.errored > 0:
+            return 2
         return 1 if self.failing > 0 else 0
 
 
-def _run_pytest(base_dir: Path, junit_path: Path | None) -> dict[str, dict]:
-    """Run pytest on itest_tests/ and return {nodeid: {outcome, detail}}."""
+def _pytest_installed() -> bool:
+    """True when pytest is importable from the interpreter running ITest."""
+    return importlib.util.find_spec("pytest") is not None
+
+
+def _require_pytest() -> None:
+    """Fail fast, and legibly, when pytest is missing.
+
+    verify shells out to ``python -m pytest``; without it the subprocess dies
+    with an opaque traceback long after the user could have acted on it.
+    """
+    if _pytest_installed():
+        return
+    raise VerifyConfigError(
+        "pytest is not installed in the environment ITest is running from:\n"
+        f"    {sys.executable}\n"
+        "`itest verify` runs the generated suite with pytest, so it cannot "
+        "work without it. Install it there with:\n"
+        f"    {sys.executable} -m pip install pytest"
+    )
+
+
+def _collection_error_for(path: str, collection_errors: dict[str, dict]):
+    """Return the collection error covering ``path``, if any."""
+    if path in collection_errors:
+        return collection_errors[path]
+    for nodeid, err in collection_errors.items():
+        # A directory-level failure covers every file beneath it.
+        if nodeid and path.startswith(nodeid.rstrip("/") + "/"):
+            return err
+    return None
+
+
+def _run_pytest(
+    base_dir: Path, junit_path: Path | None
+) -> tuple[dict[str, dict], dict[str, dict]]:
+    """Run pytest on itest_tests/ and return (test outcomes, collection errors)."""
     report_file = base_dir / planner.ITEST_DIR / _REPORT_NAME
     report_file.parent.mkdir(parents=True, exist_ok=True)
     if report_file.exists():
@@ -81,8 +122,9 @@ def _run_pytest(base_dir: Path, junit_path: Path | None) -> dict[str, dict]:
     subprocess.run(args, cwd=str(base_dir), env=env, capture_output=True, text=True)
 
     if not report_file.exists():
-        return {}
-    return json.loads(report_file.read_text(encoding="utf-8"))
+        return {}, {}
+    document = json.loads(report_file.read_text(encoding="utf-8"))
+    return document.get("tests", {}), document.get("collection_errors", {})
 
 
 def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
@@ -93,40 +135,51 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
             "No manifest found. Run `itest plan && itest sync` first."
         )
     manifest = load_manifest(manifest_file)
+    _require_pytest()
 
     junit_path = base_dir / JUNIT_NAME if output == "junit" else None
-    outcomes = _run_pytest(base_dir, junit_path)
+    outcomes, collection_errors = _run_pytest(base_dir, junit_path)
 
     by_canonical = {t.canonical: t for t in manifest.tests}
 
-    # Test-level results.
-    test_results: list[TestResult] = []
+    # Resolve every registered test once. A test in a module that failed to
+    # collect has no per-test outcome, so it inherits its module's error rather
+    # than looking merely absent.
+    resolved: dict[str, tuple[str, str]] = {}
     for test in manifest.tests:
         raw = outcomes.get(test.canonical)
-        outcome = raw["outcome"] if raw else "missing"
-        test_results.append(
-            TestResult(
-                canonical=test.canonical,
-                outcome=outcome,
-                point_id=test.point_id,
-                detail=raw["detail"] if raw else "",
-            )
+        if raw:
+            resolved[test.canonical] = (raw["outcome"], raw["detail"])
+            continue
+        err = _collection_error_for(test.path, collection_errors)
+        resolved[test.canonical] = ("error", err["detail"]) if err else ("missing", "")
+
+    # Test-level results.
+    test_results = [
+        TestResult(
+            canonical=test.canonical,
+            outcome=resolved[test.canonical][0],
+            point_id=test.point_id,
+            detail=resolved[test.canonical][1],
         )
+        for test in manifest.tests
+    ]
     unregistered = sorted(n for n in outcomes if n not in by_canonical)
 
     # Point-level rollup.
     point_results: list[PointResult] = []
-    passing = failing = stubs = 0
+    passing = failing = errored = stubs = 0
     for point in manifest.points:
         live = [
             t
             for t in manifest.tests_for_point(point.id)
             if t.status != "orphaned" and not t.disabled
         ]
-        live_outcomes = [
-            outcomes.get(t.canonical, {}).get("outcome", "missing") for t in live
-        ]
-        if any(o == "failed" for o in live_outcomes):
+        live_outcomes = [resolved[t.canonical][0] for t in live]
+        if live_outcomes and all(o == "error" for o in live_outcomes):
+            status = "error"
+            errored += 1
+        elif any(o == "failed" for o in live_outcomes):
             status = "failing"
             failing += 1
         elif any(o == "passed" for o in live_outcomes):
@@ -151,6 +204,7 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
         total_points=len(manifest.points),
         passing=passing,
         failing=failing,
+        errored=errored,
         stubs=stubs,
         orphaned_tests=orphaned_tests,
         points=point_results,
@@ -159,7 +213,12 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
     )
 
 
-_STATUS_TAG = {"passing": "PASS", "failing": "FAIL", "stub": "STUB"}
+_STATUS_TAG = {
+    "passing": "PASS",
+    "failing": "FAIL",
+    "error": "ERROR",
+    "stub": "STUB",
+}
 
 
 def render_human(report: VerifyReport) -> str:
@@ -167,6 +226,7 @@ def render_human(report: VerifyReport) -> str:
     out.append(
         f"{report.total_points} integration points: "
         f"{report.passing} passing, {report.failing} failing, "
+        f"{report.errored} errored, "
         f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests."
     )
     out.append("")
@@ -182,6 +242,15 @@ def render_human(report: VerifyReport) -> str:
         out.append("")
         out.append("Failing tests:")
         for t in failures:
+            out.append(f"  {t.canonical}")
+            for line in (t.detail or "").splitlines():
+                out.append(f"      {line}")
+
+    errors = [t for t in report.tests if t.outcome == "error"]
+    if errors:
+        out.append("")
+        out.append("Errored tests (the suite could not run):")
+        for t in errors:
             out.append(f"  {t.canonical}")
             for line in (t.detail or "").splitlines():
                 out.append(f"      {line}")

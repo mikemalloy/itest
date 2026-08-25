@@ -70,7 +70,7 @@ itest verify
 ```
 
 ```
-3 integration points: 0 passing, 0 failing, 3 stubs, 0 orphaned tests.
+3 integration points: 0 passing, 0 failing, 0 errored, 3 stubs, 0 orphaned tests.
 
 Points:
   [STUB] 0.0.0.0/0 -> aws_security_group.alb (tcp:443)
