@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core.detectors.base import detect_all
+from itest.core.detectors.base import PlanRootError, detect_all
 from itest.core.manifest import IntegrationPoint, TestEntry, load_manifest
 from itest.core.mermaid import generate_mermaid
 
@@ -135,7 +135,12 @@ def run_plan(tf_json: Path | None, base_dir: Path) -> Changeset:
     Does not touch the manifest or any test file.
     """
     plan_json = load_plan_json(tf_json, base_dir)
-    points, unanalyzed = detect_all(plan_json)
+    try:
+        points, unanalyzed = detect_all(plan_json)
+    except PlanRootError as exc:
+        # Surfaced as a plan input problem so the CLI reports it like any other
+        # bad input rather than as a traceback.
+        raise PlanInputError(str(exc)) from exc
 
     mpath = manifest_path(base_dir)
     if mpath.exists():

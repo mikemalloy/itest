@@ -26,10 +26,33 @@ class Detector(ABC):
         raise NotImplementedError
 
 
+class PlanRootError(ValueError):
+    """Raised when a document is neither a plan nor a state show."""
+
+
+#: The two roots `terraform show -json` can emit: a plan file renders
+#: ``planned_values``, and no plan file renders the current state as ``values``.
+PLAN_ROOTS = ("planned_values", "values")
+
+
 def _root_module(plan_json: dict) -> dict:
-    """Return the root module, whether from a plan or a state show."""
-    container = plan_json.get("planned_values") or plan_json.get("values") or {}
-    return container.get("root_module", {}) or {}
+    """Return the root module, whether from a plan or a state show.
+
+    Absent either root the document is not terraform JSON at all, which is a
+    usage error worth naming: detecting nothing looks identical to a project
+    that genuinely has no integration points.
+    """
+    for root in PLAN_ROOTS:
+        container = plan_json.get(root)
+        if container is not None:
+            return container.get("root_module", {}) or {}
+
+    raise PlanRootError(
+        "Input has neither a `planned_values` root (a saved plan) nor a "
+        "`values` root (current state), so there is nothing to analyze. "
+        "Supply the output of `terraform show -json`, optionally against a "
+        f"plan file. Found top-level keys: {sorted(plan_json) or 'none'}."
+    )
 
 
 def iter_resources(plan_json: dict) -> Iterator[dict]:
