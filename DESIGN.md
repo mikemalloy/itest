@@ -1,4 +1,4 @@
-# ITest Design Decisions (v0.1)
+# ITest Design Decisions
 
 ITest is a local-first CLI that analyzes Terraform configurations, extracts
 integration points, generates test stubs, and verifies deployed infrastructure.
@@ -34,8 +34,9 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   shorthand lists matches and exits; it never guesses.
 
 ## Detector architecture
-- Detectors emit typed primitive integration points. v0.1 ships ONE detector:
+- Detectors emit typed primitive integration points. ONE detector ships today:
   security-group edges (source, target, protocol, ports, direction, HCL address).
+  The Scope ledger below is the current record of what exists.
 - Point IDs must be stable across runs (derived from resource addresses +
   rule content, not array indices).
 - Unknown resource types are reported as "not analyzed", never silently skipped.
@@ -70,7 +71,24 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 - When a rule fights an intentional pattern, silence it with a targeted
   per-line `# noqa: RULE` plus a comment saying why. Never a blanket ignore.
 
-## Out of scope for v0.1 (do not build)
-- IAM/DNS/event detectors, labels/filtering, disable/enable commands,
-  `itest add`, saved-plan consumption beyond the implicit flow, shorthand
-  resolution beyond exact match, any server or UI, any agent/skill layer.
+## Scope ledger
+
+Shipped:
+- Security-group edge detector
+- plan / sync / verify with changeset, ownership hashes, orphan flagging,
+  and orphan resurrection
+- Mermaid diagram generation (`.itest/diagram.mmd`)
+- Machine-readable output (`--output json` on plan and verify, `--output
+  junit` on verify)
+- Ruff lint/format as part of Development discipline
+- itest-implementer agent skill (sg_edge recipe, interview, read-only
+  default)
+
+Not yet built (do not build without explicit instruction):
+- IAM, DNS, endpoint-availability, and event-wiring detectors
+- Labels, filtering, and test groups
+- itest add, disable/enable, rm
+- Saved-plan review flow (plan -out consumed by sync)
+- Shorthand address resolution beyond exact match
+- Cross-stack / multi-state analysis
+- Any server or web UI
