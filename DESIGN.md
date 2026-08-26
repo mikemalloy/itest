@@ -84,7 +84,6 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   generated tests. No other runtime dependencies without asking.
 
 ## Development discipline (applies to every task in this repo)
-- Use the superhuman skill whenever it is appropriate to the task at hand.
 - No cowboy programming: no task, feature, or fix is complete until its test
   cases exist AND have been executed. Before reporting any work as done, run
   the full pytest suite and show the actual output. "It should work" is not
