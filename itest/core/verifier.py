@@ -119,6 +119,12 @@ def _run_pytest(
         # Without this, the first un-importable module aborts collection and
         # nothing else runs — one broken file would blind every other point.
         "--continue-on-collection-errors",
+        # Pin rootdir to the project. Otherwise pytest walks up looking for a
+        # pytest.ini / pyproject.toml / setup.cfg and, on finding one in an
+        # ancestor (a monorepo's terraform/ dir, say), reports node ids as
+        # "sub/dir/itest_tests/..." — which never match the manifest's
+        # "itest_tests/..." paths, so every passing test looks unregistered.
+        f"--rootdir={base_dir}",
     ]
     if junit_path is not None:
         args += ["--junitxml", str(junit_path)]
