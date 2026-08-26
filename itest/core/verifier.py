@@ -17,7 +17,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core import planner
+from itest.core import planner, points
 from itest.core.manifest import load_manifest, save_manifest
 
 JUNIT_NAME = "itest-results.xml"
@@ -41,6 +41,10 @@ class PointResult(BaseModel):
     target: str
     attributes: dict = Field(default_factory=dict)
     status: str  # passing | failing | error | stub
+    #: The same one-line tag `itest plan` prints, from itest.core.points.
+    #: Carried here because a PointResult has no type, and rendering must not
+    #: guess at attributes that only one point type has.
+    tag: str = ""
 
 
 class VerifyReport(BaseModel):
@@ -215,6 +219,7 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
                 target=point.target,
                 attributes=point.attributes,
                 status=status,
+                tag=points.summary(point),
             )
         )
 
@@ -259,10 +264,8 @@ def render_human(report: VerifyReport) -> str:
     out.append("")
     out.append("Points:")
     for p in report.points:
-        tag = _STATUS_TAG.get(p.status, "????")
-        proto = p.attributes.get("protocol", "")
-        ports = p.attributes.get("ports", "")
-        out.append(f"  [{tag}] {p.source} -> {p.target} ({proto}:{ports})")
+        status = _STATUS_TAG.get(p.status, "????")
+        out.append(f"  [{status}] {p.source} -> {p.target} ({p.tag})")
 
     failures = [t for t in report.tests if t.outcome == "failed"]
     if failures:

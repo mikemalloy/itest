@@ -254,3 +254,46 @@ def test_all_errored_still_reports_error(synced_project: Path, monkeypatch) -> N
     result = runner.invoke(app, ["verify"])
     assert result.exit_code == 2, result.output
     assert "3 errored" in result.output
+
+
+# --------------------------------------------------------------------------
+# Point tags are type-aware
+# --------------------------------------------------------------------------
+
+ALEX_S6 = REPO_ROOT / "tests" / "fixtures" / "alex" / "alex-s6.json"
+
+
+@pytest.fixture
+def alex_project(tmp_path, monkeypatch) -> Path:
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(ALEX_S6)])
+    return tmp_path
+
+
+def test_point_lines_are_type_aware(alex_project: Path) -> None:
+    """Regression: every point line appended "({protocol}:{ports})".
+
+    Only sg_edge carries those attributes, so IAM and event points rendered a
+    bare "(:)" — the tag slot was there but empty for two thirds of what ITest
+    detects.
+    """
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == 0, result.output
+
+    assert "(:)" not in result.output
+
+    planner_line = next(
+        line
+        for line in result.output.splitlines()
+        if "aws_sqs_queue.analysis_jobs -> aws_lambda_function.planner" in line
+    )
+    assert "event_source_mapping" in planner_line
+
+
+def test_sg_point_lines_carry_the_plan_tag(synced_project: Path) -> None:
+    """verify prints the same tag plan does, direction included."""
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == 0, result.output
+    assert "aws_security_group.web -> aws_security_group.db (tcp:5432 ingress)" in (
+        result.output
+    )

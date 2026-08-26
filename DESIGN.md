@@ -30,11 +30,12 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 
   ```
   3 integration points: 0 passing, 0 failing, 0 errored, 3 stubs, 0 orphaned tests.
+  Ran 3 tests in 0.21s
 
   Points:
-    [STUB] 0.0.0.0/0 -> aws_security_group.alb (tcp:443)
-    [STUB] aws_security_group.alb -> aws_security_group.web (tcp:80)
-    [STUB] aws_security_group.web -> aws_security_group.db (tcp:5432)
+    [STUB] 0.0.0.0/0 -> aws_security_group.alb (tcp:443 ingress)
+    [STUB] aws_security_group.alb -> aws_security_group.web (tcp:80 ingress)
+    [STUB] aws_security_group.web -> aws_security_group.db (tcp:5432 ingress)
   ```
 
 ## Test addressing
