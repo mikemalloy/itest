@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -297,3 +298,112 @@ def test_sg_point_lines_carry_the_plan_tag(synced_project: Path) -> None:
     assert "aws_security_group.web -> aws_security_group.db (tcp:5432 ingress)" in (
         result.output
     )
+
+
+# --------------------------------------------------------------------------
+# --redact: verify output is safe to paste
+# --------------------------------------------------------------------------
+
+FAKE_ACCOUNT = "999988887777"
+
+
+def _inject_external_target(base_dir: Path) -> str:
+    """Point one manifest point at an ARN carrying a distinct fake account.
+
+    The alex fixtures are already pseudonymized, so asserting against them
+    could not tell redaction from a fixture that was clean to begin with.
+    """
+    from itest.core.manifest import load_manifest, save_manifest
+
+    manifest_path = base_dir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_path)
+    arn = f"arn:aws:sqs:us-west-1:{FAKE_ACCOUNT}:private-queue"
+    manifest.points[0].target = arn
+    save_manifest(manifest, manifest_path)
+    return arn
+
+
+def test_verify_redact_pseudonymizes_account_ids(alex_project: Path) -> None:
+    _inject_external_target(alex_project)
+
+    result = runner.invoke(app, ["verify", "--redact"])
+    assert result.exit_code == 0, result.output
+
+    assert FAKE_ACCOUNT not in result.output
+    assert "111111111111" in result.output
+
+
+def test_verify_without_redact_leaves_account_ids_alone(alex_project: Path) -> None:
+    """The default must not silently rewrite what the user is looking at."""
+    _inject_external_target(alex_project)
+
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == 0, result.output
+    assert FAKE_ACCOUNT in result.output
+
+
+def test_verify_redact_correlates_repeated_accounts(alex_project: Path) -> None:
+    """The same account in two places maps to the same pseudonym."""
+    result = runner.invoke(app, ["verify", "--redact"])
+    assert result.exit_code == 0, result.output
+
+    # alex-s6's ARNs all carry one account, so exactly one pseudonym appears.
+    pseudonyms = set(re.findall(r"\b(\d)\1{11}\b", result.output))
+    assert pseudonyms == {"1"}, f"expected one account pseudonym, saw {pseudonyms}"
+
+
+def test_verify_redact_json_output(alex_project: Path) -> None:
+    _inject_external_target(alex_project)
+
+    result = runner.invoke(app, ["verify", "--redact", "--output", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+
+    blob = json.dumps(payload)
+    assert FAKE_ACCOUNT not in blob
+    assert "111111111111" in blob
+    # Structure survives: ids, counts and statuses are untouched.
+    assert payload["total_points"] == 14
+    assert len(payload["points"]) == 14
+
+
+def test_verify_redact_leaves_ids_and_test_names_alone(alex_project: Path) -> None:
+    """Point ids, HCL addresses and test names carry no account IDs."""
+    plain = json.loads(runner.invoke(app, ["verify", "--output", "json"]).output)
+    redacted = json.loads(
+        runner.invoke(app, ["verify", "--redact", "--output", "json"]).output
+    )
+
+    assert [p["id"] for p in redacted["points"]] == [p["id"] for p in plain["points"]]
+    assert [t["canonical"] for t in redacted["tests"]] == [
+        t["canonical"] for t in plain["tests"]
+    ]
+
+
+def test_verify_redact_junit_output(alex_project: Path) -> None:
+    _inject_external_target(alex_project)
+
+    result = runner.invoke(app, ["verify", "--redact", "--output", "junit"])
+    assert result.exit_code == 0, result.output
+
+    junit = (alex_project / "itest-results.xml").read_text(encoding="utf-8")
+    assert FAKE_ACCOUNT not in junit
+
+
+def test_verify_hints_at_redact_when_targets_are_arns(alex_project: Path) -> None:
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == 0, result.output
+    assert "Tip: use --redact before sharing this output" in result.output
+
+
+def test_verify_does_not_hint_when_already_redacted(alex_project: Path) -> None:
+    result = runner.invoke(app, ["verify", "--redact"])
+    assert result.exit_code == 0, result.output
+    assert "Tip:" not in result.output
+
+
+def test_verify_does_not_hint_without_arn_targets(synced_project: Path) -> None:
+    """The web-app fixture has no ARN targets, so no hint is warranted."""
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == 0, result.output
+    assert "Tip:" not in result.output

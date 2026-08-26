@@ -110,13 +110,18 @@ def verify(
     output: str = typer.Option(
         "human", "--output", help="Output format: human, json, or junit."
     ),
+    redact: bool = typer.Option(
+        False,
+        "--redact",
+        help="Pseudonymize AWS account IDs in the output, for safe sharing.",
+    ),
 ) -> None:
     """Run the test suite and report point-level coverage."""
     from itest.core import verifier
 
     base_dir = Path.cwd()
     try:
-        report = verifier.run_verify(base_dir, output=output)
+        report = verifier.run_verify(base_dir, output=output, redact_accounts=redact)
     except verifier.VerifyConfigError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
@@ -127,7 +132,7 @@ def verify(
         typer.echo(f"Wrote JUnit XML to {verifier.JUNIT_NAME}")
         typer.echo(render_verify_line(report))
     else:
-        typer.echo(verifier.render_human(report))
+        typer.echo(verifier.render_human(report, redacted=redact))
 
     if report.exit_code != 0:
         raise typer.Exit(code=report.exit_code)

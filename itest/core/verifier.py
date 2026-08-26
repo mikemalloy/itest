@@ -17,7 +17,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core import planner, points
+from itest.core import planner, points, redact
 from itest.core.manifest import load_manifest, save_manifest
 
 JUNIT_NAME = "itest-results.xml"
@@ -142,8 +142,26 @@ def _run_pytest(
     return document.get("tests", {}), document.get("collection_errors", {})
 
 
-def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
-    """Execute the suite and build the coverage report."""
+def _pseudonymize_report(report: VerifyReport, replace) -> VerifyReport:
+    """Return the report with every account id in every string replaced.
+
+    Done over the serialized model rather than field by field: any string the
+    report carries now or later is covered, and a new field cannot quietly
+    reintroduce a leak.
+    """
+    text = replace(report.model_dump_json())
+    return VerifyReport.model_validate_json(text)
+
+
+def run_verify(
+    base_dir: Path, output: str = "human", redact_accounts: bool = False
+) -> VerifyReport:
+    """Execute the suite and build the coverage report.
+
+    ``redact_accounts`` pseudonymizes every AWS account id in the report and,
+    for junit output, in the written XML — using the same mapping, so the two
+    still correlate. Verify output gets pasted into tickets and CI logs.
+    """
     manifest_file = planner.manifest_path(base_dir)
     if not manifest_file.exists():
         raise VerifyConfigError(
@@ -230,7 +248,7 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
     if durations_recorded:
         save_manifest(manifest, manifest_file)
 
-    return VerifyReport(
+    report = VerifyReport(
         total_points=len(manifest.points),
         passing=passing,
         failing=failing,
@@ -243,6 +261,18 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
         unregistered=unregistered,
     )
 
+    if redact_accounts:
+        # One rewriter for the whole run, so the report and the junit file
+        # agree on which fake stands for which real account.
+        replace = redact.account_pseudonymizer()
+        report = _pseudonymize_report(report, replace)
+        if junit_path is not None and junit_path.exists():
+            junit_path.write_text(
+                replace(junit_path.read_text(encoding="utf-8")), encoding="utf-8"
+            )
+
+    return report
+
 
 _STATUS_TAG = {
     "passing": "PASS",
@@ -252,7 +282,7 @@ _STATUS_TAG = {
 }
 
 
-def render_human(report: VerifyReport) -> str:
+def render_human(report: VerifyReport, redacted: bool = False) -> str:
     out: list[str] = []
     out.append(
         f"{report.total_points} integration points: "
@@ -290,5 +320,13 @@ def render_human(report: VerifyReport) -> str:
         out.append("Unregistered tests (not in manifest):")
         for n in report.unregistered:
             out.append(f"  {n}")
+
+    # Only worth saying when there is something to leak and it has not been
+    # scrubbed already: an ARN target carries an account id.
+    if not redacted and any(p.target.startswith("arn:") for p in report.points):
+        out.append("")
+        out.append(
+            "Tip: use --redact before sharing this output (targets include ARNs)."
+        )
 
     return "\n".join(out)

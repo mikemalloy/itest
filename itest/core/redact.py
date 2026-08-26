@@ -27,6 +27,7 @@ import copy
 import math
 import re
 from collections import Counter
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -359,6 +360,22 @@ class _Redactor:
             return self._scrub_string(node, path)
 
         return node
+
+
+def account_pseudonymizer() -> Callable[[str], str]:
+    """Return a stateful text rewriter for AWS account ids.
+
+    Each distinct account maps to a stable fake (111111111111, 222222222222,
+    …) for the life of the returned function, so repeated occurrences still
+    correlate. Shared with ``itest verify --redact`` so both commands scrub
+    account ids the same way from one pattern and one mapping.
+    """
+    accounts = _Accounts()
+
+    def replace(text: str) -> str:
+        return _ACCOUNT_ID.sub(lambda m: accounts.pseudonym_for(m.group(0)), text)
+
+    return replace
 
 
 def redact_document(document: dict) -> tuple[dict, list[Finding]]:
