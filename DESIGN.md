@@ -34,9 +34,20 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   shorthand lists matches and exits; it never guesses.
 
 ## Detector architecture
-- Detectors emit typed primitive integration points. ONE detector ships today:
-  security-group edges (source, target, protocol, ports, direction, HCL address).
-  The Scope ledger below is the current record of what exists.
+- Detectors emit typed primitive integration points. Three ship today:
+  `sg_edge` (security-group reachability: source, target, protocol, ports,
+  direction), `iam_edge` (role -> resource grants: actions ride in attributes,
+  with wildcard_action / wildcard_resource / external / managed /
+  broad_managed_policy flags; `external: true` is how cross-stack references
+  surface), and `event_edge` (event source mappings, SQS DLQ redrive, Lambda
+  permissions; `mechanism` attribute). The Scope ledger below is the current
+  record of what exists.
+- Every place a point is printed (plan changeset, Mermaid labels, stub names
+  and docstrings) dispatches on point type via `itest/core/points.py`. A new
+  detector must add its type there, never leave another command printing
+  `None`.
+- The plan-JSON entry point accepts either a plan root (`planned_values`)
+  or a state root (`values`) and errors naming both when neither is present.
 - Point IDs must be stable across runs (derived from resource addresses +
   rule content, not array indices).
 - Unknown resource types are reported as "not analyzed", never silently skipped.
@@ -75,6 +86,11 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 
 Shipped:
 - Security-group edge detector
+- IAM edge detector (role -> resource, wildcard / cross-stack / managed flags)
+- Event edge detector (event source mapping, DLQ redrive, lambda_permission)
+- Plan and state JSON roots both accepted by the plan entry point
+- Manifest schema v2 (tier, resource_group, last_duration_seconds — schema
+  and v1 migration only; nothing schedules on them yet)
 - plan / sync / verify with changeset, ownership hashes, orphan flagging,
   and orphan resurrection
 - Mermaid diagram generation (`.itest/diagram.mmd`)
@@ -87,7 +103,13 @@ Shipped:
   default)
 
 Not yet built (do not build without explicit instruction):
-- IAM, DNS, endpoint-availability, and event-wiring detectors
+- DNS and endpoint-availability detectors
+- Skill recipes for iam_edge and event_edge (itest-implementer covers sg_edge
+  only)
+- Per-type stub files (all stubs currently land in
+  `itest_tests/test_sg_edges.py` regardless of point type)
+- Parallel / scheduled execution (xdist, resource_group serialization,
+  duration packing, change-scoped verify)
 - Labels, filtering, and test groups
 - itest add, disable/enable, rm
 - Saved-plan review flow (plan -out consumed by sync)
