@@ -1,0 +1,684 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.15.4",
+  "values": {
+    "outputs": {
+      "aurora_cluster_arn": {
+        "sensitive": false,
+        "value": "arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster",
+        "type": "string"
+      },
+      "aurora_cluster_endpoint": {
+        "sensitive": false,
+        "value": "alex-aurora-cluster.cluster-c924yky6srcu.us-west-1.rds.amazonaws.com",
+        "type": "string"
+      },
+      "aurora_secret_arn": {
+        "sensitive": false,
+        "value": "arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh",
+        "type": "string"
+      },
+      "data_api_enabled": {
+        "sensitive": false,
+        "value": "Enabled",
+        "type": "string"
+      },
+      "database_name": {
+        "sensitive": false,
+        "value": "alex",
+        "type": "string"
+      },
+      "lambda_role_arn": {
+        "sensitive": false,
+        "value": "arn:aws:iam::111111111111:role/alex-lambda-aurora-role",
+        "type": "string"
+      },
+      "setup_instructions": {
+        "sensitive": false,
+        "value": "    \n\u2705 Aurora Serverless v2 cluster deployed successfully!\n    \nDatabase Details:\n- Cluster: alex-aurora-cluster\n- Database: alex\n- Data API: Enabled\n    \nAdd the following to your .env file:\nAURORA_CLUSTER_ARN=arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster\nAURORA_SECRET_ARN=arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh\n    \nTest the Data API connection:\naws rds-data execute-statement \\\n  --resource-arn arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster \\\n  --secret-arn arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh \\\n  --database alex \\\n  --sql \"SELECT version()\"\n    \nTo set up the database schema:\ncd backend/database\nuv run run_migrations.py\n    \nTo load sample data:\nuv run reset_db.py --with-test-data\n    \n\ud83d\udcb0 Cost Management:\n- Current scaling: 0 - 1 ACUs\n- Estimated cost: ~$43/month minimum\n- To pause: Set min_capacity to 0 (cluster will pause after 5 minutes of inactivity)\n",
+        "type": "string"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "data.aws_caller_identity.current",
+          "mode": "data",
+          "type": "aws_caller_identity",
+          "name": "current",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "account_id": "111111111111",
+            "arn": "arn:aws:iam::111111111111:user/aiengineer",
+            "id": "111111111111",
+            "user_id": "AIDA2RMMKVRKYVEKPCQ6C"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "data.aws_subnets.default",
+          "mode": "data",
+          "type": "aws_subnets",
+          "name": "default",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "filter": [
+              {
+                "name": "vpc-id",
+                "values": [
+                  "vpc-4fced72d"
+                ]
+              }
+            ],
+            "id": "us-west-1",
+            "ids": [
+              "subnet-8185a6c7",
+              "subnet-387c9c5d"
+            ],
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "filter": [
+              {
+                "values": [
+                  false
+                ]
+              }
+            ],
+            "ids": [
+              false,
+              false
+            ]
+          }
+        },
+        {
+          "address": "data.aws_vpc.default",
+          "mode": "data",
+          "type": "aws_vpc",
+          "name": "default",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:ec2:us-west-1:111111111111:vpc/vpc-4fced72d",
+            "cidr_block": "172.31.0.0/16",
+            "cidr_block_associations": [
+              {
+                "association_id": "vpc-cidr-assoc-6d5bb904",
+                "cidr_block": "172.31.0.0/16",
+                "state": "associated"
+              }
+            ],
+            "default": true,
+            "dhcp_options_id": "dopt-67263305",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "enable_network_address_usage_metrics": false,
+            "filter": null,
+            "id": "vpc-4fced72d",
+            "instance_tenancy": "default",
+            "ipv6_association_id": "",
+            "ipv6_cidr_block": "",
+            "main_route_table_id": "rtb-1bb7af79",
+            "owner_id": "111111111111",
+            "state": null,
+            "tags": {},
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "cidr_block_associations": [
+              {}
+            ],
+            "tags": {}
+          }
+        },
+        {
+          "address": "aws_db_subnet_group.aurora",
+          "mode": "managed",
+          "type": "aws_db_subnet_group",
+          "name": "aurora",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:rds:us-west-1:111111111111:subgrp:alex-aurora-subnet-group",
+            "description": "Managed by Terraform",
+            "id": "alex-aurora-subnet-group",
+            "name": "alex-aurora-subnet-group",
+            "name_prefix": "",
+            "subnet_ids": [
+              "subnet-387c9c5d",
+              "subnet-8185a6c7"
+            ],
+            "supported_network_types": [
+              "IPV4"
+            ],
+            "tags": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "vpc_id": "vpc-4fced72d"
+          },
+          "sensitive_values": {
+            "subnet_ids": [
+              false,
+              false
+            ],
+            "supported_network_types": [
+              false
+            ],
+            "tags": {},
+            "tags_all": {}
+          },
+          "depends_on": [
+            "data.aws_subnets.default",
+            "data.aws_vpc.default"
+          ]
+        },
+        {
+          "address": "aws_iam_role.lambda_aurora_role",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda_aurora_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:iam::111111111111:role/alex-lambda-aurora-role",
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+            "create_date": "2026-05-31T18:15:57Z",
+            "description": "",
+            "force_detach_policies": false,
+            "id": "alex-lambda-aurora-role",
+            "inline_policy": [
+              {
+                "name": "alex-lambda-aurora-policy",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"rds-data:ExecuteStatement\",\"rds-data:BatchExecuteStatement\",\"rds-data:BeginTransaction\",\"rds-data:CommitTransaction\",\"rds-data:RollbackTransaction\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh\"},{\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:logs:us-west-1:111111111111:*\"}]}"
+              }
+            ],
+            "managed_policy_arns": [
+              "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+            ],
+            "max_session_duration": 3600,
+            "name": "alex-lambda-aurora-role",
+            "name_prefix": "",
+            "path": "/",
+            "permissions_boundary": "",
+            "tags": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "unique_id": "AROA2RMMKVRKVWBRQVC46"
+          },
+          "sensitive_values": {
+            "inline_policy": [
+              {}
+            ],
+            "managed_policy_arns": [
+              false
+            ],
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_iam_role_policy.lambda_aurora_policy",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "lambda_aurora_policy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "alex-lambda-aurora-role:alex-lambda-aurora-policy",
+            "name": "alex-lambda-aurora-policy",
+            "name_prefix": "",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"rds-data:ExecuteStatement\",\"rds-data:BatchExecuteStatement\",\"rds-data:BeginTransaction\",\"rds-data:CommitTransaction\",\"rds-data:RollbackTransaction\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh\"},{\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:logs:us-west-1:111111111111:*\"}]}",
+            "role": "alex-lambda-aurora-role"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_db_subnet_group.aurora",
+            "aws_iam_role.lambda_aurora_role",
+            "aws_rds_cluster.aurora",
+            "aws_secretsmanager_secret.db_credentials",
+            "aws_security_group.aurora",
+            "data.aws_caller_identity.current",
+            "data.aws_subnets.default",
+            "data.aws_vpc.default",
+            "random_id.suffix",
+            "random_password.db_password"
+          ]
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.lambda_basic",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "lambda_basic",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "alex-lambda-aurora-role-20260531181558498100000003",
+            "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            "role": "alex-lambda-aurora-role"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_iam_role.lambda_aurora_role"
+          ]
+        },
+        {
+          "address": "aws_rds_cluster.aurora",
+          "mode": "managed",
+          "type": "aws_rds_cluster",
+          "name": "aurora",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "allocated_storage": 1,
+            "allow_major_version_upgrade": null,
+            "apply_immediately": true,
+            "arn": "arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster",
+            "availability_zones": [
+              "us-west-1a",
+              "us-west-1c"
+            ],
+            "backtrack_window": 0,
+            "backup_retention_period": 7,
+            "ca_certificate_identifier": null,
+            "ca_certificate_valid_till": null,
+            "cluster_identifier": "alex-aurora-cluster",
+            "cluster_identifier_prefix": "",
+            "cluster_members": [
+              "alex-aurora-instance-1"
+            ],
+            "cluster_resource_id": "REDACTED",
+            "cluster_scalability_type": "",
+            "copy_tags_to_snapshot": false,
+            "database_insights_mode": "standard",
+            "database_name": "alex",
+            "db_cluster_instance_class": "",
+            "db_cluster_parameter_group_name": "default.aurora-postgresql15",
+            "db_instance_parameter_group_name": null,
+            "db_subnet_group_name": "alex-aurora-subnet-group",
+            "db_system_id": "",
+            "delete_automated_backups": true,
+            "deletion_protection": false,
+            "domain": "",
+            "domain_iam_role_name": "",
+            "enable_global_write_forwarding": false,
+            "enable_http_endpoint": true,
+            "enable_local_write_forwarding": false,
+            "enabled_cloudwatch_logs_exports": [],
+            "endpoint": "alex-aurora-cluster.cluster-c924yky6srcu.us-west-1.rds.amazonaws.com",
+            "engine": "aurora-postgresql",
+            "engine_lifecycle_support": "open-source-rds-extended-support",
+            "engine_mode": "provisioned",
+            "engine_version": "15.12",
+            "engine_version_actual": "15.12",
+            "final_snapshot_identifier": null,
+            "global_cluster_identifier": "",
+            "hosted_zone_id": "Z10WI91S59XXQN",
+            "iam_database_authentication_enabled": false,
+            "iam_roles": [],
+            "id": "alex-aurora-cluster",
+            "iops": 0,
+            "kms_key_id": "",
+            "manage_master_user_password": null,
+            "master_password": "REDACTED",
+            "master_password_wo": "REDACTED",
+            "master_password_wo_version": null,
+            "master_user_secret": [],
+            "master_user_secret_kms_key_id": null,
+            "master_username": "alexadmin",
+            "monitoring_interval": 0,
+            "monitoring_role_arn": "",
+            "network_type": "IPV4",
+            "performance_insights_enabled": false,
+            "performance_insights_kms_key_id": "",
+            "performance_insights_retention_period": 0,
+            "port": 5432,
+            "preferred_backup_window": "03:00-04:00",
+            "preferred_maintenance_window": "sun:04:00-sun:05:00",
+            "reader_endpoint": "alex-aurora-cluster.cluster-ro-c924yky6srcu.us-west-1.rds.amazonaws.com",
+            "replication_source_identifier": "",
+            "restore_to_point_in_time": [],
+            "s3_import": [],
+            "scaling_configuration": [],
+            "serverlessv2_scaling_configuration": [
+              {
+                "max_capacity": 1,
+                "min_capacity": 0,
+                "seconds_until_auto_pause": 300
+              }
+            ],
+            "skip_final_snapshot": true,
+            "snapshot_identifier": null,
+            "source_region": null,
+            "storage_encrypted": false,
+            "storage_type": "",
+            "tags": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "timeouts": null,
+            "vpc_security_group_ids": [
+              "sg-03e457fe1edc67786"
+            ]
+          },
+          "sensitive_values": {
+            "availability_zones": [
+              false,
+              false
+            ],
+            "cluster_members": [
+              false
+            ],
+            "enabled_cloudwatch_logs_exports": [],
+            "iam_roles": [],
+            "master_password": true,
+            "master_password_wo": true,
+            "master_user_secret": [],
+            "restore_to_point_in_time": [],
+            "s3_import": [],
+            "scaling_configuration": [],
+            "serverlessv2_scaling_configuration": [
+              {}
+            ],
+            "tags": {},
+            "tags_all": {},
+            "vpc_security_group_ids": [
+              false
+            ]
+          },
+          "depends_on": [
+            "aws_db_subnet_group.aurora",
+            "aws_security_group.aurora",
+            "data.aws_subnets.default",
+            "data.aws_vpc.default",
+            "random_password.db_password"
+          ]
+        },
+        {
+          "address": "aws_rds_cluster_instance.aurora",
+          "mode": "managed",
+          "type": "aws_rds_cluster_instance",
+          "name": "aurora",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "apply_immediately": null,
+            "arn": "arn:aws:rds:us-west-1:111111111111:db:alex-aurora-instance-1",
+            "auto_minor_version_upgrade": true,
+            "availability_zone": "us-west-1c",
+            "ca_cert_identifier": "rds-ca-rsa2048-g1",
+            "cluster_identifier": "alex-aurora-cluster",
+            "copy_tags_to_snapshot": false,
+            "custom_iam_instance_profile": "",
+            "db_parameter_group_name": "default.aurora-postgresql15",
+            "db_subnet_group_name": "alex-aurora-subnet-group",
+            "dbi_resource_id": "db-EAOTUVZU2FSXTE2MCJLNB5CAW4",
+            "endpoint": "alex-aurora-instance-1.c924yky6srcu.us-west-1.rds.amazonaws.com",
+            "engine": "aurora-postgresql",
+            "engine_version": "15.12",
+            "engine_version_actual": "15.12",
+            "force_destroy": false,
+            "id": "alex-aurora-instance-1",
+            "identifier": "alex-aurora-instance-1",
+            "identifier_prefix": "",
+            "instance_class": "db.serverless",
+            "kms_key_id": "",
+            "monitoring_interval": 0,
+            "monitoring_role_arn": "",
+            "network_type": "IPV4",
+            "performance_insights_enabled": false,
+            "performance_insights_kms_key_id": "",
+            "performance_insights_retention_period": 0,
+            "port": 5432,
+            "preferred_backup_window": "03:00-04:00",
+            "preferred_maintenance_window": "sat:08:36-sat:09:06",
+            "promotion_tier": 0,
+            "publicly_accessible": false,
+            "storage_encrypted": false,
+            "tags": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "timeouts": null,
+            "writer": true
+          },
+          "sensitive_values": {
+            "tags": {},
+            "tags_all": {}
+          },
+          "depends_on": [
+            "aws_db_subnet_group.aurora",
+            "aws_rds_cluster.aurora",
+            "aws_security_group.aurora",
+            "data.aws_subnets.default",
+            "data.aws_vpc.default",
+            "random_password.db_password"
+          ]
+        },
+        {
+          "address": "aws_secretsmanager_secret.db_credentials",
+          "mode": "managed",
+          "type": "aws_secretsmanager_secret",
+          "name": "db_credentials",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh",
+            "description": "",
+            "force_overwrite_replica_secret": false,
+            "id": "arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh",
+            "kms_key_id": "",
+            "name": "alex-aurora-credentials-7b1b5cc1",
+            "name_prefix": "",
+            "policy": "",
+            "recovery_window_in_days": 0,
+            "replica": [],
+            "tags": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "5",
+              "Project": "alex"
+            }
+          },
+          "sensitive_values": {
+            "replica": [],
+            "tags": {},
+            "tags_all": {}
+          },
+          "depends_on": [
+            "random_id.suffix"
+          ]
+        },
+        {
+          "address": "aws_secretsmanager_secret_version.db_credentials",
+          "mode": "managed",
+          "type": "aws_secretsmanager_secret_version",
+          "name": "db_credentials",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh",
+            "has_secret_string_wo": null,
+            "id": "arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh|terraform-20260531181557878400000002",
+            "secret_binary": "REDACTED",
+            "secret_id": "arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh",
+            "secret_string": "REDACTED",
+            "secret_string_wo": "REDACTED",
+            "secret_string_wo_version": null,
+            "version_id": "terraform-20260531181557878400000002",
+            "version_stages": [
+              "AWSCURRENT"
+            ]
+          },
+          "sensitive_values": {
+            "secret_binary": true,
+            "secret_string": true,
+            "secret_string_wo": true,
+            "version_stages": [
+              false
+            ]
+          },
+          "depends_on": [
+            "aws_secretsmanager_secret.db_credentials",
+            "random_id.suffix",
+            "random_password.db_password"
+          ]
+        },
+        {
+          "address": "aws_security_group.aurora",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "aurora",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "arn": "arn:aws:ec2:us-west-1:111111111111:security-group/sg-03e457fe1edc67786",
+            "description": "Security group for Alex Aurora cluster",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "id": "sg-03e457fe1edc67786",
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  "172.31.0.0/16"
+                ],
+                "description": "",
+                "from_port": 5432,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 5432
+              }
+            ],
+            "name": "alex-aurora-sg",
+            "name_prefix": "",
+            "owner_id": "111111111111",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "5",
+              "Project": "alex"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-4fced72d"
+          },
+          "sensitive_values": {
+            "egress": [
+              {
+                "cidr_blocks": [
+                  false
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  false
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "tags": {},
+            "tags_all": {}
+          },
+          "depends_on": [
+            "data.aws_vpc.default"
+          ]
+        },
+        {
+          "address": "random_id.suffix",
+          "mode": "managed",
+          "type": "random_id",
+          "name": "suffix",
+          "provider_name": "registry.terraform.io/hashicorp/random",
+          "schema_version": 0,
+          "values": {
+            "b64_std": "extcwQ==",
+            "b64_url": "extcwQ",
+            "byte_length": 4,
+            "dec": "2065390785",
+            "hex": "7b1b5cc1",
+            "id": "extcwQ",
+            "keepers": null,
+            "prefix": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "random_password.db_password",
+          "mode": "managed",
+          "type": "random_password",
+          "name": "db_password",
+          "provider_name": "registry.terraform.io/hashicorp/random",
+          "schema_version": 3,
+          "values": {
+            "bcrypt_hash": "REDACTED",
+            "id": "none",
+            "keepers": null,
+            "length": 32,
+            "lower": true,
+            "min_lower": 0,
+            "min_numeric": 0,
+            "min_special": 0,
+            "min_upper": 0,
+            "number": true,
+            "numeric": true,
+            "override_special": "!#$%&*()-_=+[]{}<>:?",
+            "result": "REDACTED",
+            "special": true,
+            "upper": true
+          },
+          "sensitive_values": {
+            "bcrypt_hash": true,
+            "result": true
+          }
+        }
+      ]
+    }
+  }
+}

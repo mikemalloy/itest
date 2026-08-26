@@ -1,0 +1,263 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.15.4",
+  "values": {
+    "outputs": {
+      "sagemaker_endpoint_arn": {
+        "sensitive": false,
+        "value": "arn:aws:sagemaker:us-west-1:111111111111:endpoint/alex-embedding-endpoint",
+        "type": "string"
+      },
+      "sagemaker_endpoint_name": {
+        "sensitive": false,
+        "value": "alex-embedding-endpoint",
+        "type": "string"
+      },
+      "setup_instructions": {
+        "sensitive": false,
+        "value": "    \n\u2705 SageMaker endpoint deployed successfully!\n    \nFollow the instructions in the guide to update your .env file and test the endpoint.\n",
+        "type": "string"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "data.aws_caller_identity.current",
+          "mode": "data",
+          "type": "aws_caller_identity",
+          "name": "current",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "account_id": "111111111111",
+            "arn": "arn:aws:iam::111111111111:user/aiengineer",
+            "id": "111111111111",
+            "user_id": "AIDA2RMMKVRKYVEKPCQ6C"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_iam_role.sagemaker_role",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "sagemaker_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:iam::111111111111:role/alex-sagemaker-role",
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"sagemaker.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+            "create_date": "2026-05-30T21:19:29Z",
+            "description": "",
+            "force_detach_policies": false,
+            "id": "alex-sagemaker-role",
+            "inline_policy": [],
+            "managed_policy_arns": [
+              "arn:aws:iam::aws:policy/AmazonSageMakerFullAccess"
+            ],
+            "max_session_duration": 3600,
+            "name": "alex-sagemaker-role",
+            "name_prefix": "",
+            "path": "/",
+            "permissions_boundary": "",
+            "tags": {},
+            "tags_all": {},
+            "unique_id": "AROA2RMMKVRKZ6MUD3TL5"
+          },
+          "sensitive_values": {
+            "inline_policy": [],
+            "managed_policy_arns": [
+              false
+            ],
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.sagemaker_full_access",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "sagemaker_full_access",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "alex-sagemaker-role-20260530211929906800000001",
+            "policy_arn": "arn:aws:iam::aws:policy/AmazonSageMakerFullAccess",
+            "role": "alex-sagemaker-role"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_iam_role.sagemaker_role"
+          ]
+        },
+        {
+          "address": "aws_sagemaker_endpoint.embedding_endpoint",
+          "mode": "managed",
+          "type": "aws_sagemaker_endpoint",
+          "name": "embedding_endpoint",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:sagemaker:us-west-1:111111111111:endpoint/alex-embedding-endpoint",
+            "deployment_config": [],
+            "endpoint_config_name": "alex-embedding-serverless-config",
+            "id": "alex-embedding-endpoint",
+            "name": "alex-embedding-endpoint",
+            "tags": null,
+            "tags_all": {}
+          },
+          "sensitive_values": {
+            "deployment_config": [],
+            "tags_all": {}
+          },
+          "depends_on": [
+            "aws_iam_role.sagemaker_role",
+            "aws_iam_role_policy_attachment.sagemaker_full_access",
+            "aws_sagemaker_endpoint_configuration.serverless_config",
+            "aws_sagemaker_model.embedding_model",
+            "time_sleep.wait_for_iam_propagation"
+          ]
+        },
+        {
+          "address": "aws_sagemaker_endpoint_configuration.serverless_config",
+          "mode": "managed",
+          "type": "aws_sagemaker_endpoint_configuration",
+          "name": "serverless_config",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:sagemaker:us-west-1:111111111111:endpoint-config/alex-embedding-serverless-config",
+            "async_inference_config": [],
+            "data_capture_config": [],
+            "id": "alex-embedding-serverless-config",
+            "kms_key_arn": "",
+            "name": "alex-embedding-serverless-config",
+            "name_prefix": "",
+            "production_variants": [
+              {
+                "accelerator_type": "",
+                "container_startup_health_check_timeout_in_seconds": 0,
+                "core_dump_config": [],
+                "enable_ssm_access": false,
+                "inference_ami_version": "",
+                "initial_instance_count": 0,
+                "initial_variant_weight": 1,
+                "instance_type": "",
+                "managed_instance_scaling": [],
+                "model_data_download_timeout_in_seconds": 0,
+                "model_name": "alex-embedding-model",
+                "routing_config": [],
+                "serverless_config": [
+                  {
+                    "max_concurrency": 2,
+                    "memory_size_in_mb": 3072,
+                    "provisioned_concurrency": 0
+                  }
+                ],
+                "variant_name": "terraform-20260530212256464900000001",
+                "volume_size_in_gb": 5
+              }
+            ],
+            "shadow_production_variants": [],
+            "tags": null,
+            "tags_all": {}
+          },
+          "sensitive_values": {
+            "async_inference_config": [],
+            "data_capture_config": [],
+            "production_variants": [
+              {
+                "core_dump_config": [],
+                "managed_instance_scaling": [],
+                "routing_config": [],
+                "serverless_config": [
+                  {}
+                ]
+              }
+            ],
+            "shadow_production_variants": [],
+            "tags_all": {}
+          },
+          "depends_on": [
+            "aws_iam_role.sagemaker_role",
+            "aws_iam_role_policy_attachment.sagemaker_full_access",
+            "aws_sagemaker_model.embedding_model"
+          ]
+        },
+        {
+          "address": "aws_sagemaker_model.embedding_model",
+          "mode": "managed",
+          "type": "aws_sagemaker_model",
+          "name": "embedding_model",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:sagemaker:us-west-1:111111111111:model/alex-embedding-model",
+            "container": [],
+            "enable_network_isolation": false,
+            "execution_role_arn": "arn:aws:iam::111111111111:role/alex-sagemaker-role",
+            "id": "alex-embedding-model",
+            "inference_execution_config": [],
+            "name": "alex-embedding-model",
+            "primary_container": [
+              {
+                "container_hostname": "",
+                "environment": {
+                  "HF_MODEL_ID": "sentence-transformers/all-MiniLM-L6-v2",
+                  "HF_TASK": "feature-extraction"
+                },
+                "image": "222222222222.dkr.ecr.us-west-1.amazonaws.com/huggingface-pytorch-inference:1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04",
+                "image_config": [],
+                "inference_specification_name": "",
+                "mode": "SingleModel",
+                "model_data_source": [],
+                "model_data_url": "",
+                "model_package_name": "",
+                "multi_model_config": []
+              }
+            ],
+            "tags": null,
+            "tags_all": {},
+            "vpc_config": []
+          },
+          "sensitive_values": {
+            "container": [],
+            "inference_execution_config": [],
+            "primary_container": [
+              {
+                "environment": {},
+                "image_config": [],
+                "model_data_source": [],
+                "multi_model_config": []
+              }
+            ],
+            "tags_all": {},
+            "vpc_config": []
+          },
+          "depends_on": [
+            "aws_iam_role.sagemaker_role",
+            "aws_iam_role_policy_attachment.sagemaker_full_access"
+          ]
+        },
+        {
+          "address": "time_sleep.wait_for_iam_propagation",
+          "mode": "managed",
+          "type": "time_sleep",
+          "name": "wait_for_iam_propagation",
+          "provider_name": "registry.terraform.io/hashicorp/time",
+          "schema_version": 0,
+          "values": {
+            "create_duration": "15s",
+            "destroy_duration": null,
+            "id": "2026-05-30T21:19:45Z",
+            "triggers": null
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_iam_role.sagemaker_role",
+            "aws_iam_role_policy_attachment.sagemaker_full_access"
+          ]
+        }
+      ]
+    }
+  }
+}
