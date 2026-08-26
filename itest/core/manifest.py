@@ -15,7 +15,9 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+Tier = Literal["static", "readonly", "active"]
 
 
 class IntegrationPoint(BaseModel):
@@ -47,6 +49,16 @@ class TestEntry(BaseModel):
     disabled: bool = False
     disabled_reason: str | None = None
     labels: list[str] = Field(default_factory=list)
+    # --- v2 scheduling fields (schema only; no runner uses them yet) ---
+    #: Execution class: static (no AWS calls), readonly (describe/get only),
+    #: active (mutating probes). Also the future concurrency class.
+    tier: Tier = "readonly"
+    #: Serialization key for the future parallel runner: tests sharing a
+    #: resource_group must not run concurrently. Defaults to the point's
+    #: target identity at sync time.
+    resource_group: str | None = None
+    #: Wall-clock seconds of this test's last run, recorded by verify.
+    last_duration_seconds: float | None = None
 
     @property
     def canonical(self) -> str:
@@ -119,7 +131,30 @@ def load_manifest(path: str | Path) -> Manifest:
             f"supports (max {SCHEMA_VERSION}). Upgrade ITest to read it."
         )
 
-    return Manifest.model_validate(data)
+    manifest = Manifest.model_validate(data)
+    if isinstance(version, int) and version < SCHEMA_VERSION:
+        _migrate(manifest, version)
+    return manifest
+
+
+def default_resource_group(manifest: Manifest, entry: TestEntry) -> str | None:
+    """The point's target identity — what a test on it would contend for."""
+    point = manifest.get_point(entry.point_id)
+    return point.target if point else None
+
+
+def _migrate(manifest: Manifest, from_version: int) -> None:
+    """Upgrade an older manifest in place. Saving then writes the new version.
+
+    v1 -> v2: TestEntry gains tier (default readonly), resource_group (filled
+    from the point's target), last_duration_seconds (unknown until verify).
+    Pydantic already applied the defaults; only resource_group needs data.
+    """
+    if from_version < 2:
+        for entry in manifest.tests:
+            if entry.resource_group is None:
+                entry.resource_group = default_resource_group(manifest, entry)
+    manifest.schema_version = SCHEMA_VERSION
 
 
 def save_manifest(manifest: Manifest, path: str | Path) -> None:

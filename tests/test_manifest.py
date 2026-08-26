@@ -102,7 +102,7 @@ def test_get_point_and_tests_for_point() -> None:
 def test_unknown_schema_version(tmp_path: Path) -> None:
     path = tmp_path / "future.yaml"
     path.write_text(
-        "schema_version: 2\n"
+        "schema_version: 3\n"
         'generated_at: "2026-08-24T17:30:00+00:00"\n'
         "points: []\n"
         "tests: []\n",
@@ -114,7 +114,9 @@ def test_unknown_schema_version(tmp_path: Path) -> None:
 
 def test_example_doc_validates() -> None:
     manifest = load_manifest(EXAMPLE)
-    assert manifest.schema_version == 1
+    assert manifest.schema_version == 2
+    assert {t.tier for t in manifest.tests} == {"readonly", "active"}
+    assert all(t.resource_group for t in manifest.tests)
     assert len(manifest.points) == 2
     assert len(manifest.tests) == 3
     # Exercise the documented optional/edge fields.

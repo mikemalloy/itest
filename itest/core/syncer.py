@@ -181,6 +181,7 @@ def _generate_stubs(
             human_modified = True
 
     used_names = {t.test_name for t in manifest.tests if t.path == file_rel}
+    point_targets = {p.id: p.target for p in changeset.new_points}
     blocks: list[str] = []
     pending: list[tuple[str, str]] = []  # (point_id, func_name)
     for point in changeset.new_points:
@@ -207,6 +208,7 @@ def _generate_stubs(
                 test_name=name,
                 ownership_hash=final_hash,
                 status="stub",
+                resource_group=point_targets.get(point_id),
             )
         )
 

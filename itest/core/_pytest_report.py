@@ -27,15 +27,20 @@ def pytest_runtest_logreport(report) -> None:
         _RESULTS[report.nodeid] = {
             "outcome": report.outcome,
             "detail": report.longreprtext if report.failed else "",
+            "duration": report.duration,
         }
     # A skip during setup (e.g. skipif) never reaches the call phase.
     elif report.when == "setup" and report.outcome == "skipped":
-        _RESULTS.setdefault(report.nodeid, {"outcome": "skipped", "detail": ""})
+        _RESULTS.setdefault(
+            report.nodeid,
+            {"outcome": "skipped", "detail": "", "duration": report.duration},
+        )
     # An error during setup should surface as a failure.
     elif report.when == "setup" and report.outcome == "failed":
         _RESULTS[report.nodeid] = {
             "outcome": "failed",
             "detail": report.longreprtext,
+            "duration": report.duration,
         }
 
 

@@ -6,7 +6,7 @@
 
 # Schema version of this document. Loading a manifest whose version is greater
 # than the build understands is a hard error.
-schema_version: 1
+schema_version: 2
 
 # When ITest last wrote this manifest (ISO-8601).
 generated_at: "2026-08-24T17:30:00+00:00"
@@ -53,6 +53,9 @@ tests:
     disabled: false
     disabled_reason: null
     labels: []
+    tier: "readonly"                     # "static" | "readonly" | "active" (v2)
+    resource_group: "aws_security_group.alb"  # serialization key; defaults to the point's target (v2)
+    last_duration_seconds: null          # recorded by `itest verify` (v2)
 
   # A human-implemented test covering point 2, tagged and passing in CI.
   - id: "t-0002"
@@ -64,6 +67,9 @@ tests:
     disabled: false
     disabled_reason: null
     labels: ["smoke", "data-tier"]
+    tier: "readonly"
+    resource_group: "aws_security_group.db"
+    last_duration_seconds: 0.412
 
   # A second test on point 2, temporarily disabled with a reason recorded.
   - id: "t-0003"
@@ -75,3 +81,6 @@ tests:
     disabled: true
     disabled_reason: "TLS enforcement not yet rolled out to the db subnet"
     labels: ["data-tier"]
+    tier: "active"
+    resource_group: "aws_security_group.db"
+    last_duration_seconds: null

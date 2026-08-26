@@ -17,7 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from itest.core import planner
-from itest.core.manifest import load_manifest
+from itest.core.manifest import load_manifest, save_manifest
 
 JUNIT_NAME = "itest-results.xml"
 _REPORT_NAME = "_verify_report.json"
@@ -146,10 +146,14 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
     # collect has no per-test outcome, so it inherits its module's error rather
     # than looking merely absent.
     resolved: dict[str, tuple[str, str]] = {}
+    durations_recorded = False
     for test in manifest.tests:
         raw = outcomes.get(test.canonical)
         if raw:
             resolved[test.canonical] = (raw["outcome"], raw["detail"])
+            if raw.get("duration") is not None:
+                test.last_duration_seconds = round(float(raw["duration"]), 6)
+                durations_recorded = True
             continue
         err = _collection_error_for(test.path, collection_errors)
         resolved[test.canonical] = ("error", err["detail"]) if err else ("missing", "")
@@ -199,6 +203,11 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
         )
 
     orphaned_tests = sum(1 for t in manifest.tests if t.status == "orphaned")
+
+    # Persist per-test durations (schema v2). This is verify's only write to
+    # the manifest; test registration and status stay sync's job.
+    if durations_recorded:
+        save_manifest(manifest, manifest_file)
 
     return VerifyReport(
         total_points=len(manifest.points),
