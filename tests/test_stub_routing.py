@@ -10,6 +10,7 @@ these tests pin.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -222,3 +223,62 @@ def test_existing_manifest_paths_are_never_moved(workdir: Path) -> None:
     after = {t.test_name: t.path for t in load_manifest(manifest_path).tests}
     for name, path in before.items():
         assert after[name] == path, f"{name} was moved from {path} to {after[name]}"
+
+
+# --------------------------------------------------------------------------
+# 5. One broken module must not blind the others
+# --------------------------------------------------------------------------
+
+
+def test_broken_module_does_not_blind_other_files(workdir: Path) -> None:
+    """A syntax error in one stub file must not error every other point.
+
+    Regression: pytest aborts collection on the first un-importable module, so
+    every point in every *other* file resolved to "missing" and rolled up as an
+    error too. With one file per point type that is much worse: a typo in the
+    IAM file hid the sg and event results entirely.
+    """
+    _sync(ALEX_S6)
+
+    # Make one event stub genuinely pass.
+    event_path = workdir / EVENT_FILE
+    text = event_path.read_text(encoding="utf-8")
+    index = text.index(SKIP_LINE)
+    end = text.index("\n", index) + 1
+    event_path.write_text(text[:index] + "assert True\n" + text[end:])
+
+    # Break the IAM file so it cannot be imported at all.
+    iam_path = workdir / IAM_FILE
+    iam_path.write_text("def (\n" + iam_path.read_text(encoding="utf-8"))
+
+    result = runner.invoke(app, ["verify"])
+
+    # The event point still ran and passed; the IAM points are errored.
+    assert "1 passing" in result.output, result.output
+    assert "12 errored" in result.output, result.output
+    assert result.output.count("[ERROR]") == 12
+    assert "[PASS]" in result.output
+    assert result.exit_code == 2, result.output
+
+
+def test_verify_reports_wall_clock(workdir: Path) -> None:
+    """Human output carries how long the suite actually took."""
+    _sync(ALEX_S6)
+
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == 0, result.output
+
+    line = next(line for line in result.output.splitlines() if line.startswith("Ran "))
+    match = re.fullmatch(r"Ran (\d+) tests? in (\d+\.\d+)s", line)
+    assert match is not None, f"unparseable wall-clock line: {line!r}"
+    assert int(match.group(1)) == 14
+    assert float(match.group(2)) >= 0.0
+
+
+def test_verify_json_carries_elapsed_seconds(workdir: Path) -> None:
+    _sync(ALEX_S6)
+    result = runner.invoke(app, ["verify", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert isinstance(payload["elapsed_seconds"], float)
+    assert payload["elapsed_seconds"] >= 0.0

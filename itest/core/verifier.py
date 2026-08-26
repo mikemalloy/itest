@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -49,6 +50,7 @@ class VerifyReport(BaseModel):
     errored: int = 0
     stubs: int = 0
     orphaned_tests: int = 0
+    elapsed_seconds: float = 0.0
     points: list[PointResult] = Field(default_factory=list)
     tests: list[TestResult] = Field(default_factory=list)
     unregistered: list[str] = Field(default_factory=list)
@@ -114,6 +116,9 @@ def _run_pytest(
         "itest.core._pytest_report",
         "-p",
         "no:cacheprovider",
+        # Without this, the first un-importable module aborts collection and
+        # nothing else runs — one broken file would blind every other point.
+        "--continue-on-collection-errors",
     ]
     if junit_path is not None:
         args += ["--junitxml", str(junit_path)]
@@ -138,7 +143,9 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
     _require_pytest()
 
     junit_path = base_dir / JUNIT_NAME if output == "junit" else None
+    started = time.monotonic()
     outcomes, collection_errors = _run_pytest(base_dir, junit_path)
+    elapsed = time.monotonic() - started
 
     by_canonical = {t.canonical: t for t in manifest.tests}
 
@@ -219,6 +226,7 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
         errored=errored,
         stubs=stubs,
         orphaned_tests=orphaned_tests,
+        elapsed_seconds=round(elapsed, 2),
         points=point_results,
         tests=test_results,
         unregistered=unregistered,
@@ -241,6 +249,7 @@ def render_human(report: VerifyReport) -> str:
         f"{report.errored} errored, "
         f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests."
     )
+    out.append(f"Ran {len(report.tests)} tests in {report.elapsed_seconds:.2f}s")
     out.append("")
     out.append("Points:")
     for p in report.points:
