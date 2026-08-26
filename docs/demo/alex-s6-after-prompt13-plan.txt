@@ -1,0 +1,40 @@
+ITest plan: 14 new, 0 unchanged, 0 orphaned test(s).
+
+New integration points (14):
+  + [logs (3 actions) [wildcard_resource, external]] aws_iam_role.lambda_agents_role -> arn:aws:logs:us-west-1:111111111111:*
+      id=7efac0ef2e97  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [sqs (3 actions)] aws_iam_role.lambda_agents_role -> aws_sqs_queue.analysis_jobs
+      id=a1cdcd6f1d1d  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [lambda:InvokeFunction [wildcard_resource, external]] aws_iam_role.lambda_agents_role -> arn:aws:lambda:us-west-1:111111111111:function:alex-*
+      id=2297b815283d  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [rds-data (5 actions) [external]] aws_iam_role.lambda_agents_role -> arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster
+      id=5e8e502d62b7  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [secretsmanager:GetSecretValue [external]] aws_iam_role.lambda_agents_role -> arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh
+      id=558c220961b2  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [s3 (2 actions) [external]] aws_iam_role.lambda_agents_role -> arn:aws:s3:::alex-vectors-111111111111
+      id=2267a67e8981  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [s3 (2 actions) [wildcard_resource, external]] aws_iam_role.lambda_agents_role -> arn:aws:s3:::alex-vectors-111111111111/*
+      id=000eee7bfa64  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [s3vectors (2 actions) [wildcard_resource, external]] aws_iam_role.lambda_agents_role -> arn:aws:s3vectors:us-west-1:111111111111:bucket/alex-vectors-111111111111/index/*
+      id=8c53a22c4c7a  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [sagemaker:InvokeEndpoint [external]] aws_iam_role.lambda_agents_role -> arn:aws:sagemaker:us-west-1:111111111111:endpoint/alex-embedding-endpoint
+      id=ef585ce57133  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [bedrock (2 actions) [wildcard_resource, external]] aws_iam_role.lambda_agents_role -> arn:aws:bedrock:*::foundation-model/*
+      id=a570d6de7ea4  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [bedrock (2 actions) [wildcard_resource, external]] aws_iam_role.lambda_agents_role -> arn:aws:bedrock:*:*:inference-profile/*
+      id=39cb2a5298c2  hcl=aws_iam_role_policy.lambda_agents_policy
+  + [managed policy] aws_iam_role.lambda_agents_role -> arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      id=a54b0e0e3663  hcl=aws_iam_role_policy_attachment.lambda_agents_basic
+  + [event_source_mapping batch=1] aws_sqs_queue.analysis_jobs -> aws_lambda_function.planner
+      id=d22d32578df2  hcl=aws_lambda_event_source_mapping.planner_sqs
+  + [dlq_redrive max_receive=3] aws_sqs_queue.analysis_jobs -> aws_sqs_queue.analysis_jobs_dlq
+      id=6a2d3c7315e6  hcl=aws_sqs_queue.analysis_jobs
+
+Orphan candidates (0):
+  (none)
+
+Not analyzed (16 resource(s)):
+  aws_cloudwatch_log_group  5
+  aws_lambda_function       5
+  aws_s3_bucket             1
+  aws_s3_object             5

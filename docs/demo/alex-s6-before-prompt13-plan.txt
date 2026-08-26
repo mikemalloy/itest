@@ -1,0 +1,18 @@
+ITest plan: 0 new, 0 unchanged, 0 orphaned test(s).
+
+New integration points (0):
+  (none)
+
+Orphan candidates (0):
+  (none)
+
+Not analyzed (22 resource(s)):
+  aws_cloudwatch_log_group         5
+  aws_iam_role                     1
+  aws_iam_role_policy              1
+  aws_iam_role_policy_attachment   1
+  aws_lambda_event_source_mapping  1
+  aws_lambda_function              5
+  aws_s3_bucket                    1
+  aws_s3_object                    5
+  aws_sqs_queue                    2

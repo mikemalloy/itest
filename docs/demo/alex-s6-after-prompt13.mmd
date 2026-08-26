@@ -1,0 +1,30 @@
+flowchart LR
+    n0["aws_iam_role.lambda_agents_role"]
+    n1["arn:aws:logs:us-west-1:111111111111:*"]
+    n2["aws_sqs_queue.analysis_jobs"]
+    n3["arn:aws:lambda:us-west-1:111111111111:function:alex-*"]
+    n4["arn:aws:rds:us-west-1:111111111111:cluster:alex-aurora-cluster"]
+    n5["arn:aws:secretsmanager:us-west-1:111111111111:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh"]
+    n6["arn:aws:s3:::alex-vectors-111111111111"]
+    n7["arn:aws:s3:::alex-vectors-111111111111/*"]
+    n8["arn:aws:s3vectors:us-west-1:111111111111:bucket/alex-vectors-111111111111/index/*"]
+    n9["arn:aws:sagemaker:us-west-1:111111111111:endpoint/alex-embedding-endpoint"]
+    n10["arn:aws:bedrock:*::foundation-model/*"]
+    n11["arn:aws:bedrock:*:*:inference-profile/*"]
+    n12["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
+    n13["aws_lambda_function.planner"]
+    n14["aws_sqs_queue.analysis_jobs_dlq"]
+    n0 -->|logs| n1
+    n0 -->|sqs| n2
+    n0 -->|lambda:InvokeFunction| n3
+    n0 -->|rds-data| n4
+    n0 -->|secretsmanager:GetSecretValue| n5
+    n0 -->|s3| n6
+    n0 -->|s3| n7
+    n0 -->|s3vectors| n8
+    n0 -->|sagemaker:InvokeEndpoint| n9
+    n0 -->|bedrock| n10
+    n0 -->|bedrock| n11
+    n0 -->|managed| n12
+    n2 -->|event_source_mapping| n13
+    n2 -->|dlq_redrive| n14
