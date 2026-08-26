@@ -52,7 +52,7 @@
             "account_id": "111111111111",
             "arn": "arn:aws:iam::111111111111:user/aiengineer",
             "id": "111111111111",
-            "user_id": "AIDA2RMMKVRKYVEKPCQ6C"
+            "user_id": "AIDAEXAMPLE1000000000"
           },
           "sensitive_values": {}
         },
@@ -216,7 +216,7 @@
               "Part": "5",
               "Project": "alex"
             },
-            "unique_id": "AROA2RMMKVRKVWBRQVC46"
+            "unique_id": "AROAEXAMPLE2000000000"
           },
           "sensitive_values": {
             "inline_policy": [
@@ -428,7 +428,7 @@
             "custom_iam_instance_profile": "",
             "db_parameter_group_name": "default.aurora-postgresql15",
             "db_subnet_group_name": "alex-aurora-subnet-group",
-            "dbi_resource_id": "db-EAOTUVZU2FSXTE2MCJLNB5CAW4",
+            "dbi_resource_id": "db-EXAMPLE3000000000000000000",
             "endpoint": "alex-aurora-instance-1.c924yky6srcu.us-west-1.rds.amazonaws.com",
             "engine": "aurora-postgresql",
             "engine_version": "15.12",

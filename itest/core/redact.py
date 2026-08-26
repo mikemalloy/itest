@@ -49,13 +49,10 @@ _ENV_ALLOWED_SUFFIXES = ("_REGION", "_ARN")
 _CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # OpenAI and friends: sk-… / sk-proj-…
     ("openai_key", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
-    # AWS access key ids, by their documented prefixes.
-    (
-        "aws_access_key",
-        re.compile(
-            r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ABIA|ACCA)[0-9A-Z]{16}\b"
-        ),
-    ),
+    # Secret access key ids. Only AKIA/ASIA belong here: the other AWS unique-id
+    # prefixes name principals rather than authenticate as them, so they are
+    # pseudonymized as identifiers below instead of being blanked.
+    ("aws_access_key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
     ("slack_token", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}\b")),
 )
@@ -75,6 +72,27 @@ _MIN_TOKEN_LENGTH = 32
 _MIN_TOKEN_ENTROPY = 4.2
 
 _ACCOUNT_ID = re.compile(r"\b\d{12}\b")
+
+# Identifiers, not credentials: they authenticate nobody, but they fingerprint
+# an account, so they are pseudonymized rather than blanked. Keeping the prefix
+# and the length means the document still reads as IAM or RDS afterwards.
+# Each entry is (name, pattern, prefix length).
+_IDENTIFIER_PATTERNS: tuple[tuple[str, re.Pattern[str], int], ...] = (
+    (
+        "iam_principal_id",
+        re.compile(r"\b(?:AIDA|AROA|AGPA|AIPA|ANPA|ANVA|ABIA|ACCA)[0-9A-Z]{16,}\b"),
+        4,
+    ),
+    ("db_resource_id", re.compile(r"\bdb-[A-Z0-9]{10,}\b"), 3),
+)
+
+#: Keys whose value is an account-fingerprinting identifier whatever its shape.
+#: A safety net for forms the patterns above do not anticipate.
+_IDENTIFIER_KEYS = frozenset({"unique_id", "dbi_resource_id"})
+
+#: Marks a value this module already pseudonymized, which keeps redaction
+#: idempotent the same way a repeated-digit account id does.
+_PSEUDONYM_TAG = "EXAMPLE"
 
 
 class Finding(BaseModel):
@@ -149,10 +167,45 @@ class _Accounts:
         return fake
 
 
+class _Identifiers:
+    """Stable real-identifier -> fake-identifier mapping for one document.
+
+    Mirrors _Accounts: first-encounter order, and a value already carrying the
+    pseudonym tag maps to itself, so repeated occurrences still correlate and
+    redacting twice changes nothing.
+    """
+
+    def __init__(self) -> None:
+        self._mapping: dict[str, str] = {}
+        self._next = 1
+
+    def pseudonym_for(self, value: str, prefix_length: int) -> str:
+        if value in self._mapping:
+            return self._mapping[value]
+
+        prefix, body = value[:prefix_length], value[prefix_length:]
+        if body.startswith(_PSEUDONYM_TAG):
+            fake = value
+        else:
+            tag = f"{_PSEUDONYM_TAG}{self._next}"
+            self._next += 1
+            # Preserve length so the value still looks like what it is.
+            body = (
+                tag[: len(body)]
+                if len(tag) >= len(body)
+                else tag + "0" * (len(body) - len(tag))
+            )
+            fake = prefix + body
+
+        self._mapping[value] = fake
+        return fake
+
+
 class _Redactor:
     def __init__(self) -> None:
         self.findings: list[Finding] = []
         self._accounts = _Accounts()
+        self._identifiers = _Identifiers()
 
     def _record(self, path: str, category: str, detail: str) -> None:
         self.findings.append(Finding(path=path, category=category, detail=detail))
@@ -188,7 +241,32 @@ class _Redactor:
                 self._record(path, "credential_pattern", f"{name} x{count}")
                 scrubbed = replaced
 
+        scrubbed = self._pseudonymize_identifiers(scrubbed, path)
         return self._pseudonymize_accounts(scrubbed, path)
+
+    def _pseudonymize_identifiers(self, value: str, path: str) -> str:
+        result = value
+        for name, pattern, prefix_length in _IDENTIFIER_PATTERNS:
+            replaced = pattern.sub(
+                lambda m, n=prefix_length: self._identifiers.pseudonym_for(
+                    m.group(0), n
+                ),
+                result,
+            )
+            if replaced != result:
+                self._record(path, "identifier", f"{name} pseudonymized")
+                result = replaced
+
+        # Safety net for a known identifier key whose value the patterns above
+        # do not recognise; the whole value is replaced, length preserved.
+        key = path.rsplit(".", 1)[-1]
+        if key in _IDENTIFIER_KEYS and result == value and result.strip():
+            replaced = self._identifiers.pseudonym_for(result, 0)
+            if replaced != result:
+                self._record(path, "identifier", f"{key} pseudonymized")
+                result = replaced
+
+        return result
 
     def _pseudonymize_accounts(self, value: str, path: str) -> str:
         changed = False

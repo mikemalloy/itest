@@ -52,7 +52,7 @@
             "account_id": "111111111111",
             "arn": "arn:aws:iam::111111111111:user/aiengineer",
             "id": "111111111111",
-            "user_id": "AIDA2RMMKVRKYVEKPCQ6C"
+            "user_id": "AIDAEXAMPLE1000000000"
           },
           "sensitive_values": {}
         },
@@ -257,7 +257,7 @@
               "Part": "6",
               "Project": "alex"
             },
-            "unique_id": "AROA2RMMKVRKVDG57L5BW"
+            "unique_id": "AROAEXAMPLE2000000000"
           },
           "sensitive_values": {
             "inline_policy": [

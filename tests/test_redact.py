@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import string
 from pathlib import Path
 
@@ -430,3 +431,148 @@ def test_cli_invalid_json_is_config_error(tmp_path: Path) -> None:
     result = runner.invoke(app, ["redact", str(path)])
     assert result.exit_code == 2
     assert "valid JSON" in result.output
+
+
+# --------------------------------------------------------------------------
+# Account-fingerprinting identifiers
+# --------------------------------------------------------------------------
+
+# Invented, and deliberately not starting with the pseudonym marker.
+FAKE_PRINCIPAL_AIDA = "AIDAQWERTYUIOPASDFGHJ"
+FAKE_PRINCIPAL_AROA = "AROAZXCVBNMASDFGHJKLQ"
+FAKE_DBI_RESOURCE_ID = "db-QWERTYUIOPASDFGH"
+
+ALL_IDENTIFIERS = [
+    FAKE_PRINCIPAL_AIDA,
+    FAKE_PRINCIPAL_AROA,
+    FAKE_DBI_RESOURCE_ID,
+]
+
+
+def identifier_document() -> dict:
+    """One of each account-fingerprinting identifier, plus a repeat."""
+    return {
+        "format_version": "1.0",
+        "values": {
+            "root_module": {
+                "resources": [
+                    {
+                        "address": "aws_iam_role.app",
+                        "type": "aws_iam_role",
+                        "name": "app",
+                        "values": {
+                            "name": "app-role",
+                            "unique_id": FAKE_PRINCIPAL_AROA,
+                            "arn": f"arn:aws:iam::{ACCOUNT_A}:role/app-role",
+                        },
+                        "sensitive_values": {},
+                    },
+                    {
+                        "address": "aws_iam_user.deploy",
+                        "type": "aws_iam_user",
+                        "name": "deploy",
+                        "values": {
+                            "unique_id": FAKE_PRINCIPAL_AIDA,
+                            # The same principal referenced a second time, so
+                            # correlation after pseudonymization is testable.
+                            "policy_note": f"principal {FAKE_PRINCIPAL_AIDA} only",
+                        },
+                        "sensitive_values": {},
+                    },
+                    {
+                        "address": "aws_db_instance.main",
+                        "type": "aws_db_instance",
+                        "name": "main",
+                        "values": {
+                            "identifier": "app-db",
+                            "dbi_resource_id": FAKE_DBI_RESOURCE_ID,
+                        },
+                        "sensitive_values": {},
+                    },
+                ]
+            }
+        },
+    }
+
+
+def _id_resources(document: dict) -> dict[str, dict]:
+    return {r["address"]: r for r in document["values"]["root_module"]["resources"]}
+
+
+def test_identifiers_are_scrubbed() -> None:
+    clean, _ = redact.redact_document(identifier_document())
+    blob = json.dumps(clean)
+    for identifier in ALL_IDENTIFIERS:
+        assert identifier not in blob, f"{identifier} survived redaction"
+
+
+def test_identifiers_keep_their_shape() -> None:
+    """Pseudonymized, not blanked: the document stays readable as IAM/RDS."""
+    clean, _ = redact.redact_document(identifier_document())
+    resources = _id_resources(clean)
+
+    role_id = resources["aws_iam_role.app"]["values"]["unique_id"]
+    user_id = resources["aws_iam_user.deploy"]["values"]["unique_id"]
+    dbi = resources["aws_db_instance.main"]["values"]["dbi_resource_id"]
+
+    assert role_id.startswith("AROA")
+    assert user_id.startswith("AIDA")
+    assert dbi.startswith("db-")
+    assert role_id != user_id
+    # Length is preserved so the value still looks like what it is.
+    assert len(role_id) == len(FAKE_PRINCIPAL_AROA)
+    assert len(dbi) == len(FAKE_DBI_RESOURCE_ID)
+
+
+def test_identifier_pseudonyms_correlate() -> None:
+    """The same principal in two places maps to the same fake."""
+    clean, _ = redact.redact_document(identifier_document())
+    values = _id_resources(clean)["aws_iam_user.deploy"]["values"]
+
+    assert values["unique_id"] in values["policy_note"]
+
+
+def test_identifier_redaction_is_idempotent() -> None:
+    once, _ = redact.redact_document(identifier_document())
+    twice, findings = redact.redact_document(once)
+    assert twice == once
+    assert findings == []
+
+
+def test_access_keys_are_still_credentials_not_identifiers() -> None:
+    """AKIA/ASIA are secret access keys: blanked, never pseudonymized."""
+    document = identifier_document()
+    values = _id_resources(document)["aws_iam_user.deploy"]["values"]
+    values["access_key"] = FAKE_AWS_KEY
+
+    clean, _ = redact.redact_document(document)
+    assert _id_resources(clean)["aws_iam_user.deploy"]["values"]["access_key"] == (
+        redact.PLACEHOLDER
+    )
+
+
+def test_check_reports_identifiers_before_redaction(tmp_path: Path) -> None:
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps(identifier_document()), encoding="utf-8")
+
+    result = runner.invoke(app, ["redact", str(path), "--check"])
+    assert result.exit_code == 1, result.output
+    assert "identifier" in result.output
+    # The report must not leak the values it is reporting.
+    for identifier in ALL_IDENTIFIERS:
+        assert identifier not in result.output
+
+
+def test_alex_fixtures_have_no_bare_identifiers() -> None:
+    """The checked-in real-world fixtures must be clean of these."""
+    alex = REPO_ROOT / "tests" / "fixtures" / "alex"
+    principal = re.compile(
+        r"\b(?:AIDA|AROA|AGPA|AIPA|ANPA|ANVA|ABIA|ACCA)[0-9A-Z]{16,}\b"
+    )
+    dbi = re.compile(r"\bdb-[A-Z0-9]{10,}\b")
+
+    for path in sorted(alex.glob("*.json")):
+        blob = path.read_text(encoding="utf-8")
+        for match in principal.findall(blob) + dbi.findall(blob):
+            body = match.split("-", 1)[-1] if match.startswith("db-") else match[4:]
+            assert body.startswith("EXAMPLE"), f"{path.name} still carries {match}"

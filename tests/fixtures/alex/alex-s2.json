@@ -32,7 +32,7 @@
             "account_id": "111111111111",
             "arn": "arn:aws:iam::111111111111:user/aiengineer",
             "id": "111111111111",
-            "user_id": "AIDA2RMMKVRKYVEKPCQ6C"
+            "user_id": "AIDAEXAMPLE1000000000"
           },
           "sensitive_values": {}
         },
@@ -61,7 +61,7 @@
             "permissions_boundary": "",
             "tags": {},
             "tags_all": {},
-            "unique_id": "AROA2RMMKVRKZ6MUD3TL5"
+            "unique_id": "AROAEXAMPLE2000000000"
           },
           "sensitive_values": {
             "inline_policy": [],
