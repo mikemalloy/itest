@@ -135,3 +135,122 @@ def test_verify_without_pytest_fails_fast(synced_project: Path, monkeypatch) -> 
     assert result.exit_code == 2, result.output
     assert "pytest is not installed" in result.output
     assert "pip install" in result.output
+
+
+# --------------------------------------------------------------------------
+# Point status precedence: fail > error > pass > stub
+# --------------------------------------------------------------------------
+
+
+def _register_second_test(base_dir: Path, path_rel: str, name: str) -> str:
+    """Register a second test against the web->db point. Returns its canonical."""
+    from itest.core.manifest import TestEntry, load_manifest, save_manifest
+
+    manifest_path = base_dir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_path)
+    web_db = next(t for t in manifest.tests if t.test_name == "test_sg_web_to_db_5432")
+    manifest.tests.append(
+        TestEntry(
+            id=f"t-{name}",
+            point_id=web_db.point_id,
+            path=path_rel,
+            test_name=name,
+            ownership_hash="0" * 64,
+            status="implemented",
+        )
+    )
+    save_manifest(manifest, manifest_path)
+    return f"{path_rel}::{name}"
+
+
+def _force_outcomes(monkeypatch, outcomes: dict, collection_errors: dict) -> None:
+    """Drive the real rollup with a chosen pytest result set.
+
+    A collection error aborts pytest's whole session, so a module that errors
+    and a sibling test that passes cannot both be produced by an actual run.
+    Substituting the runner exercises run_verify's rollup — the code under
+    test — against the mix that a --continue-on-collection-errors run, or a
+    partially broken suite, would hand it.
+    """
+    from itest.core import verifier
+
+    monkeypatch.setattr(
+        verifier, "_run_pytest", lambda base_dir, junit: (outcomes, collection_errors)
+    )
+
+
+def test_errored_sibling_is_not_masked_by_a_pass(
+    synced_project: Path, monkeypatch
+) -> None:
+    """Regression: [PASS] won as soon as anything passed and nothing failed.
+
+    A sibling test that could not run at all was invisible, and verify exited 0
+    reporting the point as covered.
+    """
+    extra_rel = "itest_tests/test_extra_web_db.py"
+    _register_second_test(synced_project, extra_rel, "test_extra_web_db")
+
+    _force_outcomes(
+        monkeypatch,
+        outcomes={
+            "itest_tests/test_sg_edges.py::test_sg_web_to_db_5432": {
+                "outcome": "passed",
+                "detail": "",
+                "duration": 0.01,
+            }
+        },
+        collection_errors={
+            extra_rel: {"outcome": "error", "detail": "ImportError: boto3"}
+        },
+    )
+
+    result = runner.invoke(app, ["verify"])
+
+    assert result.exit_code == 2, result.output
+    assert "[ERROR] aws_security_group.web -> aws_security_group.db" in result.output
+    assert "[PASS]" not in result.output
+    assert "1 errored" in result.output
+
+
+def test_failing_outranks_errored(synced_project: Path, monkeypatch) -> None:
+    """A real failure is the more actionable signal, so it wins."""
+    extra_rel = "itest_tests/test_extra_web_db.py"
+    _register_second_test(synced_project, extra_rel, "test_extra_web_db")
+
+    _force_outcomes(
+        monkeypatch,
+        outcomes={
+            "itest_tests/test_sg_edges.py::test_sg_web_to_db_5432": {
+                "outcome": "failed",
+                "detail": "boom",
+                "duration": 0.01,
+            }
+        },
+        collection_errors={
+            extra_rel: {"outcome": "error", "detail": "ImportError: boto3"}
+        },
+    )
+
+    result = runner.invoke(app, ["verify"])
+
+    assert result.exit_code == 1, result.output
+    assert "[FAIL] aws_security_group.web -> aws_security_group.db" in result.output
+    assert "1 failing" in result.output
+
+
+def test_all_errored_still_reports_error(synced_project: Path, monkeypatch) -> None:
+    """The pre-existing all-error case keeps working."""
+    _force_outcomes(
+        monkeypatch,
+        outcomes={},
+        collection_errors={
+            "itest_tests/test_sg_edges.py": {
+                "outcome": "error",
+                "detail": "ImportError: boto3",
+            }
+        },
+    )
+
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == 2, result.output
+    assert "3 errored" in result.output

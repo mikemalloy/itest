@@ -180,12 +180,15 @@ def run_verify(base_dir: Path, output: str = "human") -> VerifyReport:
             if t.status != "orphaned" and not t.disabled
         ]
         live_outcomes = [resolved[t.canonical][0] for t in live]
-        if live_outcomes and all(o == "error" for o in live_outcomes):
-            status = "error"
-            errored += 1
-        elif any(o == "failed" for o in live_outcomes):
+        # Precedence: fail > error > pass > stub. A single test that could not
+        # run outranks a passing sibling — the point is not known-good, and
+        # reporting it as covered is how a broken check goes unnoticed.
+        if any(o == "failed" for o in live_outcomes):
             status = "failing"
             failing += 1
+        elif any(o == "error" for o in live_outcomes):
+            status = "error"
+            errored += 1
         elif any(o == "passed" for o in live_outcomes):
             status = "passing"
             passing += 1
