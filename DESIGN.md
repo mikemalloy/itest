@@ -23,9 +23,19 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   whose content hash differs from the recorded ownership hash (human-modified).
   Orphaned tests are flagged in the manifest, never deleted.
 - `itest verify`: runs the pytest suite, maps results back to integration
-  points, reports point-level coverage ("N points, N tested, N passing,
-  N failing, N stubs, N disabled") plus test-level detail. Supports --output
-  junit and json. Exit code nonzero on failures.
+  points, and reports point-level coverage plus test-level detail. Supports
+  --output junit and json. Exit code is 1 on failures and 2 on errors or a
+  config problem. Point status precedence is fail > error > pass > stub.
+  Real output, from the synced simple-web-app fixture:
+
+  ```
+  3 integration points: 0 passing, 0 failing, 0 errored, 3 stubs, 0 orphaned tests.
+
+  Points:
+    [STUB] 0.0.0.0/0 -> aws_security_group.alb (tcp:443)
+    [STUB] aws_security_group.alb -> aws_security_group.web (tcp:80)
+    [STUB] aws_security_group.web -> aws_security_group.db (tcp:5432)
+  ```
 
 ## Test addressing
 - Canonical form everywhere the tool prints: `path/to/file.py::TestClass::test_name`

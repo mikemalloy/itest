@@ -1,14 +1,21 @@
 # ITest
 
 ITest is a local-first CLI that reads your Terraform, extracts the integration
-points it actually creates — for now, the security-group edges that say "A can
-reach B on port N" — and turns them into a tracked, testable inventory. It
-mirrors Terraform's own `plan` / `apply` rhythm: `itest plan` shows you what it
-found, `itest sync` generates pytest stubs and records them in a diffable
-manifest, and `itest verify` runs the suite and reports coverage at the level
-of integration points, not just test functions. It is built for infrastructure
-and platform engineers who want "is this connection actually tested?" to have a
-real answer that lives in the repo.
+points it actually creates — security-group edges that say "A can reach B on
+port N", IAM grants that say "this role can call that resource", and event
+wiring that says "this queue triggers that function" — and turns them into a
+tracked, testable inventory. It mirrors Terraform's own `plan` / `apply`
+rhythm: `itest plan` shows you what it found, `itest sync` generates pytest
+stubs and records them in a diffable manifest, and `itest verify` runs the
+suite and reports coverage at the level of integration points, not just test
+functions. It is built for infrastructure and platform engineers who want "is
+this connection actually tested?" to have a real answer that lives in the repo.
+
+![ITest's view of a real production stage](docs/demo/alex-s6-after-prompt13.png)
+
+On a real production stage of 22 resources, Terraform sees a list. ITest sees
+14 integration points, including the cross-stack dependencies that no single
+state file describes.
 
 ## 60-second quickstart (no AWS needed)
 
@@ -169,11 +176,11 @@ Then ask for what you want — "implement the ITest stubs", "make verify green"
 Add `.itest/skill-answers.yaml` to your `.gitignore`: it records local paths
 and account details.
 
-**It supports `sg_edge` points only**, because that is the only detector ITest
-ships today. Points of any other type are reported and skipped, never guessed
-at.
-Each future detector gets its own recipe under
-[`references/recipes/`](skills/itest-implementer/references/recipes/).
+**The skill supports `sg_edge` points only.** ITest detects three point types,
+but the skill ships one recipe, so `iam_edge` and `event_edge` points are
+reported and skipped rather than guessed at. Each detector gets its own recipe
+under [`references/recipes/`](skills/itest-implementer/references/recipes/) as
+it is written.
 
 ## Design decisions
 
@@ -193,21 +200,21 @@ repo, in a file you can read, diff, and code-review. That makes ITest adoptable
 one team at a time and keeps the manifest honest — it changes only when someone
 commits a change.
 
-**Why primitives before services.** ITest ships exactly one detector today —
-the security-group edge — and models it as a typed primitive (source, target,
-protocol, ports, direction). Higher-level "service" mappings and composite
-checks are far more useful once the primitive layer is solid, so the primitive
-layer comes first.
+**Why primitives before services.** ITest's three detectors each emit a typed
+primitive rather than a high-level abstraction: `sg_edge` (source, target,
+protocol, ports, direction), `iam_edge` (role, resource, actions), and
+`event_edge` (source, target, mechanism). Higher-level "service" mappings and
+composite checks are far more useful once the primitive layer is solid, so the
+primitive layer comes first.
 
 ## Roadmap
 
-All of the following are **planned, not built**. ITest is intentionally a
-single detector and three commands. DESIGN.md's Scope ledger is the
-authoritative record of what ships and what does not.
+All of the following are **planned, not built**. DESIGN.md's Scope ledger is
+the authoritative record of what ships and what does not.
 
-- **Detector tiers.** Tier 1 remainder: IAM edges, endpoint availability, DNS,
-  and event wiring. Then composite detectors, and service mappings (e.g.
-  SageMaker, App Runner) built on top of the primitives.
+- **Detector tiers.** Tier 1 remainder: endpoint availability and DNS. Then
+  composite detectors, and service mappings (e.g. SageMaker, App Runner) built
+  on top of the primitives. (IAM edges and event wiring have since shipped.)
 - **Labels & filtering** for slicing points and tests.
 - **`itest add`** to declare integration points a detector can't infer.
 - **`disable` / `enable`** commands for muting points with a recorded reason.
