@@ -116,13 +116,11 @@ Shipped:
 - `itest redact` — sanitizes plan/state JSON for safe sharing (sensitive_values,
   Lambda env allowlist, credential patterns, account pseudonymization, `--check`)
 - Ruff lint/format as part of Development discipline
-- itest-implementer agent skill (sg_edge recipe, interview, read-only
-  default)
+- itest-implementer agent skill (interview, read-only default, and a recipe
+  per detector: sg_edge, iam_edge, event_edge, over one shared conftest)
 
 Not yet built (do not build without explicit instruction):
 - DNS and endpoint-availability detectors
-- Skill recipes for iam_edge and event_edge (itest-implementer covers sg_edge
-  only)
 - Per-type stub files (all stubs currently land in
   `itest_tests/test_sg_edges.py` regardless of point type)
 - Parallel / scheduled execution (xdist, resource_group serialization,

@@ -176,11 +176,12 @@ Then ask for what you want — "implement the ITest stubs", "make verify green"
 Add `.itest/skill-answers.yaml` to your `.gitignore`: it records local paths
 and account details.
 
-**The skill supports `sg_edge` points only.** ITest detects three point types,
-but the skill ships one recipe, so `iam_edge` and `event_edge` points are
-reported and skipped rather than guessed at. Each detector gets its own recipe
-under [`references/recipes/`](skills/itest-implementer/references/recipes/) as
-it is written.
+**The skill covers all three point types**, one recipe per detector, under
+[`references/recipes/`](skills/itest-implementer/references/recipes/):
+`sg_edge` asserts on security-group rules, `iam_edge` on policy simulation, and
+`event_edge` on event source mappings, DLQ redrive policies, and Lambda
+permissions. A point type with no recipe is reported and skipped, never guessed
+at.
 
 ## Design decisions
 
@@ -219,9 +220,9 @@ the authoritative record of what ships and what does not.
 - **`itest add`** to declare integration points a detector can't infer.
 - **`disable` / `enable`** commands for muting points with a recorded reason.
 - **Saved-plan review flow** beyond the current implicit plan.
-- **More of the agent/skill layer.** `itest-implementer` (above) ships and
-  covers `sg_edge`; a recipe per new detector, and any deeper agent
-  integration, are still to come.
+- **More of the agent/skill layer.** `itest-implementer` (above) ships with a
+  recipe for every current detector; a recipe per *new* detector, and any
+  deeper agent integration, are still to come.
 
 ## Development
 

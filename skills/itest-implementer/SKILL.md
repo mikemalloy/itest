@@ -50,13 +50,20 @@ Parse the manifest. List every test whose `status` is `stub`, grouped by the
 `IntegrationPoint`).
 
 For each group, check whether a recipe exists at
-`references/recipes/<type>.md`. If a type has **no** recipe, say so plainly:
+`references/recipes/<type>.md`. Three ship today — `sg_edge`, `iam_edge`, and
+`event_edge` — one per detector ITest has.
+
+If a type has **no** recipe, say so plainly:
 
 > N points of type `<type>` have no recipe in this skill, so I am skipping
-> them. Only `sg_edge` is supported today.
+> them. Recipes exist for: sg_edge, iam_edge, event_edge.
 
 Then skip them. Never improvise a recipe for a type you have no instructions
 for — a guessed assertion that passes is worse than no test.
+
+Read the recipe for each type you are about to implement **before** generating
+anything. `event_edge` in particular dispatches on its `mechanism` attribute,
+and the three mechanisms take completely different assertions.
 
 ### 3. Interview
 
@@ -178,8 +185,17 @@ reflects reality is the tool working.
 
 ## Scope
 
-One recipe ships today: `sg_edge`, covering security-group edges. That is also
-the only detector ITest has today — DESIGN.md's Scope ledger is the
-authoritative list. When ITest grows detectors, each gets its own
-recipe file here; this skill's job is policy — what a good assertion looks like
-— while the CLI keeps the mechanism.
+Three recipes ship today, one per detector ITest has:
+
+| Recipe | Covers | Assertion rests on |
+|---|---|---|
+| [`sg_edge`](references/recipes/sg_edge.md) | Security-group reachability | `ec2:DescribeSecurityGroups` |
+| [`iam_edge`](references/recipes/iam_edge.md) | Role -> resource grants | `iam:SimulatePrincipalPolicy`, falling back to reading the policy |
+| [`event_edge`](references/recipes/event_edge.md) | ESM, DLQ redrive, Lambda permission | `lambda:ListEventSourceMappings`, `sqs:GetQueueAttributes`, `lambda:GetPolicy` |
+
+All three share one `conftest.py`, from
+[`references/conftest.md`](references/conftest.md).
+
+DESIGN.md's Scope ledger is the authoritative list of what ITest detects. When
+it grows a detector, that detector gets a recipe file here; this skill's job is
+policy — what a good assertion looks like — while the CLI keeps the mechanism.
