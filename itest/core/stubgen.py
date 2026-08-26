@@ -15,7 +15,7 @@ from pathlib import Path
 from itest.core import points
 from itest.core.manifest import IntegrationPoint
 
-STUB_FILE_REL = "itest_tests/test_sg_edges.py"
+STUB_DIR_REL = "itest_tests"
 
 #: The body of a freshly generated stub. Its presence in a function is what
 #: marks that function as still-unimplemented, so sync reads it back when
@@ -30,8 +30,17 @@ FILE_HEADER = (
 )
 
 
-def stub_file_path(base_dir: Path) -> Path:
-    return base_dir / STUB_FILE_REL
+def stub_file_for(point: IntegrationPoint) -> str:
+    """The repo-relative stub file a point belongs in: one per point type.
+
+    Derived from the type rather than mapped, so a new detector routes its
+    points automatically and nothing here needs changing.
+    """
+    return f"{STUB_DIR_REL}/test_{point.type}s.py"
+
+
+def stub_file_path(base_dir: Path, file_rel: str) -> Path:
+    return base_dir / file_rel
 
 
 def content_hash(text: str) -> str:

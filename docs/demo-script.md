@@ -51,6 +51,7 @@ itest sync --auto-approve --tf-json tests/fixtures/simple-web-app-plan.json
 ### 4. Inspect the generated stubs and manifest
 
 ```sh
+ls itest_tests/                 # one file per point type
 cat itest_tests/test_sg_edges.py
 cat .itest/manifest.yaml
 ```

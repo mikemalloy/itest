@@ -58,6 +58,11 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   `None`.
 - The plan-JSON entry point accepts either a plan root (`planned_values`)
   or a state root (`values`) and errors naming both when neither is present.
+- Generated stubs are routed to `itest_tests/test_<type>s.py`, derived from the
+  point type in one place (`stubgen.stub_file_for`), so a new detector needs no
+  routing change. Ownership hashes, human-modified detection, and function-name
+  uniqueness are all per file. Routing applies to new stubs only: a test already
+  in the manifest keeps its recorded path and is never moved.
 - Point IDs must be stable across runs (derived from resource addresses +
   rule content, not array indices).
 - Unknown resource types are reported as "not analyzed", never silently skipped.
@@ -110,6 +115,8 @@ Shipped:
   and v1 migration only; nothing schedules on them yet)
 - plan / sync / verify with changeset, ownership hashes, orphan flagging,
   and orphan resurrection
+- Per-type stub files (`itest_tests/test_<type>s.py`, one per point type,
+  with ownership hashes and human-modified detection tracked per file)
 - Mermaid diagram generation (`.itest/diagram.mmd`)
 - Machine-readable output (`--output json` on plan and verify, `--output
   junit` on verify)
@@ -121,8 +128,6 @@ Shipped:
 
 Not yet built (do not build without explicit instruction):
 - DNS and endpoint-availability detectors
-- Per-type stub files (all stubs currently land in
-  `itest_tests/test_sg_edges.py` regardless of point type)
 - Parallel / scheduled execution (xdist, resource_group serialization,
   duration packing, change-scoped verify)
 - Labels, filtering, and test groups

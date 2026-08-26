@@ -144,9 +144,15 @@ This is safe because fixture arguments do not appear in a pytest node id — onl
 mapping still resolves. Do not add `@parametrize` to a generated test: that
 *would* change the node id and break the link.
 
-On the first generation, also create `itest_tests/conftest.py` from the
-resolver template in the recipe. It supplies the fixtures every generated test
-takes as arguments.
+**Open the file each `TestEntry` names in its `path`.** Stubs are routed by
+point type — `itest_tests/test_sg_edges.py`, `test_iam_edges.py`,
+`test_event_edges.py` — so a project's stubs live across several files. Never
+assume a filename: the manifest entry records where its test actually is, and
+that is the only place to read it from.
+
+On the first generation, also create `itest_tests/conftest.py` from the shared
+template in [`references/conftest.md`](references/conftest.md). One conftest
+serves every stub file; do not write one per file.
 
 ### 5. Review gate
 

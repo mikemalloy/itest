@@ -16,7 +16,13 @@ from typing import Literal
 from pydantic import BaseModel
 
 from itest.core import planner, stubgen
-from itest.core.manifest import Manifest, TestEntry, load_manifest, save_manifest
+from itest.core.manifest import (
+    IntegrationPoint,
+    Manifest,
+    TestEntry,
+    load_manifest,
+    save_manifest,
+)
 from itest.core.planner import Changeset
 
 
@@ -89,7 +95,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
     _refresh_point_registry(manifest, changeset, now)
     resurrected = _resurrect_tests(manifest, changeset, base_dir)
     flagged = _flag_orphans(manifest, changeset)
-    added, human_modified = _generate_stubs(manifest, changeset, base_dir)
+    added, human_modified_files = _generate_stubs(manifest, changeset, base_dir)
 
     manifest.generated_at = now
     save_manifest(manifest, manifest_file)
@@ -98,7 +104,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         added_stubs=added,
         flagged_orphans=flagged,
         resurrected_tests=resurrected,
-        human_modified_files=1 if human_modified else 0,
+        human_modified_files=human_modified_files,
     )
 
 
@@ -169,52 +175,77 @@ def _flag_orphans(manifest: Manifest, changeset: Changeset) -> int:
 
 def _generate_stubs(
     manifest: Manifest, changeset: Changeset, base_dir: Path
-) -> tuple[int, bool]:
-    """Append stubs for new points. Returns (added, file_was_human_modified)."""
-    file_rel = stubgen.STUB_FILE_REL
-    file_abs = stubgen.stub_file_path(base_dir)
+) -> tuple[int, int]:
+    """Append stubs, routing each point to the file for its type.
 
-    recorded_hashes = {t.ownership_hash for t in manifest.tests if t.path == file_rel}
-    human_modified = False
-    if file_abs.exists() and recorded_hashes:
-        if stubgen.file_hash(file_abs) not in recorded_hashes:
-            human_modified = True
-
-    used_names = {t.test_name for t in manifest.tests if t.path == file_rel}
+    Returns ``(added, human_modified_file_count)``. Every guarantee is *per
+    file*: its own recorded hashes, its own human-modified verdict, and its own
+    set of used function names. A file is only ever appended to, and an entry
+    already in the manifest keeps the path it was recorded with — routing
+    applies to new stubs, never to tests that already exist.
+    """
     point_targets = {p.id: p.target for p in changeset.new_points}
-    blocks: list[str] = []
-    pending: list[tuple[str, str]] = []  # (point_id, func_name)
+
+    routed: dict[str, list[IntegrationPoint]] = {}
     for point in changeset.new_points:
-        name = stubgen.function_name_for(point)
-        if name in used_names:
-            name = f"{name}_{point.id[:6]}"
-        used_names.add(name)
-        blocks.append(stubgen.render_stub(point, name))
-        pending.append((point.id, name))
+        routed.setdefault(stubgen.stub_file_for(point), []).append(point)
 
-    if not blocks:
-        return 0, human_modified
+    # Every file the manifest already knows is checked for human edits, even
+    # when this sync adds nothing to it — as the single-file version did.
+    known_files = {t.path for t in manifest.tests} | set(routed)
 
-    # Append-only: existing functions (including any human edits) are preserved.
-    stubgen.append_stubs(file_abs, blocks)
-    final_hash = stubgen.file_hash(file_abs)
+    added = 0
+    human_modified_files = 0
+    for file_rel in sorted(known_files):
+        file_abs = stubgen.stub_file_path(base_dir, file_rel)
 
-    for point_id, name in pending:
-        manifest.tests.append(
-            TestEntry(
-                id=f"t-{point_id}",
-                point_id=point_id,
-                path=file_rel,
-                test_name=name,
-                ownership_hash=final_hash,
-                status="stub",
-                resource_group=point_targets.get(point_id),
+        recorded_hashes = {
+            t.ownership_hash for t in manifest.tests if t.path == file_rel
+        }
+        if (
+            file_abs.exists()
+            and recorded_hashes
+            and stubgen.file_hash(file_abs) not in recorded_hashes
+        ):
+            human_modified_files += 1
+
+        new_points = routed.get(file_rel)
+        if not new_points:
+            continue
+
+        used_names = {t.test_name for t in manifest.tests if t.path == file_rel}
+        blocks: list[str] = []
+        pending: list[tuple[str, str]] = []  # (point_id, func_name)
+        for point in new_points:
+            name = stubgen.function_name_for(point)
+            if name in used_names:
+                name = f"{name}_{point.id[:6]}"
+            used_names.add(name)
+            blocks.append(stubgen.render_stub(point, name))
+            pending.append((point.id, name))
+
+        # Append-only: existing functions (including human edits) are kept.
+        stubgen.append_stubs(file_abs, blocks)
+        final_hash = stubgen.file_hash(file_abs)
+
+        for point_id, name in pending:
+            manifest.tests.append(
+                TestEntry(
+                    id=f"t-{point_id}",
+                    point_id=point_id,
+                    path=file_rel,
+                    test_name=name,
+                    ownership_hash=final_hash,
+                    status="stub",
+                    resource_group=point_targets.get(point_id),
+                )
             )
-        )
 
-    # Update ownership hashes for every entry in this file to the new content.
-    for test in manifest.tests:
-        if test.path == file_rel:
-            test.ownership_hash = final_hash
+        # Every entry in *this* file records this file's new content hash.
+        for test in manifest.tests:
+            if test.path == file_rel:
+                test.ownership_hash = final_hash
 
-    return len(pending), human_modified
+        added += len(pending)
+
+    return added, human_modified_files

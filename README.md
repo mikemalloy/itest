@@ -70,6 +70,12 @@ Applied: added 3 stub(s), flagged 0 orphan(s), 0 human-modified file(s) preserve
 This creates `itest_tests/test_sg_edges.py` (three skipped stubs) and
 `.itest/manifest.yaml` (the inventory + test registry).
 
+Stubs are routed by point type — `itest_tests/test_<type>s.py` — so a project
+with IAM grants and event wiring gets `test_iam_edges.py` and
+`test_event_edges.py` alongside. This demo stack is security groups only, so
+there is just the one file. The manifest records each test's real path; nothing
+should assume a filename.
+
 ### 3. Verify — run the suite and report point coverage
 
 ```sh
