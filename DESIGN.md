@@ -64,6 +64,11 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   routing change. Ownership hashes, human-modified detection, and function-name
   uniqueness are all per file. Routing applies to new stubs only: a test already
   in the manifest keeps its recorded path and is never moved.
+- **Customer-managed policy resolution in `iam_edge`.** A policy binding whose
+  ARN matches an `aws_iam_policy` in the same document is parsed and emits real
+  edges carrying `via_policy`, rather than one opaque `managed` edge — the
+  document is readable, so guessing is unnecessary; a policy AWS owns, or one
+  another stack owns, stays opaque.
 - Point IDs must be stable across runs (derived from resource addresses +
   rule content, not array indices).
 - Unknown resource types are reported as "not analyzed", never silently skipped.

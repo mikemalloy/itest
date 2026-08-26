@@ -1,0 +1,93 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.0",
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_sqs_queue.jobs",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "jobs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "demo-jobs",
+            "arn": "arn:aws:sqs:us-east-1:111111111111:demo-jobs",
+            "url": "https://sqs.us-east-1.amazonaws.com/111111111111/demo-jobs"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_lambda_function.processor",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "processor",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "demo-processor",
+            "arn": "arn:aws:lambda:us-east-1:111111111111:function:demo-processor",
+            "handler": "index.handler",
+            "runtime": "python3.12",
+            "role": "arn:aws:iam::111111111111:role/demo-lambda-exec"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_iam_role.lambda_exec",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda_exec",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "demo-lambda-exec",
+            "id": "demo-lambda-exec",
+            "arn": "arn:aws:iam::111111111111:role/demo-lambda-exec",
+            "unique_id": "AROAEXAMPLE1000000000",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "inline_policy": [],
+            "managed_policy_arns": []
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_iam_policy.lambda_policy",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "lambda_policy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "demo-lambda-policy",
+            "arn": "arn:aws:iam::111111111111:policy/demo-lambda-policy",
+            "path": "/",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sqs:SendMessage\"],\"Resource\":\"arn:aws:sqs:us-east-1:111111111111:demo-jobs\"},{\"Effect\":\"Allow\",\"Action\":\"logs:*\",\"Resource\":\"arn:aws:logs:us-east-1:111111111111:*\"}]}"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.lambda_policy",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "lambda_policy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "role": "demo-lambda-exec",
+            "policy_arn": "arn:aws:iam::111111111111:policy/demo-lambda-policy"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.lambda_basic",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "lambda_basic",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "role": "demo-lambda-exec",
+            "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  }
+}

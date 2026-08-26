@@ -57,6 +57,26 @@ the alex fixtures use. The alex fixtures themselves carry no
 `aws_lambda_permission` resources — stages 4, 7, and 8 of that source project
 do, and are candidates for future sanitized fixtures.
 
+## `customer-managed-policy-state.json`
+
+A small synthetic **state** document (`values` root) modelled on AWS's
+`lambda-sqs-terraform` serverless pattern, which grants through a
+customer-managed policy rather than an inline one. It holds one
+`aws_lambda_function`, one `aws_sqs_queue`, one `aws_iam_role`, one
+`aws_iam_policy` allowing `sqs:SendMessage` on the queue ARN and `logs:*` on a
+wildcard ARN, an `aws_iam_role_policy_attachment` binding the two, and a second
+attachment to the AWS-managed `AWSLambdaBasicExecutionRole`.
+
+It exists because the two cases look identical in Terraform and are not:
+the AWS-managed policy's document lives in AWS and cannot be read, while the
+customer-managed one is right there in the state. The fixture pins that the
+first stays an opaque `managed` edge while the second resolves into real
+edges carrying `via_policy`.
+
+Nothing in it is real: the account ID is the same `111111111111` pseudonym the
+other fixtures use. The alex fixtures carry no `aws_iam_policy` resources,
+which is why this shape needed a fixture of its own.
+
 ## `alex/`
 
 Sanitized `terraform show -json` **state** output from three stages of a real
