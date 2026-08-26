@@ -51,6 +51,11 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 - Point IDs must be stable across runs (derived from resource addresses +
   rule content, not array indices).
 - Unknown resource types are reported as "not analyzed", never silently skipped.
+- **Egress asymmetry in `sg_edge`.** An ingress rule always produces an edge;
+  an egress rule only when it targets another security group, so "allow all
+  outbound" is not treated as an integration point. This is what yields exactly
+  the intended `internet → ALB:443 → web:80 → db:5432` chain rather than a
+  cloud of edges to 0.0.0.0/0.
 
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
@@ -72,6 +77,8 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   then the fix, then the passing run.
 - Never mark a "Done when" criterion satisfied without having literally run
   the commands it names and observed the results.
+- **Commit granularity:** one commit per task, and the commit message leads
+  with the task title.
 
 ### Linting
 - `ruff check` and `ruff format --check` must pass before any task is called

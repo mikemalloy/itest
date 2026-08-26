@@ -2,7 +2,7 @@
 # SessionStart hook — prepares a Claude Code on the web container to run the
 # ITest test suite and CLI.
 #
-# Mirrors the manual setup in README.md / HANDOFF.md:
+# Mirrors the manual setup in README.md:
 #   python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 #
 # Local sessions are left alone: developers there manage their own virtualenv.
