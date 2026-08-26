@@ -576,3 +576,41 @@ def test_alex_fixtures_have_no_bare_identifiers() -> None:
         for match in principal.findall(blob) + dbi.findall(blob):
             body = match.split("-", 1)[-1] if match.startswith("db-") else match[4:]
             assert body.startswith("EXAMPLE"), f"{path.name} still carries {match}"
+
+
+def test_lambda_env_credential_is_attributed_to_lambda_env() -> None:
+    """The env allowlist is the more specific reason, so it wins the label.
+
+    A Lambda env value that also matches a credential pattern was reported as
+    credential_pattern, because the generic string pass blanks it before the
+    env allowlist ever sees it. Both redact it; the label was just wrong.
+    """
+    _, findings = redact.redact_document(sample_document())
+    by_path = {f.path: f.category for f in findings}
+
+    key_path = next(p for p in by_path if p.endswith("variables.OPENAI_API_KEY"))
+    assert by_path[key_path] == "lambda_env"
+
+    # Only one finding per path: the credential attribution is replaced, not
+    # duplicated alongside the new one.
+    assert sum(1 for f in findings if f.path == key_path) == 1
+
+
+def test_lambda_env_attribution_does_not_change_what_is_redacted() -> None:
+    clean, _ = redact.redact_document(sample_document())
+    variables = _resources(clean)["aws_lambda_function.api"]["values"]["environment"][
+        0
+    ]["variables"]
+    assert variables["OPENAI_API_KEY"] == redact.PLACEHOLDER
+    assert variables["STRIPE_SECRET"] == redact.PLACEHOLDER
+    assert variables["DEBUG"] == redact.PLACEHOLDER
+    # Allowlisted keys keep their values and their own findings.
+    assert variables["AWS_REGION"] == "us-east-1"
+    assert variables["QUEUE_ARN"].startswith("arn:aws:sqs:")
+
+
+def test_allowlisted_env_keeps_its_own_attribution() -> None:
+    """An allowlisted ARN is still pseudonymized, and still says so."""
+    _, findings = redact.redact_document(sample_document())
+    arn_findings = [f for f in findings if f.path.endswith("variables.QUEUE_ARN")]
+    assert [f.category for f in arn_findings] == ["account_id"]

@@ -310,16 +310,26 @@ class _Redactor:
     def _redact_lambda_env(self, variables: dict, path: str) -> dict:
         result = {}
         for key, value in variables.items():
+            child = f"{path}.{key}"
             if _env_key_allowed(key):
                 result[key] = (
-                    self._scrub_string(value, f"{path}.{key}")
+                    self._scrub_string(value, child)
                     if isinstance(value, str)
                     else value
                 )
                 continue
-            if value != PLACEHOLDER:
+
+            # The generic string pass runs first and may already have blanked
+            # this value, recording it as a credential. Being an env value with
+            # a key off the allowlist is the more specific reason it goes, so
+            # that attribution supersedes rather than sits alongside — the
+            # value is replaced wholesale either way, so nothing about *what*
+            # is redacted changes here.
+            superseded = [f for f in self.findings if f.path == child]
+            self.findings = [f for f in self.findings if f.path != child]
+            if value != PLACEHOLDER or superseded:
                 self._record(
-                    path + f".{key}",
+                    child,
                     "lambda_env",
                     "lambda environment value (key not on the allowlist)",
                 )
