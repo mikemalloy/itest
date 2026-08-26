@@ -55,16 +55,36 @@ def diagram_path(base_dir: Path) -> Path:
     return base_dir / ITEST_DIR / DIAGRAM_NAME
 
 
+PLAN_ROOT_KEYS = ("planned_values", "values")
+
+
+def _validate_root(document: object, origin: str) -> dict:
+    """Ensure the document carries a plan or state root.
+
+    ``terraform show -json tfplan`` emits plan JSON (``planned_values``);
+    ``terraform show -json`` with no plan file emits state JSON (``values``).
+    Both are accepted transparently here, once, so every detector benefits.
+    """
+    if isinstance(document, dict) and any(k in document for k in PLAN_ROOT_KEYS):
+        return document
+    raise PlanInputError(
+        f"{origin} is neither Terraform plan nor state JSON: expected a "
+        f"top-level {PLAN_ROOT_KEYS[0]!r} (plan) or {PLAN_ROOT_KEYS[1]!r} "
+        "(state) key. Produce it with `terraform show -json [PLANFILE]`."
+    )
+
+
 def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
-    """Obtain the terraform plan JSON, from a file or by running terraform."""
+    """Obtain the terraform plan or state JSON, from a file or from terraform."""
     if tf_json is not None:
         path = Path(tf_json)
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            document = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             raise PlanInputError(f"--tf-json file not found: {path}") from None
         except json.JSONDecodeError as exc:
             raise PlanInputError(f"--tf-json file is not valid JSON: {exc}") from exc
+        return _validate_root(document, f"--tf-json file {path}")
 
     try:
         proc = subprocess.run(
@@ -85,11 +105,12 @@ def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
             "Pass --tf-json PATH to supply the JSON directly."
         )
     try:
-        return json.loads(proc.stdout)
+        document = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
         raise PlanInputError(
             f"`terraform show -json` did not return valid JSON: {exc}"
         ) from exc
+    return _validate_root(document, "`terraform show -json` output")
 
 
 def compute_changeset(
