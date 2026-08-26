@@ -10,9 +10,9 @@ safe.
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
 
+from itest.core import points
 from itest.core.manifest import IntegrationPoint
 
 STUB_FILE_REL = "itest_tests/test_sg_edges.py"
@@ -42,32 +42,29 @@ def file_hash(path: Path) -> str:
     return content_hash(path.read_text(encoding="utf-8"))
 
 
-def _node_name(label: str) -> str:
-    if label == "0.0.0.0/0":
-        return "internet"
-    if label.startswith("aws_security_group."):
-        return label.split(".", 1)[1]
-    return re.sub(r"[^0-9a-zA-Z]+", "_", label).strip("_") or "x"
-
-
 def function_name_for(point: IntegrationPoint) -> str:
     """Derive a readable test name, e.g. ``test_sg_web_to_db_5432``."""
-    source = _node_name(point.source)
-    target = _node_name(point.target)
-    ports = str(point.attributes.get("ports", "")).replace("-", "_")
-    return f"test_sg_{source}_to_{target}_{ports}"
+    return points.function_name(point)
+
+
+def _attribute_line(point: IntegrationPoint) -> str:
+    attrs = point.attributes
+    if point.type == "sg_edge":
+        return (
+            f"protocol={attrs.get('protocol')} ports={attrs.get('ports')} "
+            f"direction={attrs.get('direction')}"
+        )
+    return " ".join(f"{key}={attrs[key]}" for key in sorted(attrs))
 
 
 def render_stub(point: IntegrationPoint, func_name: str) -> str:
     """Return the source text for one stub function (leading blank lines)."""
-    attrs = point.attributes
     return (
         f"\n\ndef {func_name}():\n"
         f'    """Integration point {point.id}.\n'
         f"\n"
         f"    {point.source} -> {point.target}\n"
-        f"    protocol={attrs.get('protocol')} ports={attrs.get('ports')} "
-        f"direction={attrs.get('direction')}\n"
+        f"    type={point.type} {_attribute_line(point)}\n"
         f"    HCL: {point.hcl_address}\n"
         f'    """\n'
         f"    {STUB_SKIP_LINE}\n"

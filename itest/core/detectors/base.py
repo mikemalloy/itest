@@ -1,8 +1,8 @@
 """Detector interface, shared plan-walking helpers, and the registry.
 
 A detector consumes parsed ``terraform show -json`` output and emits typed
-primitive integration points. ITest ships a single detector today
-(security-group edges); more are registered by appending to :data:`DETECTORS`.
+primitive integration points. Detectors are registered by appending to
+:data:`DETECTORS`.
 """
 
 from __future__ import annotations
@@ -44,9 +44,10 @@ def iter_resources(plan_json: dict) -> Iterator[dict]:
 
 
 # The active detector registry. Import-time population keeps wiring trivial.
+from itest.core.detectors.iam_edges import IamEdgeDetector  # noqa: E402
 from itest.core.detectors.sg_edges import SecurityGroupEdgeDetector  # noqa: E402
 
-DETECTORS: list[Detector] = [SecurityGroupEdgeDetector()]
+DETECTORS: list[Detector] = [SecurityGroupEdgeDetector(), IamEdgeDetector()]
 
 
 def detect_all(plan_json: dict) -> tuple[list[IntegrationPoint], dict[str, int]]:

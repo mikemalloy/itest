@@ -22,7 +22,7 @@ class IntegrationPoint(BaseModel):
     """A single primitive integration point emitted by a detector."""
 
     id: str
-    type: Literal["sg_edge"]
+    type: Literal["sg_edge", "iam_edge", "event_edge"]
     source: str
     target: str
     attributes: dict = Field(default_factory=dict)

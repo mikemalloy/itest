@@ -14,6 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from itest.core import points as point_labels
 from itest.core.detectors.base import detect_all
 from itest.core.manifest import IntegrationPoint, TestEntry, load_manifest
 from itest.core.mermaid import generate_mermaid
@@ -209,10 +210,7 @@ def render_changeset(changeset: Changeset) -> str:
     out.append(f"New integration points ({n_new}):")
     if changeset.new_points:
         for p in changeset.new_points:
-            attrs = p.attributes
-            tag = (
-                f"{attrs.get('protocol')}:{attrs.get('ports')} {attrs.get('direction')}"
-            )
+            tag = point_labels.summary(p)
             out.append(f"  + [{tag}] {p.source} -> {p.target}")
             out.append(f"      id={p.id}  hcl={p.hcl_address}")
     else:
