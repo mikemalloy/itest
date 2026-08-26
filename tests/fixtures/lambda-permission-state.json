@@ -1,0 +1,65 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.0",
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lambda_function.webhook",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "webhook",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "arn": "arn:aws:lambda:us-west-1:111111111111:function:demo-webhook",
+            "function_name": "demo-webhook",
+            "id": "demo-webhook",
+            "runtime": "python3.12"
+          }
+        },
+        {
+          "address": "aws_s3_bucket.uploads",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "uploads",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "arn": "arn:aws:s3:::demo-uploads-111111111111",
+            "bucket": "demo-uploads-111111111111",
+            "id": "demo-uploads-111111111111"
+          }
+        },
+        {
+          "address": "aws_lambda_permission.allow_s3",
+          "mode": "managed",
+          "type": "aws_lambda_permission",
+          "name": "allow_s3",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "action": "lambda:InvokeFunction",
+            "function_name": "demo-webhook",
+            "id": "AllowExecutionFromS3",
+            "principal": "s3.amazonaws.com",
+            "source_arn": "arn:aws:s3:::demo-uploads-111111111111",
+            "statement_id": "AllowExecutionFromS3"
+          }
+        },
+        {
+          "address": "aws_lambda_permission.allow_apigw",
+          "mode": "managed",
+          "type": "aws_lambda_permission",
+          "name": "allow_apigw",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "action": "lambda:InvokeFunction",
+            "function_name": "arn:aws:lambda:us-west-1:111111111111:function:demo-webhook",
+            "id": "AllowExecutionFromAPIGateway",
+            "principal": "apigateway.amazonaws.com",
+            "source_arn": "arn:aws:execute-api:us-west-1:111111111111:abc123def4/*/POST/hook",
+            "statement_id": "AllowExecutionFromAPIGateway"
+          }
+        }
+      ]
+    }
+  }
+}

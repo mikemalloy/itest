@@ -44,10 +44,15 @@ def iter_resources(plan_json: dict) -> Iterator[dict]:
 
 
 # The active detector registry. Import-time population keeps wiring trivial.
+from itest.core.detectors.event_edges import EventEdgeDetector  # noqa: E402
 from itest.core.detectors.iam_edges import IamEdgeDetector  # noqa: E402
 from itest.core.detectors.sg_edges import SecurityGroupEdgeDetector  # noqa: E402
 
-DETECTORS: list[Detector] = [SecurityGroupEdgeDetector(), IamEdgeDetector()]
+DETECTORS: list[Detector] = [
+    SecurityGroupEdgeDetector(),
+    IamEdgeDetector(),
+    EventEdgeDetector(),
+]
 
 
 def detect_all(plan_json: dict) -> tuple[list[IntegrationPoint], dict[str, int]]:

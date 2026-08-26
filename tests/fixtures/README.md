@@ -43,3 +43,25 @@ terraform show -json tfplan > ../../tests/fixtures/simple-web-app-plan.json
 computed security-group ids as unknown until apply; the checked-in fixture
 uses resolved ids so the detector's SG-to-SG mapping is exercised
 deterministically in CI.
+
+## `lambda-permission-state.json`
+
+A small synthetic **state** document (`values` root, not `planned_values`)
+exercising `aws_lambda_permission` for the event-edge detector. It contains
+one Lambda, one S3 bucket, and two permissions: S3 invoking the function
+(`source_arn` resolvable to `aws_s3_bucket.uploads`) and API Gateway invoking
+it (`source_arn` not present in the document, so it stays an external ARN).
+
+Nothing in it is real: the account ID is the same `111111111111` pseudonym
+the alex fixtures use. The alex fixtures themselves carry no
+`aws_lambda_permission` resources — stages 4, 7, and 8 of that source project
+do, and are candidates for future sanitized fixtures.
+
+## `alex/`
+
+Sanitized `terraform show -json` **state** output from three stages of a real
+production multi-agent RAG system (stage 2: SageMaker embedding endpoint;
+stage 5: Aurora + secrets; stage 6: agent Lambdas, SQS, event wiring). They
+were passed through `itest redact` (account IDs pseudonymized, Lambda
+environment values scrubbed) and are the acceptance targets for the IAM and
+event detectors.
