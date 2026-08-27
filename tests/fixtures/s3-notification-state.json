@@ -1,0 +1,60 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.0",
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.source",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "source",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "demo-uploads-20260101000000000000000001",
+            "id": "demo-uploads-20260101000000000000000001",
+            "arn": "arn:aws:s3:::demo-uploads-20260101000000000000000001"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_sqs_queue.resize",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "resize",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "demo-resize",
+            "arn": "arn:aws:sqs:us-east-1:111111111111:demo-resize",
+            "url": "https://sqs.us-east-1.amazonaws.com/111111111111/demo-resize"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_s3_bucket_notification.source",
+          "mode": "managed",
+          "type": "aws_s3_bucket_notification",
+          "name": "source",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "demo-uploads-20260101000000000000000001",
+            "id": "demo-uploads-20260101000000000000000001",
+            "eventbridge": false,
+            "lambda_function": [],
+            "topic": [],
+            "queue": [
+              {
+                "events": ["s3:ObjectCreated:*"],
+                "filter_prefix": "",
+                "filter_suffix": ".jpg",
+                "id": "tf-s3-queue-20260101000000000000000002",
+                "queue_arn": "arn:aws:sqs:us-east-1:111111111111:demo-resize"
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  }
+}

@@ -72,6 +72,14 @@ def summary(point: IntegrationPoint) -> str:
             extra = f" max_receive={attrs.get('max_receive_count')}"
         elif mechanism == "event_source_mapping":
             extra = f" batch={attrs.get('batch_size')}"
+        elif mechanism == "s3_notification":
+            extra = " " + ",".join(attrs.get("events") or [])
+            suffix = attrs.get("filter_suffix")
+            prefix = attrs.get("filter_prefix")
+            if suffix:
+                extra += f" [suffix {suffix}]"
+            elif prefix:
+                extra += f" [prefix {prefix}]"
         elif mechanism == "lambda_permission":
             extra = f" {attrs.get('action')}"
             if attrs.get("qualifier"):

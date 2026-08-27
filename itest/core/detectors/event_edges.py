@@ -29,11 +29,21 @@ from itest.core.manifest import IntegrationPoint
 
 #: Resource types that only *point at* other resources and carry no identity
 #: of their own worth resolving to.
-_REFERENCE_TYPES = {"aws_lambda_event_source_mapping", "aws_lambda_permission"}
+_REFERENCE_TYPES = {
+    "aws_lambda_event_source_mapping",
+    "aws_lambda_permission",
+    # A notification carries its bucket's name as its own id; letting that
+    # into the identity map would shadow the bucket it points at.
+    "aws_s3_bucket_notification",
+}
 
 
 def _point_id(
-    source: str, target: str, mechanism: str, qualifier: str | None = None
+    source: str,
+    target: str,
+    mechanism: str,
+    qualifier: str | None = None,
+    discriminator: str | None = None,
 ) -> str:
     parts = ["event_edge", source, target, mechanism]
     # A Lambda permission on a version/alias is a different grant from the
@@ -41,16 +51,29 @@ def _point_id(
     # Appended only when non-empty so existing ids are unchanged.
     if qualifier:
         parts.append(f"qualifier={qualifier}")
+    # Two notifications from one bucket to one queue differing only by filter
+    # are two integrations. Appended only when given, so ids predating this
+    # are unchanged.
+    if discriminator:
+        parts.append(discriminator)
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
 
 
 def _make_point(
-    source: str, target: str, attributes: dict, hcl: str
+    source: str,
+    target: str,
+    attributes: dict,
+    hcl: str,
+    discriminator: str | None = None,
 ) -> IntegrationPoint:
     now = datetime.now(UTC)
     return IntegrationPoint(
         id=_point_id(
-            source, target, attributes["mechanism"], attributes.get("qualifier")
+            source,
+            target,
+            attributes["mechanism"],
+            attributes.get("qualifier"),
+            discriminator,
         ),
         type="event_edge",
         source=source,
@@ -70,6 +93,7 @@ class EventEdgeDetector:
         "aws_lambda_event_source_mapping",
         "aws_lambda_permission",
         "aws_sqs_queue",
+        "aws_s3_bucket_notification",
     }
 
     def detect(self, plan_json: dict) -> list[IntegrationPoint]:
@@ -96,6 +120,13 @@ class EventEdgeDetector:
             if isinstance(value, str) and value in functions:
                 return (functions[value], False)
             return resolve(value)
+
+        def resolve_bucket(value) -> tuple[str, bool]:
+            """A notification names its bucket bare; try the name then its ARN."""
+            if not isinstance(value, str) or not value:
+                return ("", True)
+            address = lookup.get(value) or lookup.get(f"arn:aws:s3:::{value}")
+            return (address, False) if address else (value, True)
 
         points: list[IntegrationPoint] = []
         seen: set[str] = set()
@@ -176,6 +207,59 @@ class EventEdgeDetector:
                         address,
                     )
                 )
+            elif rtype == "aws_s3_bucket_notification":
+                bucket, bucket_ext = resolve_bucket(values.get("bucket"))
+                if not bucket:
+                    continue
+                for destination, arn_key in (
+                    ("queue", "queue_arn"),
+                    ("topic", "topic_arn"),
+                    ("lambda_function", "lambda_function_arn"),
+                ):
+                    for entry in values.get(destination) or []:
+                        if not isinstance(entry, dict):
+                            continue
+                        target, tgt_ext = resolve(entry.get(arn_key))
+                        if not target:
+                            continue
+                        events = sorted(str(e) for e in entry.get("events") or [])
+                        prefix = entry.get("filter_prefix") or ""
+                        suffix = entry.get("filter_suffix") or ""
+                        emit(
+                            _make_point(
+                                source=bucket,
+                                target=target,
+                                attributes={
+                                    "mechanism": "s3_notification",
+                                    "events": events,
+                                    "filter_prefix": prefix,
+                                    "filter_suffix": suffix,
+                                    "external": bucket_ext or tgt_ext,
+                                },
+                                hcl=address,
+                                discriminator=f"{','.join(events)}|{prefix}|{suffix}",
+                            )
+                        )
+
+                if values.get("eventbridge"):
+                    # The default bus is not a Terraform resource anywhere, so
+                    # it is always external: nothing in state can resolve it.
+                    emit(
+                        _make_point(
+                            source=bucket,
+                            target="eventbridge",
+                            attributes={
+                                "mechanism": "s3_notification",
+                                "events": ["*"],
+                                "filter_prefix": "",
+                                "filter_suffix": "",
+                                "external": True,
+                            },
+                            hcl=address,
+                            discriminator="*||",
+                        )
+                    )
+
         return points
 
     @staticmethod
