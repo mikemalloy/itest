@@ -35,6 +35,9 @@ _REFERENCE_TYPES = {
     # A notification carries its bucket's name as its own id; letting that
     # into the identity map would shadow the bucket it points at.
     "aws_s3_bucket_notification",
+    # A target is a pure reference: its id and arn name the rule
+    # and destination it binds, not anything of its own.
+    "aws_cloudwatch_event_target",
 }
 
 
@@ -57,6 +60,19 @@ def _point_id(
     if discriminator:
         parts.append(discriminator)
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def _rule_enabled(values: dict) -> bool:
+    """Whether a rule is live, across both provider spellings.
+
+    Newer providers record ``state`` ("ENABLED"/"DISABLED"); older ones record
+    a boolean ``is_enabled``. Reading only the new one would report every rule
+    from an older state as disabled.
+    """
+    state = values.get("state")
+    if isinstance(state, str) and state:
+        return state.upper() == "ENABLED"
+    return bool(values.get("is_enabled", True))
 
 
 def _make_point(
@@ -94,6 +110,8 @@ class EventEdgeDetector:
         "aws_lambda_permission",
         "aws_sqs_queue",
         "aws_s3_bucket_notification",
+        "aws_cloudwatch_event_rule",
+        "aws_cloudwatch_event_target",
     }
 
     def detect(self, plan_json: dict) -> list[IntegrationPoint]:
@@ -102,6 +120,7 @@ class EventEdgeDetector:
         resources = [r for r in iter_resources(plan_json) if r.get("mode") == "managed"]
         lookup = self._identity_map(resources)
         functions = self._function_map(resources)
+        rules = self._rule_map(resources)
 
         def resolve(value) -> tuple[str, bool]:
             """Return (label, external)."""
@@ -260,7 +279,60 @@ class EventEdgeDetector:
                         )
                     )
 
+            elif rtype == "aws_cloudwatch_event_target":
+                bus = values.get("event_bus_name") or "default"
+                rule = rules.get((values.get("rule"), bus))
+                if rule is None:
+                    # A rule name is scoped to its bus; without a match on both
+                    # there is no rule here to source the edge from.
+                    continue
+                target, tgt_ext = resolve(values.get("arn"))
+                if not target:
+                    continue
+                rule_values = rule["values"]
+                emit(
+                    _make_point(
+                        source=rule["address"],
+                        target=target,
+                        attributes={
+                            "mechanism": "eventbridge_target",
+                            "event_bus_name": bus,
+                            "trigger": (
+                                "schedule"
+                                if rule_values.get("schedule_expression")
+                                else "pattern"
+                            ),
+                            "enabled": _rule_enabled(rule_values),
+                            "external": tgt_ext,
+                        },
+                        hcl=address,
+                        # Never the target_id: Terraform generates it, so it
+                        # changes on re-apply while the wiring does not.
+                        discriminator=f"bus={bus}",
+                    )
+                )
+
         return points
+
+    @staticmethod
+    def _rule_map(resources: list[dict]) -> dict[tuple[str, str], dict]:
+        """Map (rule name or ARN, bus) to the rule resource.
+
+        EventBridge rule names are unique per bus, not per account, so the bus
+        is part of the key: the same name on another bus is another rule.
+        """
+        mapping: dict[tuple[str, str], dict] = {}
+        for resource in resources:
+            if resource.get("type") != "aws_cloudwatch_event_rule":
+                continue
+            values = resource.get("values") or {}
+            bus = values.get("event_bus_name") or "default"
+            entry = {"address": resource["address"], "values": values}
+            for key in ("name", "id", "arn"):
+                value = values.get(key)
+                if isinstance(value, str) and value:
+                    mapping.setdefault((value, bus), entry)
+        return mapping
 
     @staticmethod
     def _identity_map(resources: list[dict]) -> dict[str, str]:

@@ -114,7 +114,8 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 Shipped:
 - Security-group edge detector
 - IAM edge detector (role -> resource, wildcard / cross-stack / managed flags)
-- Event edge detector (event source mapping, DLQ redrive, lambda_permission)
+- Event edge detector (event source mapping, DLQ redrive, lambda_permission,
+  s3_notification, eventbridge_target)
 - Plan and state JSON roots both accepted by the plan entry point
 - Manifest schema v2 (tier, resource_group, last_duration_seconds — schema
   and v1 migration only; nothing schedules on them yet)

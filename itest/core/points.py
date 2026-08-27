@@ -80,6 +80,10 @@ def summary(point: IntegrationPoint) -> str:
                 extra += f" [suffix {suffix}]"
             elif prefix:
                 extra += f" [prefix {prefix}]"
+        elif mechanism == "eventbridge_target":
+            extra = f" {attrs.get('trigger')}"
+            if attrs.get("enabled") is False:
+                extra += " disabled"
         elif mechanism == "lambda_permission":
             extra = f" {attrs.get('action')}"
             if attrs.get("qualifier"):
@@ -103,7 +107,9 @@ def diagram_label(point: IntegrationPoint) -> str:
             label = "DENY " + label
         return label
     if point.type == "event_edge":
-        return str(attrs.get("mechanism", "event"))
+        mechanism = str(attrs.get("mechanism", "event"))
+        # Terse enough for an edge label; the full mechanism is in the summary.
+        return "eventbridge" if mechanism == "eventbridge_target" else mechanism
     return point.type
 
 

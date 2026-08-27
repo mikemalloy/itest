@@ -18,9 +18,9 @@ committed under `tests/fixtures/aws-samples/` and pinned by
 | alex stage 2 — sagemaker | own production | 5 | 1 (broad managed policy flagged) | 4 | none | Plan |
 | pubhealthllm stage 5 | own production | — | sg_edge | — | none | Verified (first live run) |
 | terraform-sqs-lambda | aws-samples/serverless-patterns | 13 (12 module-nested) | 6 (3 iam, 3 event) | 6 | `terraform-aws-modules` lambda + sqs | **Verified 6/6** |
-| s3-sqs-lambda-terraform | aws-samples/serverless-patterns | 10 | 5 (4 iam, 1 event) | 4 | none | **Verified 5/5** |
+| s3-sqs-lambda-terraform | aws-samples/serverless-patterns | 10 | 6 (4 iam, 2 event) | 3 | none | **Verified 5/5**; the S3 notification edge was detected after that run and has not been verified live |
 | lambda-sqs-terraform | aws-samples/serverless-patterns | 6 | 2 (customer-managed policy resolved) | 1 | none | **Verified 2/2** |
-| eventbridge-lambda-terraform | aws-samples/serverless-patterns | 6 | 2 (1 iam, 1 event) | 3 | none | **Verified 2/2** |
+| eventbridge-lambda-terraform | aws-samples/serverless-patterns | 6 | 3 (1 iam, 2 event) | 1 | none | **Verified 2/2**; the EventBridge target edge was detected after that run and has not been verified live |
 
 Not run: alex stage 8 and two non-AWS (Azure, GCP) stacks had empty state in
 the checkout; one project needed a backend re-init. ITest's detectors are
@@ -52,9 +52,7 @@ Seen across the projects above, most frequent first. Every one appears in
 | Type | Seen in | What it would become |
 |---|---|---|
 | `aws_api_gateway_*` (REST) and `aws_apigatewayv2_*` | alex 3, alex 7 | route → Lambda integration edge |
-| `aws_s3_bucket_notification` | s3-sqs-lambda | S3 → SQS/Lambda event edge |
 | `aws_sqs_queue_policy`, `aws_s3_bucket_policy` | s3-sqs-lambda, alex 7 | resource-based grant (the other side of an IAM edge) |
-| `aws_cloudwatch_event_rule` / `_target` | eventbridge-lambda | EventBridge rule → target edge |
 | `aws_cloudfront_distribution` | alex 7 | CloudFront → origin edge |
 | `aws_lambda_function` env vars carrying ARNs/URLs | all | implicit configuration edge |
 

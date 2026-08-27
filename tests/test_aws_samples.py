@@ -28,7 +28,7 @@ EXPECTED = {
     # regenerated from the source stack will produce; see the xfail below.
     "s3-sqs-lambda-terraform.json": {"iam_edge": 4, "event_edge": 2},
     "lambda-sqs-terraform.json": {"iam_edge": 2},
-    "eventbridge-lambda-terraform.json": {"iam_edge": 1, "event_edge": 1},
+    "eventbridge-lambda-terraform.json": {"iam_edge": 1, "event_edge": 2},
 }
 
 EXPECTED_UNANALYZED = {
@@ -40,8 +40,8 @@ EXPECTED_UNANALYZED = {
         "aws_sqs_queue_policy",
     },
     "eventbridge-lambda-terraform.json": {
-        "aws_cloudwatch_event_rule",
-        "aws_cloudwatch_event_target",
+        # Both EventBridge types are claimed now; the function is the
+        # destination, not wiring, so it stays unclaimed.
         "aws_lambda_function",
     },
 }
