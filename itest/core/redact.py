@@ -24,6 +24,7 @@ output must remain a document ITest's own detectors accept.
 from __future__ import annotations
 
 import copy
+import hashlib
 import math
 import re
 from collections import Counter
@@ -95,6 +96,10 @@ _IDENTIFIER_KEYS = frozenset({"unique_id", "dbi_resource_id"})
 #: idempotent the same way a repeated-digit account id does.
 _PSEUDONYM_TAG = "EXAMPLE"
 
+#: Prefix marking a pseudonymized opaque token, and what keeps redaction
+#: idempotent: a value already carrying it is never re-scrubbed.
+_TOKEN_PSEUDONYM_PREFIX = "redacted-"
+
 
 class Finding(BaseModel):
     """One redaction that was applied, or would be by ``--check``.
@@ -123,9 +128,48 @@ def _shannon_entropy(value: str) -> float:
 
 def _looks_like_opaque_token(value: str) -> bool:
     """True for a lone high-entropy blob, the shape of an API token."""
+    if value.startswith(_TOKEN_PSEUDONYM_PREFIX):
+        return False
     if len(value) < _MIN_TOKEN_LENGTH or not _TOKEN_SHAPE.fullmatch(value):
         return False
     return _shannon_entropy(value) >= _MIN_TOKEN_ENTROPY
+
+
+def _token_pseudonym(value: str) -> str:
+    """A stable, non-reversible stand-in for one opaque token.
+
+    Derived from the value itself, so the same token maps to the same
+    pseudonym everywhere and two different tokens cannot collide into one
+    string — which a shared constant did, taking referential integrity with it.
+    """
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+    return f"{_TOKEN_PSEUDONYM_PREFIX}{digest}"
+
+
+def _arn_tails(document: Any) -> set[str]:
+    """Every final path segment of every ARN in the document.
+
+    A value that names a resource an ARN already spells out is an identifier,
+    not a secret: the ARN is kept, so scrubbing the bare name leaks nothing and
+    only breaks the references that resolve through it.
+    """
+    tails: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+        elif isinstance(node, str) and node.startswith("arn:"):
+            for separator in ("/", ":"):
+                tail = node.rsplit(separator, 1)[-1]
+                if tail:
+                    tails.add(tail)
+
+    walk(document)
+    return tails
 
 
 def _env_key_allowed(key: str) -> bool:
@@ -203,8 +247,12 @@ class _Identifiers:
 
 
 class _Redactor:
-    def __init__(self) -> None:
+    def __init__(self, arn_tails: set[str] | None = None) -> None:
         self.findings: list[Finding] = []
+        # Values an ARN in this document already spells out. Collected once,
+        # up front, because whether a string is an identifier depends on the
+        # whole document, not on the string alone.
+        self._arn_tails = arn_tails or set()
         self._accounts = _Accounts()
         self._identifiers = _Identifiers()
 
@@ -218,14 +266,17 @@ class _Redactor:
         if value == PLACEHOLDER:
             return value
 
-        if _looks_like_opaque_token(value):
+        if value not in self._arn_tails and _looks_like_opaque_token(value):
             self._record(
                 path,
                 "credential_pattern",
                 "high-entropy token (length "
                 f"{len(value)}, entropy {_shannon_entropy(value):.1f})",
             )
-            return PLACEHOLDER
+            # Pseudonymized rather than blanked: a shared constant collides
+            # two different secrets into one string and severs every reference
+            # that resolved through the original.
+            return _token_pseudonym(value)
 
         scrubbed = value
         # A finding means something actually changed, not merely that a pattern
@@ -394,7 +445,7 @@ def redact_document(document: dict) -> tuple[dict, list[Finding]]:
     The input is never mutated. Redaction is idempotent: running it over its
     own output yields an identical document and no findings.
     """
-    redactor = _Redactor()
+    redactor = _Redactor(arn_tails=_arn_tails(document))
     clean = redactor._walk(copy.deepcopy(document), "")
     return clean, redactor.findings
 

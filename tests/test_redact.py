@@ -225,7 +225,11 @@ def test_high_entropy_token_is_scrubbed_but_hashes_survive() -> None:
     clean, _ = redact.redact_document(document)
     scrubbed = _resources(clean)["aws_ssm_parameter.notes"]["values"]
 
-    assert scrubbed["api_token"] == redact.PLACEHOLDER
+    # Pseudonymized, not blanked: a shared constant collided distinct secrets
+    # and severed references. The token still goes; it just goes to something
+    # unique and stable.
+    assert scrubbed["api_token"].startswith("redacted-")
+    assert FAKE_GENERIC_TOKEN not in scrubbed["api_token"]
     assert scrubbed["source_code_hash"] == digest
 
 
