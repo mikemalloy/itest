@@ -1,0 +1,855 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.15.4",
+  "values": {
+    "outputs": {
+      "api_endpoint": {
+        "sensitive": false,
+        "value": "https://uf8tn3pwak.execute-api.us-west-1.amazonaws.com/prod/ingest",
+        "type": "string"
+      },
+      "api_key_id": {
+        "sensitive": false,
+        "value": "q6r9nxiuf4",
+        "type": "string"
+      },
+      "api_key_value": {
+        "sensitive": true,
+        "value": "REDACTED",
+        "type": "string"
+      },
+      "setup_instructions": {
+        "sensitive": false,
+        "value": "    \n\u2705 Ingestion pipeline deployed successfully!\n    \nAdd the following to your .env file:\nVECTOR_BUCKET=alex-vectors-111111111111\nALEX_API_ENDPOINT=https://uf8tn3pwak.execute-api.us-west-1.amazonaws.com/prod/ingest\n    \nTo get your API key value:\naws apigateway get-api-key --api-key q6r9nxiuf4 --include-value --query 'value' --output text\n    \nThen add to .env:\nALEX_API_KEY=<the-api-key-value>\n    \nTest the API:\ncurl -X POST https://uf8tn3pwak.execute-api.us-west-1.amazonaws.com/prod/ingest \\\n  -H \"x-api-key: <your-api-key>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"content\": \"Test document\", \"metadata\": {\"source\": \"test\"}}'\n",
+        "type": "string"
+      },
+      "vector_bucket_name": {
+        "sensitive": false,
+        "value": "alex-vectors-111111111111",
+        "type": "string"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "data.aws_caller_identity.current",
+          "mode": "data",
+          "type": "aws_caller_identity",
+          "name": "current",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "account_id": "111111111111",
+            "arn": "arn:aws:iam::111111111111:user/aiengineer",
+            "id": "111111111111",
+            "user_id": "AIDAEXAMPLE1000000000"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_api_gateway_api_key.api_key",
+          "mode": "managed",
+          "type": "aws_api_gateway_api_key",
+          "name": "api_key",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:apigateway:us-west-1::/apikeys/q6r9nxiuf4",
+            "created_date": "2026-05-30T22:48:18Z",
+            "customer_id": "",
+            "description": "Managed by Terraform",
+            "enabled": true,
+            "id": "q6r9nxiuf4",
+            "last_updated_date": "2026-05-30T22:48:18Z",
+            "name": "alex-api-key",
+            "tags": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "value": "REDACTED"
+          },
+          "sensitive_values": {
+            "tags": {},
+            "tags_all": {},
+            "value": true
+          }
+        },
+        {
+          "address": "aws_api_gateway_deployment.api",
+          "mode": "managed",
+          "type": "aws_api_gateway_deployment",
+          "name": "api",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "canary_settings": [],
+            "created_date": "2026-05-30T22:48:34Z",
+            "description": "",
+            "execution_arn": "arn:aws:execute-api:us-west-1:111111111111:uf8tn3pwak/",
+            "id": "hcmdjm",
+            "invoke_url": "https://uf8tn3pwak.execute-api.us-west-1.amazonaws.com/",
+            "rest_api_id": "uf8tn3pwak",
+            "stage_description": null,
+            "stage_name": null,
+            "triggers": {
+              "redeployment": "0096822b5ed222523db8bc2529259b44fd072b80"
+            },
+            "variables": null
+          },
+          "sensitive_values": {
+            "canary_settings": [],
+            "triggers": {}
+          },
+          "depends_on": [
+            "aws_api_gateway_integration.lambda",
+            "aws_api_gateway_method.ingest_post",
+            "aws_api_gateway_resource.ingest",
+            "aws_api_gateway_rest_api.api",
+            "aws_iam_role.lambda_role",
+            "aws_lambda_function.ingest",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_api_gateway_integration.lambda",
+          "mode": "managed",
+          "type": "aws_api_gateway_integration",
+          "name": "lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "cache_key_parameters": [],
+            "cache_namespace": "6jzliu",
+            "connection_id": "",
+            "connection_type": "INTERNET",
+            "content_handling": "",
+            "credentials": "",
+            "http_method": "POST",
+            "id": "agi-uf8tn3pwak-6jzliu-POST",
+            "integration_http_method": "POST",
+            "passthrough_behavior": "WHEN_NO_MATCH",
+            "request_parameters": {},
+            "request_templates": {},
+            "resource_id": "6jzliu",
+            "rest_api_id": "uf8tn3pwak",
+            "timeout_milliseconds": 29000,
+            "tls_config": [],
+            "type": "AWS_PROXY",
+            "uri": "arn:aws:apigateway:us-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-west-1:111111111111:function:alex-ingest/invocations"
+          },
+          "sensitive_values": {
+            "cache_key_parameters": [],
+            "request_parameters": {},
+            "request_templates": {},
+            "tls_config": []
+          },
+          "depends_on": [
+            "aws_api_gateway_method.ingest_post",
+            "aws_api_gateway_resource.ingest",
+            "aws_api_gateway_rest_api.api",
+            "aws_iam_role.lambda_role",
+            "aws_lambda_function.ingest",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_api_gateway_method.ingest_post",
+          "mode": "managed",
+          "type": "aws_api_gateway_method",
+          "name": "ingest_post",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "api_key_required": true,
+            "authorization": "NONE",
+            "authorization_scopes": [],
+            "authorizer_id": "",
+            "http_method": "POST",
+            "id": "agm-uf8tn3pwak-6jzliu-POST",
+            "operation_name": "",
+            "request_models": {},
+            "request_parameters": {},
+            "request_validator_id": "",
+            "resource_id": "6jzliu",
+            "rest_api_id": "uf8tn3pwak"
+          },
+          "sensitive_values": {
+            "authorization_scopes": [],
+            "request_models": {},
+            "request_parameters": {}
+          },
+          "depends_on": [
+            "aws_api_gateway_resource.ingest",
+            "aws_api_gateway_rest_api.api"
+          ]
+        },
+        {
+          "address": "aws_api_gateway_resource.ingest",
+          "mode": "managed",
+          "type": "aws_api_gateway_resource",
+          "name": "ingest",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "6jzliu",
+            "parent_id": "565fi76mw6",
+            "path": "/ingest",
+            "path_part": "ingest",
+            "rest_api_id": "uf8tn3pwak"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_api_gateway_rest_api.api"
+          ]
+        },
+        {
+          "address": "aws_api_gateway_rest_api.api",
+          "mode": "managed",
+          "type": "aws_api_gateway_rest_api",
+          "name": "api",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "api_key_source": "HEADER",
+            "arn": "arn:aws:apigateway:us-west-1::/restapis/uf8tn3pwak",
+            "binary_media_types": [],
+            "body": null,
+            "created_date": "2026-05-30T22:48:18Z",
+            "description": "Alex Financial Planner API",
+            "disable_execute_api_endpoint": false,
+            "endpoint_configuration": [
+              {
+                "ip_address_type": "ipv4",
+                "types": [
+                  "REGIONAL"
+                ],
+                "vpc_endpoint_ids": []
+              }
+            ],
+            "execution_arn": "arn:aws:execute-api:us-west-1:111111111111:uf8tn3pwak",
+            "fail_on_warnings": null,
+            "id": "uf8tn3pwak",
+            "minimum_compression_size": "",
+            "name": "alex-api",
+            "parameters": null,
+            "policy": "",
+            "put_rest_api_mode": null,
+            "root_resource_id": "565fi76mw6",
+            "tags": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "3",
+              "Project": "alex"
+            }
+          },
+          "sensitive_values": {
+            "binary_media_types": [],
+            "endpoint_configuration": [
+              {
+                "types": [
+                  false
+                ],
+                "vpc_endpoint_ids": []
+              }
+            ],
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_api_gateway_stage.api",
+          "mode": "managed",
+          "type": "aws_api_gateway_stage",
+          "name": "api",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "access_log_settings": [],
+            "arn": "arn:aws:apigateway:us-west-1::/restapis/uf8tn3pwak/stages/prod",
+            "cache_cluster_enabled": false,
+            "cache_cluster_size": "",
+            "canary_settings": [],
+            "client_certificate_id": "",
+            "deployment_id": "hcmdjm",
+            "description": "",
+            "documentation_version": "",
+            "execution_arn": "arn:aws:execute-api:us-west-1:111111111111:uf8tn3pwak/prod",
+            "id": "ags-uf8tn3pwak-prod",
+            "invoke_url": "https://uf8tn3pwak.execute-api.us-west-1.amazonaws.com/prod",
+            "rest_api_id": "uf8tn3pwak",
+            "stage_name": "prod",
+            "tags": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "variables": {},
+            "web_acl_arn": "",
+            "xray_tracing_enabled": false
+          },
+          "sensitive_values": {
+            "access_log_settings": [],
+            "canary_settings": [],
+            "tags": {},
+            "tags_all": {},
+            "variables": {}
+          },
+          "depends_on": [
+            "aws_api_gateway_deployment.api",
+            "aws_api_gateway_integration.lambda",
+            "aws_api_gateway_method.ingest_post",
+            "aws_api_gateway_resource.ingest",
+            "aws_api_gateway_rest_api.api",
+            "aws_iam_role.lambda_role",
+            "aws_lambda_function.ingest",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_api_gateway_usage_plan.plan",
+          "mode": "managed",
+          "type": "aws_api_gateway_usage_plan",
+          "name": "plan",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "api_stages": [
+              {
+                "api_id": "uf8tn3pwak",
+                "stage": "prod",
+                "throttle": []
+              }
+            ],
+            "arn": "arn:aws:apigateway:us-west-1::/usageplans/je62tj",
+            "description": "",
+            "id": "je62tj",
+            "name": "alex-usage-plan",
+            "product_code": "",
+            "quota_settings": [
+              {
+                "limit": 10000,
+                "offset": 0,
+                "period": "MONTH"
+              }
+            ],
+            "tags": {},
+            "tags_all": {},
+            "throttle_settings": [
+              {
+                "burst_limit": 200,
+                "rate_limit": 100
+              }
+            ]
+          },
+          "sensitive_values": {
+            "api_stages": [
+              {
+                "throttle": []
+              }
+            ],
+            "quota_settings": [
+              {}
+            ],
+            "tags": {},
+            "tags_all": {},
+            "throttle_settings": [
+              {}
+            ]
+          },
+          "depends_on": [
+            "aws_api_gateway_deployment.api",
+            "aws_api_gateway_integration.lambda",
+            "aws_api_gateway_method.ingest_post",
+            "aws_api_gateway_resource.ingest",
+            "aws_api_gateway_rest_api.api",
+            "aws_api_gateway_stage.api",
+            "aws_iam_role.lambda_role",
+            "aws_lambda_function.ingest",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_api_gateway_usage_plan_key.plan_key",
+          "mode": "managed",
+          "type": "aws_api_gateway_usage_plan_key",
+          "name": "plan_key",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "q6r9nxiuf4",
+            "key_id": "q6r9nxiuf4",
+            "key_type": "API_KEY",
+            "name": "alex-api-key",
+            "usage_plan_id": "je62tj",
+            "value": "REDACTED"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_api_gateway_api_key.api_key",
+            "aws_api_gateway_deployment.api",
+            "aws_api_gateway_integration.lambda",
+            "aws_api_gateway_method.ingest_post",
+            "aws_api_gateway_resource.ingest",
+            "aws_api_gateway_rest_api.api",
+            "aws_api_gateway_stage.api",
+            "aws_api_gateway_usage_plan.plan",
+            "aws_iam_role.lambda_role",
+            "aws_lambda_function.ingest",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_cloudwatch_log_group.lambda_logs",
+          "mode": "managed",
+          "type": "aws_cloudwatch_log_group",
+          "name": "lambda_logs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:logs:us-west-1:111111111111:log-group:/aws/lambda/alex-ingest",
+            "id": "/aws/lambda/alex-ingest",
+            "kms_key_id": "",
+            "log_group_class": "STANDARD",
+            "name": "/aws/lambda/alex-ingest",
+            "name_prefix": "",
+            "retention_in_days": 7,
+            "skip_destroy": false,
+            "tags": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "3",
+              "Project": "alex"
+            }
+          },
+          "sensitive_values": {
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_iam_role.lambda_role",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:iam::111111111111:role/alex-ingest-lambda-role",
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+            "create_date": "2026-05-30T22:48:18Z",
+            "description": "",
+            "force_detach_policies": false,
+            "id": "alex-ingest-lambda-role",
+            "inline_policy": [
+              {
+                "name": "alex-ingest-lambda-policy",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:logs:us-west-1:111111111111:*\"},{\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:s3:::alex-vectors-111111111111\",\"arn:aws:s3:::alex-vectors-111111111111/*\"]},{\"Action\":[\"sagemaker:InvokeEndpoint\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sagemaker:us-west-1:111111111111:endpoint/alex-embedding-endpoint\"},{\"Action\":[\"s3vectors:PutVectors\",\"s3vectors:QueryVectors\",\"s3vectors:GetVectors\",\"s3vectors:DeleteVectors\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3vectors:us-west-1:111111111111:bucket/alex-vectors-111111111111/index/*\"}]}"
+              }
+            ],
+            "managed_policy_arns": [],
+            "max_session_duration": 3600,
+            "name": "alex-ingest-lambda-role",
+            "name_prefix": "",
+            "path": "/",
+            "permissions_boundary": "",
+            "tags": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "unique_id": "AROAEXAMPLE2000000000"
+          },
+          "sensitive_values": {
+            "inline_policy": [
+              {}
+            ],
+            "managed_policy_arns": [],
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_iam_role_policy.lambda_policy",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "lambda_policy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "alex-ingest-lambda-role:alex-ingest-lambda-policy",
+            "name": "alex-ingest-lambda-policy",
+            "name_prefix": "",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:logs:us-west-1:111111111111:*\"},{\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:s3:::alex-vectors-111111111111\",\"arn:aws:s3:::alex-vectors-111111111111/*\"]},{\"Action\":[\"sagemaker:InvokeEndpoint\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sagemaker:us-west-1:111111111111:endpoint/alex-embedding-endpoint\"},{\"Action\":[\"s3vectors:PutVectors\",\"s3vectors:QueryVectors\",\"s3vectors:GetVectors\",\"s3vectors:DeleteVectors\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3vectors:us-west-1:111111111111:bucket/alex-vectors-111111111111/index/*\"}]}",
+            "role": "alex-ingest-lambda-role"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_iam_role.lambda_role",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_lambda_function.ingest",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "ingest",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "architectures": [
+              "x86_64"
+            ],
+            "arn": "arn:aws:lambda:us-west-1:111111111111:function:alex-ingest",
+            "code_sha256": "REDACTED",
+            "code_signing_config_arn": "",
+            "dead_letter_config": [],
+            "description": "",
+            "environment": [
+              {
+                "variables": {
+                  "SAGEMAKER_ENDPOINT": "REDACTED",
+                  "VECTOR_BUCKET": "REDACTED"
+                }
+              }
+            ],
+            "ephemeral_storage": [
+              {
+                "size": 512
+              }
+            ],
+            "file_system_config": [],
+            "filename": "./../../backend/ingest/lambda_function.zip",
+            "function_name": "alex-ingest",
+            "handler": "ingest_s3vectors.lambda_handler",
+            "id": "alex-ingest",
+            "image_config": [],
+            "image_uri": "",
+            "invoke_arn": "arn:aws:apigateway:us-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-west-1:111111111111:function:alex-ingest/invocations",
+            "kms_key_arn": "",
+            "last_modified": "2026-05-30T22:48:27.527+0000",
+            "layers": [],
+            "logging_config": [
+              {
+                "application_log_level": "",
+                "log_format": "Text",
+                "log_group": "/aws/lambda/alex-ingest",
+                "system_log_level": ""
+              }
+            ],
+            "memory_size": 512,
+            "package_type": "Zip",
+            "publish": false,
+            "qualified_arn": "arn:aws:lambda:us-west-1:111111111111:function:alex-ingest:$LATEST",
+            "qualified_invoke_arn": "arn:aws:apigateway:us-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-west-1:111111111111:function:alex-ingest:$LATEST/invocations",
+            "replace_security_groups_on_destroy": null,
+            "replacement_security_group_ids": null,
+            "reserved_concurrent_executions": -1,
+            "role": "arn:aws:iam::111111111111:role/alex-ingest-lambda-role",
+            "runtime": "python3.12",
+            "s3_bucket": null,
+            "s3_key": null,
+            "s3_object_version": null,
+            "signing_job_arn": "",
+            "signing_profile_version_arn": "",
+            "skip_destroy": false,
+            "snap_start": [],
+            "source_code_hash": "REDACTED",
+            "source_code_size": 15320934,
+            "tags": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "timeout": 60,
+            "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "PassThrough"
+              }
+            ],
+            "version": "$LATEST",
+            "vpc_config": []
+          },
+          "sensitive_values": {
+            "architectures": [
+              false
+            ],
+            "dead_letter_config": [],
+            "environment": [
+              {
+                "variables": {}
+              }
+            ],
+            "ephemeral_storage": [
+              {}
+            ],
+            "file_system_config": [],
+            "image_config": [],
+            "layers": [],
+            "logging_config": [
+              {}
+            ],
+            "snap_start": [],
+            "tags": {},
+            "tags_all": {},
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": []
+          },
+          "depends_on": [
+            "aws_iam_role.lambda_role",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_lambda_permission.api_gateway",
+          "mode": "managed",
+          "type": "aws_lambda_permission",
+          "name": "api_gateway",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "action": "lambda:InvokeFunction",
+            "event_source_token": null,
+            "function_name": "alex-ingest",
+            "function_url_auth_type": null,
+            "id": "AllowAPIGatewayInvoke",
+            "principal": "apigateway.amazonaws.com",
+            "principal_org_id": null,
+            "qualifier": "",
+            "source_account": null,
+            "source_arn": "arn:aws:execute-api:us-west-1:111111111111:uf8tn3pwak/*/*",
+            "statement_id": "AllowAPIGatewayInvoke",
+            "statement_id_prefix": ""
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_api_gateway_rest_api.api",
+            "aws_iam_role.lambda_role",
+            "aws_lambda_function.ingest",
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_s3_bucket.vectors",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "vectors",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "acceleration_status": "",
+            "acl": null,
+            "arn": "arn:aws:s3:::alex-vectors-111111111111",
+            "bucket": "alex-vectors-111111111111",
+            "bucket_domain_name": "alex-vectors-111111111111.s3.amazonaws.com",
+            "bucket_prefix": "",
+            "bucket_regional_domain_name": "alex-vectors-111111111111.s3.us-west-1.amazonaws.com",
+            "cors_rule": [],
+            "force_destroy": false,
+            "grant": [
+              {
+                "id": "0f79f2d70cbe095acb90b364023d22c30fe0b381309f7dbdecdc12bb7ab644ea",
+                "permissions": [
+                  "FULL_CONTROL"
+                ],
+                "type": "CanonicalUser",
+                "uri": ""
+              }
+            ],
+            "hosted_zone_id": "Z2F56UZL2M1ACD",
+            "id": "alex-vectors-111111111111",
+            "lifecycle_rule": [],
+            "logging": [],
+            "object_lock_configuration": [],
+            "object_lock_enabled": false,
+            "policy": "",
+            "region": "us-west-1",
+            "replication_configuration": [],
+            "request_payer": "BucketOwner",
+            "server_side_encryption_configuration": [
+              {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {
+                        "kms_master_key_id": "",
+                        "sse_algorithm": "AES256"
+                      }
+                    ],
+                    "bucket_key_enabled": false
+                  }
+                ]
+              }
+            ],
+            "tags": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "tags_all": {
+              "Part": "3",
+              "Project": "alex"
+            },
+            "timeouts": null,
+            "versioning": [
+              {
+                "enabled": true,
+                "mfa_delete": false
+              }
+            ],
+            "website": [],
+            "website_domain": null,
+            "website_endpoint": null
+          },
+          "sensitive_values": {
+            "cors_rule": [],
+            "grant": [
+              {
+                "permissions": [
+                  false
+                ]
+              }
+            ],
+            "lifecycle_rule": [],
+            "logging": [],
+            "object_lock_configuration": [],
+            "replication_configuration": [],
+            "server_side_encryption_configuration": [
+              {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {}
+                    ]
+                  }
+                ]
+              }
+            ],
+            "tags": {},
+            "tags_all": {},
+            "versioning": [
+              {}
+            ],
+            "website": []
+          },
+          "depends_on": [
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_s3_bucket_public_access_block.vectors",
+          "mode": "managed",
+          "type": "aws_s3_bucket_public_access_block",
+          "name": "vectors",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "block_public_acls": true,
+            "block_public_policy": true,
+            "bucket": "alex-vectors-111111111111",
+            "id": "alex-vectors-111111111111",
+            "ignore_public_acls": true,
+            "restrict_public_buckets": true
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_s3_bucket_server_side_encryption_configuration.vectors",
+          "mode": "managed",
+          "type": "aws_s3_bucket_server_side_encryption_configuration",
+          "name": "vectors",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "alex-vectors-111111111111",
+            "expected_bucket_owner": "",
+            "id": "alex-vectors-111111111111",
+            "rule": [
+              {
+                "apply_server_side_encryption_by_default": [
+                  {
+                    "kms_master_key_id": "",
+                    "sse_algorithm": "AES256"
+                  }
+                ],
+                "bucket_key_enabled": false
+              }
+            ]
+          },
+          "sensitive_values": {
+            "rule": [
+              {
+                "apply_server_side_encryption_by_default": [
+                  {}
+                ]
+              }
+            ]
+          },
+          "depends_on": [
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        },
+        {
+          "address": "aws_s3_bucket_versioning.vectors",
+          "mode": "managed",
+          "type": "aws_s3_bucket_versioning",
+          "name": "vectors",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "alex-vectors-111111111111",
+            "expected_bucket_owner": "",
+            "id": "alex-vectors-111111111111",
+            "mfa": null,
+            "versioning_configuration": [
+              {
+                "mfa_delete": "",
+                "status": "Enabled"
+              }
+            ]
+          },
+          "sensitive_values": {
+            "versioning_configuration": [
+              {}
+            ]
+          },
+          "depends_on": [
+            "aws_s3_bucket.vectors",
+            "data.aws_caller_identity.current"
+          ]
+        }
+      ]
+    }
+  }
+}
