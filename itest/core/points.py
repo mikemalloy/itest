@@ -89,6 +89,17 @@ def summary(point: IntegrationPoint) -> str:
             if attrs.get("qualifier"):
                 extra += f" @{attrs['qualifier']}"
         return mechanism + extra
+    if point.type == "route_edge":
+        tag = f"{attrs.get('method')} {attrs.get('path')} -> "
+        tag += str(attrs.get("integration_type"))
+        # An unauthenticated route is finding-class, like wildcard_resource on
+        # an IAM edge: not wrong by itself, but it must be visible in plan.
+        flags = []
+        if attrs.get("auth") == "NONE":
+            flags.append("open")
+        if attrs.get("external"):
+            flags.append("external")
+        return tag + "".join(f" [{flag}]" for flag in flags)
     return point.type
 
 
