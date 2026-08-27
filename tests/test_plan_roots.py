@@ -52,9 +52,27 @@ def test_load_plan_json_accepts_plan_root(tmp_path: Path) -> None:
 
 def test_load_plan_json_rejects_document_with_neither_root(tmp_path: Path) -> None:
     path = tmp_path / "other.json"
-    path.write_text(json.dumps({"format_version": "1.0"}), encoding="utf-8")
+    # A `terraform plan -json` stream line, a common wrong file to hand over.
+    path.write_text(
+        json.dumps({"@level": "info", "type": "planned_change"}), encoding="utf-8"
+    )
     with pytest.raises(PlanInputError) as excinfo:
         load_plan_json(path, tmp_path)
     message = str(excinfo.value)
     assert "planned_values" in message
     assert "values" in message
+
+
+def test_empty_state_is_named_as_such(tmp_path: Path) -> None:
+    # `terraform show -json` in an initialized-but-never-applied directory
+    # emits only the format version. Found on three directories during the
+    # first estate sweep; the generic "neither plan nor state" message sent
+    # the user looking at file formats instead of at the backend.
+    path = tmp_path / "empty.json"
+    path.write_text(json.dumps({"format_version": "1.0"}), encoding="utf-8")
+    with pytest.raises(PlanInputError) as excinfo:
+        load_plan_json(path, tmp_path)
+    message = str(excinfo.value)
+    assert "empty" in message.lower()
+    assert "applied" in message.lower()
+    assert "backend" in message.lower()

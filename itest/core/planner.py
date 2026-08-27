@@ -68,6 +68,18 @@ def _validate_root(document: object, origin: str) -> dict:
     """
     if isinstance(document, dict) and any(k in document for k in PLAN_ROOT_KEYS):
         return document
+    if isinstance(document, dict) and set(document) <= {
+        "format_version",
+        "terraform_version",
+    }:
+        # Exactly what terraform emits for a workspace with no state.
+        raise PlanInputError(
+            f"{origin} is an empty state: Terraform reports nothing deployed "
+            "here. Either nothing has been applied from this directory or "
+            "workspace, or the backend holding the state is not the one "
+            "configured in this checkout (`terraform init`, then check "
+            "`terraform workspace show` and `terraform state list`)."
+        )
     raise PlanInputError(
         f"{origin} is neither Terraform plan nor state JSON: expected a "
         f"top-level {PLAN_ROOT_KEYS[0]!r} (plan) or {PLAN_ROOT_KEYS[1]!r} "
