@@ -30,7 +30,9 @@ every client is used read-only.
 
 from __future__ import annotations
 
+import difflib
 import json
+import re
 import subprocess
 from functools import lru_cache
 from pathlib import Path
@@ -41,6 +43,10 @@ import pytest
 import yaml
 
 ANSWERS_PATH = Path(".itest/skill-answers.yaml")
+
+# The only suffixes ITest appends to a resource address. Anything else in
+# brackets is a count/for_each key and is part of the address itself.
+_ATTRIBUTE_BLOCK = re.compile(r"\.(?:ingress|egress|inline_policy)\[[^\]]*\]$")
 
 
 @lru_cache(maxsize=1)
@@ -78,17 +84,38 @@ def _iter_resources(module: dict[str, Any]):
         yield from _iter_resources(child)
 
 
+def _module_relative_parts(address: str) -> list[str]:
+    """Return ``address``'s segments with any ``module.<name>`` prefix removed."""
+    parts = address.split(".")
+    index = 0
+    while index + 1 < len(parts) and parts[index] == "module":
+        index += 2
+    return parts[index:]
+
+
 def _resource_address(hcl_address: str) -> str:
     """Reduce a point's hcl_address to the resource that owns it.
 
-    ``aws_security_group.alb.ingress[0]`` -> ``aws_security_group.alb``
-    ``aws_security_group_rule.db_from_web`` -> unchanged
+    Strips only the attribute-block suffixes ITest itself generates -- a
+    trailing ``.ingress[N]``, ``.egress[N]`` or ``.inline_policy[NAME]``.
+    Every other index is part of the resource's own address (``count`` or
+    ``for_each``) and is preserved verbatim, because that is exactly how the
+    address appears in ``terraform show -json``.
+
+    ``aws_security_group.alb.ingress[0]``    -> ``aws_security_group.alb``
+    ``aws_iam_role.r.inline_policy[p]``      -> ``aws_iam_role.r``
+    ``module.sqs.aws_sqs_queue.this[0]``     -> unchanged
+    ``aws_security_group_rule.db_from_web``  -> unchanged
     """
-    address = hcl_address.split("[")[0]
-    for suffix in (".ingress", ".egress"):
-        if address.endswith(suffix):
-            return address[: -len(suffix)]
-    return address
+    match = _ATTRIBUTE_BLOCK.search(hcl_address)
+    if not match:
+        return hcl_address
+    candidate = hcl_address[: match.start()]
+    # Only strip when a full ``type.name`` remains, so a resource genuinely
+    # named "ingress"/"egress" keeps its own count index.
+    if len(_module_relative_parts(candidate)) >= 2:
+        return candidate
+    return hcl_address
 
 
 def resolve_address(tf_dir: str, hcl_address: str) -> dict[str, Any]:
@@ -99,11 +126,22 @@ def resolve_address(tf_dir: str, hcl_address: str) -> dict[str, Any]:
     """
     wanted = _resource_address(hcl_address)
     root = _state_json(tf_dir).get("values", {}).get("root_module", {}) or {}
+    seen: list[str] = []
     for resource in _iter_resources(root):
-        if resource.get("address") == wanted:
+        address = resource.get("address")
+        if address == wanted:
             return resource.get("values", {}) or {}
+        if address:
+            seen.append(address)
+    nearest = difflib.get_close_matches(wanted, seen, n=5, cutoff=0.4)
+    if not nearest:
+        nearest = sorted(seen)[:10]
+    listing = "\n".join(f"  {address}" for address in nearest) or "  (none)"
     raise LookupError(
-        f"{wanted} is not in `terraform show -json` output for {tf_dir}. "
+        f"Looked up: {wanted}\n"
+        f"(from hcl_address: {hcl_address})\n"
+        f"Not found in `terraform show -json` output for {tf_dir}.\n"
+        f"Nearest addresses in state:\n{listing}\n"
         "The manifest and the deployed state disagree."
     )
 
