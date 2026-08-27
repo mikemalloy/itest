@@ -121,6 +121,10 @@ def diagram_label(point: IntegrationPoint) -> str:
         mechanism = str(attrs.get("mechanism", "event"))
         # Terse enough for an edge label; the full mechanism is in the summary.
         return "eventbridge" if mechanism == "eventbridge_target" else mechanism
+    if point.type == "route_edge":
+        # The route itself is the label; the integration type and the open
+        # flag stay in the summary, where there is room for them.
+        return f"{attrs.get('method')} {attrs.get('path')}"
     return point.type
 
 
@@ -137,4 +141,10 @@ def function_name(point: IntegrationPoint) -> str:
     if point.type == "event_edge":
         mechanism = slug(str(attrs.get("mechanism", "event")))
         return f"test_event_{source}_to_{target}_{mechanism}"
+    if point.type == "route_edge":
+        # Method and path both ride in the name: one API can route several
+        # methods on one path to one target, and those are distinct points.
+        method = slug(str(attrs.get("method", "")))
+        path = slug(str(attrs.get("path", "")))
+        return f"test_route_{source}_{method}_{path}_to_{target}"
     return f"test_{point.type}_{source}_to_{target}"
