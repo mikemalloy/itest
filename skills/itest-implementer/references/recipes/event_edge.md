@@ -1,7 +1,8 @@
 # Recipe: `event_edge`
 
 An invocation path. The point asserts "this source triggers that target", as
-declared by an event source mapping, a redrive policy, or a Lambda permission.
+declared by an event source mapping, a redrive policy, a Lambda permission, an
+S3 bucket notification, or an EventBridge rule target.
 
 Fixtures come from the shared template in
 [`../conftest.md`](../conftest.md) — write that file once, not per recipe.
@@ -27,11 +28,13 @@ An `event_edge` point in `.itest/manifest.yaml` looks like this:
 |---|---|
 | `source` | Where the invocation comes from: a queue or stream (ESM), the queue that overflows (DLQ redrive), or a principal / source ARN (Lambda permission). |
 | `target` | What gets invoked: the function, or the dead-letter queue. HCL address when it resolved, raw ARN otherwise. |
-| `attributes.mechanism` | `event_source_mapping`, `dlq_redrive`, or `lambda_permission`. **This decides which assertion to write** — the three are not interchangeable. |
+| `attributes.mechanism` | `event_source_mapping`, `dlq_redrive`, `lambda_permission`, `s3_notification`, or `eventbridge_target`. **This decides which assertion to write** — they are not interchangeable. |
 | `attributes.external` | The ARN did not resolve within this state; another stack owns it. |
 | `attributes.batch_size`, `enabled` | ESM only. A disabled mapping is wired but not delivering, which is worth asserting explicitly. |
 | `attributes.max_receive_count` | DLQ redrive only. How many failures before a message moves to the DLQ. |
 | `attributes.action`, `principal` | Lambda permission only, e.g. `lambda:InvokeFunction` and `s3.amazonaws.com`. |
+| `attributes.events`, `filter_prefix`, `filter_suffix` | S3 notification only. Which object events fire, and the key filter that narrows them. |
+| `attributes.event_bus_name`, `trigger`, `enabled` | EventBridge target only. The bus the rule lives on, `schedule` or `pattern`, and whether the rule is enabled. |
 | `hcl_address` | The resource declaring the wiring. |
 
 Dispatch on `mechanism` first. Everything below is per-mechanism.
@@ -161,7 +164,151 @@ When the point carries a source ARN, tighten the match on the statement's
 can invoke the function, which is a materially wider grant than the Terraform
 declared.
 
-## 5. Notes across mechanisms
+## 5. `mechanism: s3_notification`
+
+The bucket's notification configuration is the declaration; one edge is one
+destination in it. `get_bucket_notification_configuration` is read-only and
+returns `QueueConfigurations`, `TopicConfigurations`,
+`LambdaFunctionConfigurations`, and `EventBridgeConfiguration` — assert against
+the list matching the point's target kind.
+
+Assert the filter too. Two edges can share a bucket and a queue and differ only
+by `filter_prefix`/`filter_suffix`, and a widened filter fires the target on
+objects it was never meant to see.
+
+```python
+def test_event_source_bucket_to_resize_queue(s3, resolve):
+    """Integration point <id>.
+
+    aws_s3_bucket.source -> aws_sqs_queue.resize
+    type=event_edge mechanism=s3_notification events=s3:ObjectCreated:*
+      filter_suffix=.jpg
+    HCL: aws_s3_bucket_notification.source
+    """
+    bucket = resolve("aws_s3_bucket.source")
+    queue = resolve("aws_sqs_queue.resize")
+
+    config = s3.get_bucket_notification_configuration(Bucket=bucket["bucket"])
+    matching = [
+        c
+        for c in config.get("QueueConfigurations", [])
+        if c["QueueArn"] == queue["arn"] and "s3:ObjectCreated:*" in c["Events"]
+    ]
+    assert matching, (
+        f"{bucket['bucket']} does not notify {queue['arn']} on "
+        "s3:ObjectCreated:*. Uploads will not reach the queue."
+    )
+
+    rules = {
+        rule["Name"].lower(): rule["Value"]
+        for rule in matching[0].get("Filter", {}).get("Key", {}).get("FilterRules", [])
+    }
+    assert rules.get("suffix") == ".jpg", (
+        f"Suffix filter is {rules.get('suffix')!r}, not '.jpg'. The trigger "
+        "fires on a different set of objects than the point records."
+    )
+```
+
+`filter_prefix` and `filter_suffix` are `""` when unset; assert their absence
+the same way, because a filter *added* since the plan silently stops the
+target firing on most uploads.
+
+When the destination is a topic or a function, the shape is the same against
+`TopicConfigurations` / `LambdaFunctionConfigurations` and their `TopicArn` /
+`LambdaFunctionArn` keys.
+
+A target of `eventbridge` is the fifth destination kind: the bucket forwards
+every event to the default bus rather than to a named resource. There is
+nothing to resolve, and the assertion is that forwarding is on.
+
+```python
+def test_event_source_bucket_to_eventbridge(s3, resolve):
+    """Integration point <id>.
+
+    aws_s3_bucket.source -> eventbridge
+    type=event_edge mechanism=s3_notification events=* external=True
+    HCL: aws_s3_bucket_notification.source
+    """
+    bucket = resolve("aws_s3_bucket.source")
+
+    config = s3.get_bucket_notification_configuration(Bucket=bucket["bucket"])
+    assert "EventBridgeConfiguration" in config, (
+        f"{bucket['bucket']} no longer forwards events to EventBridge; every "
+        "rule matching this bucket has stopped firing."
+    )
+```
+
+## 6. `mechanism: eventbridge_target`
+
+The source is the rule, the target is what it invokes. Two read-only calls:
+`describe_rule` for the rule's state, `list_targets_by_rule` for the wiring.
+Both take the bus, and the bus matters — rule names are unique per bus, not per
+account, so omitting it silently asks about `default`.
+
+```python
+def test_event_rule_to_lambda_function(events, resolve):
+    """Integration point <id>.
+
+    aws_cloudwatch_event_rule.event_rule -> aws_lambda_function.lambda_function
+    type=event_edge mechanism=eventbridge_target trigger=pattern enabled=True
+    HCL: aws_cloudwatch_event_target.target_lambda_function
+    """
+    rule = resolve("aws_cloudwatch_event_rule.event_rule")
+    function = resolve("aws_lambda_function.lambda_function")
+    bus = rule.get("event_bus_name") or "default"
+
+    described = events.describe_rule(Name=rule["name"], EventBusName=bus)
+    assert described["State"] == "ENABLED", (
+        f"Rule {rule['name']} is {described['State']}, not ENABLED. It is "
+        "wired but will not fire."
+    )
+
+    targets = events.list_targets_by_rule(Rule=rule["name"], EventBusName=bus)
+    arns = [target["Arn"] for target in targets["Targets"]]
+    assert function["arn"] in arns, (
+        f"{function['arn']} is not a target of {rule['name']}. Targets: {arns}"
+    )
+```
+
+Assert `State` only in the direction the point records. When `enabled` is
+false the rule is deliberately off, and a test demanding `ENABLED` reports
+drift that is really the declared design; assert `!= "ENABLED"` and say why in
+the docstring.
+
+`trigger` says which half of the rule to read if you want a tighter check:
+`schedule` means `described["ScheduleExpression"]`, `pattern` means
+`described["EventPattern"]`. Comparing a whole event pattern string is brittle
+— AWS reformats it — so prefer asserting the key the rule filters on rather
+than the document.
+
+A permission is the other half of an EventBridge → Lambda path, and ITest emits
+it as its own `lambda_permission` point. Do not fold it into this test: the
+target can be present while the function refuses the invoke, and two points
+mean two findings.
+
+When `external: true`, the target ARN belongs to another stack. Read it from
+the manifest with the `point` fixture rather than pasting it:
+
+```python
+def test_event_rule_to_external_queue(events, resolve, point):
+    """Integration point <id>.
+
+    aws_cloudwatch_event_rule.nightly -> a queue owned by another stack
+    type=event_edge mechanism=eventbridge_target trigger=schedule external=True
+    HCL: aws_cloudwatch_event_target.nightly
+    """
+    rule = resolve("aws_cloudwatch_event_rule.nightly")
+    bus = rule.get("event_bus_name") or "default"
+    target_arn = point("<id>")["target"]
+
+    targets = events.list_targets_by_rule(Rule=rule["name"], EventBusName=bus)
+    arns = [target["Arn"] for target in targets["Targets"]]
+    assert target_arn in arns, (
+        f"{target_arn} is not a target of {rule['name']} (cross-stack). Targets: {arns}"
+    )
+```
+
+## 7. Notes across mechanisms
 
 - **`external: true`** means the other end belongs to another stack. Resolve
   only the end that is local, and use the recorded ARN for the other. Say
@@ -173,15 +320,20 @@ declared.
 - **Existence is not delivery.** These assertions prove the wiring is declared
   and enabled, not that a message arrived. Do not claim more in the docstring.
 
-## 6. What a failure means
+## 8. What a failure means
 
-A missing mapping, a missing redrive policy, or a missing permission statement
+A missing mapping, a missing redrive policy, a missing permission statement, a
+notification the bucket no longer carries, or a target the rule no longer lists
 means the invocation path in the Terraform does not exist in the account. The
 event simply will not fire, and this test is how you learn that before an
 incident does.
 
-A mapping present but `Disabled` is the subtler case: the wiring looks right in
-the console and delivers nothing. It is a real finding.
+A mapping present but `Disabled` — or an EventBridge rule present but not
+`ENABLED` — is the subtler case: the wiring looks right in the console and
+delivers nothing. It is a real finding.
+
+A notification whose filter has drifted is subtler still: it fires, just on a
+different set of objects. Report the recorded filter and the live one.
 
 `LookupError` from `resolve` means the address is not in the current state —
 renamed, removed, or the wrong `terraform_dir`.

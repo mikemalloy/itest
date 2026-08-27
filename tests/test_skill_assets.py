@@ -161,7 +161,7 @@ def test_conftest_template_reads_config_rather_than_hardcoding_it() -> None:
         assert key in source, f"template never reads {key}"
 
 
-@pytest.mark.parametrize("fixture", ["ec2", "iam", "lambda_", "sqs"])
+@pytest.mark.parametrize("fixture", ["ec2", "iam", "lambda_", "sqs", "s3", "events"])
 def test_conftest_template_provides_clients_for_every_recipe(fixture: str) -> None:
     """Each recipe's assertions need its service client to exist."""
     source = extract_conftest_template()
@@ -184,3 +184,68 @@ def test_every_recipe_example_is_valid_python() -> None:
         assert blocks, f"{recipe.name} shows no python example"
         for index, block in enumerate(blocks):
             compile(block, f"{recipe.name}#{index}", "exec")
+
+
+# --------------------------------------------------------------------------
+# No pasted ARNs
+# --------------------------------------------------------------------------
+
+MANAGED_POLICY_LITERAL = "arn:aws:iam::aws:policy/"
+
+
+def test_no_recipe_hardcodes_an_aws_managed_policy_arn() -> None:
+    """An AWS-managed policy ARN looks safe to paste and is not.
+
+    A test that carries the ARN as a literal asserts against what the recipe's
+    author saw, not against what this manifest records: swap
+    `AWSLambdaBasicExecutionRole` for a narrower policy and the test still
+    passes. The target belongs in the manifest, read at test time.
+
+    A `#` comment saying so is fine — that is the explanation, not the check.
+    """
+    offenders: list[str] = []
+    for recipe in sorted(RECIPE_DIR.glob("*.md")):
+        for number, line in enumerate(
+            recipe.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if MANAGED_POLICY_LITERAL in line and not line.strip().startswith("#"):
+                offenders.append(f"{recipe.name}:{number}: {line.strip()}")
+    assert not offenders, "managed policy ARN pasted rather than read:\n" + "\n".join(
+        offenders
+    )
+
+
+def test_recipes_read_unresolvable_targets_from_the_manifest() -> None:
+    """The escape hatch for a target with no state resource behind it."""
+    source = extract_conftest_template()
+    assert "manifest.yaml" in source, "template never reads the manifest"
+    assert "def point(" in source, "template has no point fixture"
+
+    iam_text = IAM_RECIPE.read_text(encoding="utf-8")
+    assert 'point("' in iam_text, "iam_edge.md never reads a target from the manifest"
+
+
+# --------------------------------------------------------------------------
+# Mechanism coverage in the event recipe
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "mechanism",
+    [
+        "event_source_mapping",
+        "dlq_redrive",
+        "lambda_permission",
+        "s3_notification",
+        "eventbridge_target",
+    ],
+)
+def test_event_recipe_covers_every_mechanism(mechanism: str) -> None:
+    """Dispatch is on `mechanism`; an undocumented one has no assertion."""
+    assert mechanism in EVENT_RECIPE.read_text(encoding="utf-8")
+
+
+def test_iam_recipe_warns_about_service_arn_shapes() -> None:
+    """Simulating against the wrong ARN shape fails a policy that is fine."""
+    text = IAM_RECIPE.read_text(encoding="utf-8")
+    assert "log-group:" in text, "no note on CloudWatch Logs ARN shapes"

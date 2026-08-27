@@ -63,7 +63,7 @@ for — a guessed assertion that passes is worse than no test.
 
 Read the recipe for each type you are about to implement **before** generating
 anything. `event_edge` in particular dispatches on its `mechanism` attribute,
-and the three mechanisms take completely different assertions.
+and its five mechanisms take completely different assertions.
 
 ### 3. Interview
 
@@ -197,7 +197,7 @@ Three recipes ship today, one per detector ITest has:
 |---|---|---|
 | [`sg_edge`](references/recipes/sg_edge.md) | Security-group reachability | `ec2:DescribeSecurityGroups` |
 | [`iam_edge`](references/recipes/iam_edge.md) | Role -> resource grants | `iam:SimulatePrincipalPolicy`, falling back to reading the policy |
-| [`event_edge`](references/recipes/event_edge.md) | ESM, DLQ redrive, Lambda permission | `lambda:ListEventSourceMappings`, `sqs:GetQueueAttributes`, `lambda:GetPolicy` |
+| [`event_edge`](references/recipes/event_edge.md) | ESM, DLQ redrive, Lambda permission, S3 notification, EventBridge target | `lambda:ListEventSourceMappings`, `sqs:GetQueueAttributes`, `lambda:GetPolicy`, `s3:GetBucketNotification`, `events:DescribeRule`, `events:ListTargetsByRule` |
 
 All three share one `conftest.py`, from
 [`references/conftest.md`](references/conftest.md).

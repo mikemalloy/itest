@@ -4,12 +4,17 @@ Every recipe's generated tests take their fixtures from one `conftest.py`.
 Write this file to `itest_tests/conftest.py` on the first generation, whatever
 point types you are implementing, and do not write a second copy per recipe.
 
-Two things live here:
+Three things live here:
 
 - **`resolve_address`**, which turns the `hcl_address` and HCL-style `source` /
   `target` values recorded in the manifest into live resource values (the real
   `sg-…`, the real function ARN). Terraform addresses are not AWS ids, and
   pasting an id into a test breaks on the next destroy/apply cycle.
+- **`point`**, which returns a manifest entry by id. Some targets are not
+  resources in this state at all — an AWS-managed policy ARN, a cross-stack
+  endpoint — and there is nothing to resolve. Read those from the manifest
+  rather than pasting the ARN into the test: pasted, the assertion pins what
+  the recipe's author saw instead of what this manifest records.
 - **Read-only service clients**, one per service the recipes assert against.
 
 Everything is read from `.itest/skill-answers.yaml`, written by the interview
@@ -43,6 +48,7 @@ import pytest
 import yaml
 
 ANSWERS_PATH = Path(".itest/skill-answers.yaml")
+MANIFEST_PATH = Path(".itest/manifest.yaml")
 
 # The only suffixes ITest appends to a resource address. Anything else in
 # brackets is a count/for_each key and is part of the address itself.
@@ -58,6 +64,17 @@ def load_answers() -> dict[str, Any]:
             "so it can record the AWS profile, region, and Terraform directory."
         )
     return yaml.safe_load(ANSWERS_PATH.read_text(encoding="utf-8")) or {}
+
+
+@lru_cache(maxsize=1)
+def load_manifest() -> dict[str, Any]:
+    """Return the manifest these tests were generated from."""
+    if not MANIFEST_PATH.exists():
+        raise RuntimeError(
+            f"{MANIFEST_PATH} not found. Run `itest plan` in the project root "
+            "so the integration points these tests cover exist."
+        )
+    return yaml.safe_load(MANIFEST_PATH.read_text(encoding="utf-8")) or {}
 
 
 @lru_cache(maxsize=8)
@@ -196,6 +213,18 @@ def sqs(aws_session: boto3.Session):
 
 
 @pytest.fixture(scope="session")
+def s3(aws_session: boto3.Session):
+    """Read-only S3 client (bucket notification configuration)."""
+    return aws_session.client("s3")
+
+
+@pytest.fixture(scope="session")
+def events(aws_session: boto3.Session):
+    """Read-only EventBridge client (rules and their targets)."""
+    return aws_session.client("events")
+
+
+@pytest.fixture(scope="session")
 def resolve(tf_dir: str):
     """``resolve(hcl_address)`` -> live values, bound to the configured dir."""
 
@@ -203,6 +232,24 @@ def resolve(tf_dir: str):
         return resolve_address(tf_dir, hcl_address)
 
     return _resolve
+
+
+@pytest.fixture(scope="session")
+def point():
+    """``point(id)`` -> the manifest entry, for targets state cannot resolve."""
+    entries = {p["id"]: p for p in load_manifest().get("points", []) or []}
+
+    def _point(point_id: str) -> dict[str, Any]:
+        try:
+            return entries[point_id]
+        except KeyError:
+            raise LookupError(
+                f"Integration point {point_id} is not in {MANIFEST_PATH}. "
+                "The test names a point the manifest no longer carries; run "
+                "`itest sync` and check whether the point was removed."
+            ) from None
+
+    return _point
 ```
 <!-- END conftest.py -->
 

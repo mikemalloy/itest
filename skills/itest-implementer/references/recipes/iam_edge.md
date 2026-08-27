@@ -98,15 +98,18 @@ def test_iam_lambda_aurora_role_to_aurora(iam, resolve):
 
 ### 3b. External target (`external: true`)
 
-The target is already an ARN, so there is nothing to resolve — use it directly.
-Say in the docstring that it is cross-stack, because a failure here often means
-*the other stack* changed, not this one.
+The target is an ARN owned by another stack, so `resolve` cannot find it. Read
+it from the manifest with the `point` fixture — never paste the ARN into the
+test. A pasted ARN keeps asserting against the account the recipe was written
+in, and survives a target the manifest has since moved. Say in the docstring
+that it is cross-stack, because a failure here often means *the other stack*
+changed, not this one.
 
 ```python
-def test_iam_lambda_agents_role_to_sagemaker_endpoint(iam, resolve):
+def test_iam_lambda_agents_role_to_sagemaker_endpoint(iam, resolve, point):
     """Integration point ef585ce57133.
 
-    aws_iam_role.lambda_agents_role -> arn:aws:sagemaker:…:endpoint/alex-embedding-endpoint
+    aws_iam_role.lambda_agents_role -> a SageMaker endpoint in another stack
     type=iam_edge actions=sagemaker:InvokeEndpoint effect=Allow external=True
     HCL: aws_iam_role_policy.lambda_agents_policy
 
@@ -114,9 +117,7 @@ def test_iam_lambda_agents_role_to_sagemaker_endpoint(iam, resolve):
     was renamed or removed there.
     """
     role = resolve("aws_iam_role.lambda_agents_role")
-    target_arn = (
-        "arn:aws:sagemaker:us-west-1:111111111111:endpoint/alex-embedding-endpoint"
-    )
+    target_arn = point("ef585ce57133")["target"]
 
     result = iam.simulate_principal_policy(
         PolicySourceArn=role["arn"],
@@ -130,21 +131,33 @@ def test_iam_lambda_agents_role_to_sagemaker_endpoint(iam, resolve):
     )
 ```
 
+> The docstrings in this file describe the target in words where the generated
+> stub carries the ARN, so that no ARN in this recipe can be pasted into a test
+> by mistake. **Do not edit a generated docstring to match.** It is written
+> from the point and `itest verify` reads it; preserve it exactly, and change
+> only the body.
+
 ### 3c. Managed policy (`managed: true`)
 
 `actions` is `["<unresolved>"]`, so there is nothing to simulate. Assert the
 attachment still exists — that is the whole claim the point makes.
 
+The policy ARN is the point's `target`. Read it from the manifest — an
+AWS-managed policy ARN looks harmless to paste, and is not: hardcoded, the test
+asserts the policy the recipe's author had in mind rather than the one this
+manifest records, and it stays green after the attachment is swapped for a
+different policy.
+
 ```python
-def test_iam_lambda_agents_role_managed_basic_execution(iam, resolve):
+def test_iam_lambda_agents_role_managed_basic_execution(iam, resolve, point):
     """Integration point a54b0e0e3663.
 
-    aws_iam_role.lambda_agents_role -> arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    aws_iam_role.lambda_agents_role -> an AWS-managed execution policy
     type=iam_edge managed=True
     HCL: aws_iam_role_policy_attachment.lambda_agents_basic
     """
     role = resolve("aws_iam_role.lambda_agents_role")
-    policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+    policy_arn = point("a54b0e0e3663")["target"]
 
     attached = iam.list_attached_role_policies(RoleName=role["name"])
     arns = [p["PolicyArn"] for p in attached["AttachedPolicies"]]
@@ -163,19 +176,22 @@ Invert the assertion. A Deny edge claims access is **blocked**, and a test that
 passes when it is allowed has it exactly backwards.
 
 ```python
-def test_iam_batch_role_denied_prod_bucket(iam, resolve):
+def test_iam_batch_role_denied_prod_bucket(iam, resolve, point):
     """Integration point <id>.
 
-    aws_iam_role.batch -> arn:aws:s3:::prod-exports/*
+    aws_iam_role.batch -> the prod exports bucket (wildcard target)
     type=iam_edge actions=s3:DeleteObject effect=Deny
     HCL: aws_iam_role_policy.batch_guardrails
     """
     role = resolve("aws_iam_role.batch")
+    # A concrete object the recorded wildcard covers: AWS reads a literal `*`
+    # as a resource name, so simulating the wildcard itself proves nothing.
+    probe_arn = point("<id>")["target"].replace("*", "report.csv")
 
     result = iam.simulate_principal_policy(
         PolicySourceArn=role["arn"],
         ActionNames=["s3:DeleteObject"],
-        ResourceArns=["arn:aws:s3:::prod-exports/report.csv"],
+        ResourceArns=[probe_arn],
     )
 
     denied = [r for r in result["EvaluationResults"] if r["EvalDecision"] != "allowed"]
@@ -190,7 +206,16 @@ def test_iam_batch_role_denied_prod_bucket(iam, resolve):
 
 - **`wildcard_resource: true`.** The point's target ends in `*`. Simulate
   against a concrete ARN that the wildcard should cover, not the literal
-  wildcard string — AWS evaluates a literal `*` as a resource name.
+  wildcard string — AWS evaluates a literal `*` as a resource name. Derive that
+  concrete ARN from the recorded target, as §3d does, rather than typing one.
+- **Service ARN shapes.** `simulate_principal_policy` matches the ARN you give
+  it against the ARN pattern in the policy, so the wrong *shape* reports a
+  denial for a policy that is fine. CloudWatch Logs is the common trap: the
+  stream actions (`logs:CreateLogStream`, `logs:PutLogEvents`) are granted on
+  `arn:aws:logs:<region>:<account>:log-group:<name>:*`, and simulating against
+  a two-segment stream ARN (`…:log-group:<name>:log-stream:<stream>`) does not
+  match it. Simulate the `log-group:<name>:*` form the policy actually names —
+  the point's own target, unchanged, is that form.
 - **`wildcard_action: true`.** Simulate the specific actions the code relies on
   rather than the `*` itself, and note in the docstring that the grant is
   broader than what is tested.
