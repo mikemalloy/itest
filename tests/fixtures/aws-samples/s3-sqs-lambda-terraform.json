@@ -1,0 +1,586 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.15.4",
+  "values": {
+    "outputs": {
+      "LambdaFunctionArn": {
+        "sensitive": false,
+        "value": "arn:aws:lambda:us-west-1:111111111111:function:s3-sqs-lambda-tf-LambdaFunction",
+        "type": "string"
+      },
+      "SQSQueueName": {
+        "sensitive": false,
+        "value": "s3-sqs-lambda-tf-SQSResizerQueue",
+        "type": "string"
+      },
+      "SourceS3BucketName": {
+        "sensitive": false,
+        "value": "REDACTED",
+        "type": "string"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "data.archive_file.LambdaZipFile",
+          "mode": "data",
+          "type": "archive_file",
+          "name": "LambdaZipFile",
+          "provider_name": "registry.terraform.io/hashicorp/archive",
+          "schema_version": 0,
+          "values": {
+            "exclude_symlink_directories": null,
+            "excludes": null,
+            "id": "1d74600568fe677a94b73a88c7ff2384afe4b947",
+            "output_base64sha256": "REDACTED",
+            "output_base64sha512": "REDACTED",
+            "output_file_mode": null,
+            "output_md5": "ac9bd8f1b2f12e554c6c3dfbfdabc0b7",
+            "output_path": "./lambda-src.zip",
+            "output_sha": "1d74600568fe677a94b73a88c7ff2384afe4b947",
+            "output_sha256": "6b8734f265f3e1879958a8a8d325ed7f09ba5b40f5d7b35ec4ce11afd83f4d95",
+            "output_sha512": "a3fb865da124a4834783aff25de56f3433d47c737480b45e786a032475ca9b548747384cb1d0b0f672247a5e76ed95409dbd83f45ffc4b8fca42b0fecacc0a0d",
+            "output_size": 336,
+            "source": [],
+            "source_content": null,
+            "source_content_filename": null,
+            "source_dir": null,
+            "source_file": "./src/app.mjs",
+            "type": "zip"
+          },
+          "sensitive_values": {
+            "source": []
+          }
+        },
+        {
+          "address": "data.aws_caller_identity.current",
+          "mode": "data",
+          "type": "aws_caller_identity",
+          "name": "current",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "account_id": "111111111111",
+            "arn": "arn:aws:iam::111111111111:user/aiengineer",
+            "id": "111111111111",
+            "user_id": "AIDAEXAMPLE1000000000"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "data.aws_region.current",
+          "mode": "data",
+          "type": "aws_region",
+          "name": "current",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "description": "US West (N. California)",
+            "endpoint": "ec2.us-west-1.amazonaws.com",
+            "id": "us-west-1",
+            "name": "us-west-1",
+            "region": "us-west-1"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_iam_role.MyHandlerFunction-Role",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "MyHandlerFunction-Role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:iam::111111111111:role/s3-sqs-lambda-tf-MyHandlerFunction-Role",
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+            "create_date": "2026-08-27T18:54:42Z",
+            "description": "",
+            "force_detach_policies": false,
+            "id": "REDACTED",
+            "inline_policy": [],
+            "managed_policy_arns": [],
+            "max_session_duration": 3600,
+            "name": "REDACTED",
+            "name_prefix": "",
+            "path": "/",
+            "permissions_boundary": "",
+            "tags": null,
+            "tags_all": {},
+            "unique_id": "AROAEXAMPLE2000000000"
+          },
+          "sensitive_values": {
+            "inline_policy": [],
+            "managed_policy_arns": [],
+            "tags_all": {}
+          },
+          "identity_schema_version": 0,
+          "identity": {
+            "account_id": "111111111111",
+            "name": "REDACTED"
+          }
+        },
+        {
+          "address": "aws_iam_role_policy.MyHandlerFunction-Policy-source",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "MyHandlerFunction-Policy-source",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "s3-sqs-lambda-tf-MyHandlerFunction-Role:s3-sqs-lambda-tf-MyHandlerFunction-Role",
+            "name": "REDACTED",
+            "name_prefix": "",
+            "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\",\"s3:ListBucket\",\"s3:GetBucketLocation\",\"s3:GetObjectVersion\",\"s3:GetLifecycleConfiguration\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:s3:::s3-sqs-lambda-tf-sources3bucket-20260827185442152600000001\",\"arn:aws:s3:::s3-sqs-lambda-tf-sources3bucket-20260827185442152600000001/*\"]}]}",
+            "role": "REDACTED"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_iam_role.MyHandlerFunction-Role",
+            "aws_s3_bucket.MySourceS3Bucket"
+          ],
+          "identity_schema_version": 0,
+          "identity": {
+            "account_id": "111111111111",
+            "name": "REDACTED",
+            "role": "REDACTED"
+          }
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.AWSLambdaBasicExecutionRole",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "AWSLambdaBasicExecutionRole",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "s3-sqs-lambda-tf-MyHandlerFunction-Role/arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            "role": "REDACTED"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_iam_role.MyHandlerFunction-Role"
+          ],
+          "identity_schema_version": 0,
+          "identity": {
+            "account_id": "111111111111",
+            "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            "role": "REDACTED"
+          }
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.AWSLambdaSQSQueueExecutionRole",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "AWSLambdaSQSQueueExecutionRole",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "s3-sqs-lambda-tf-MyHandlerFunction-Role/arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+            "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+            "role": "REDACTED"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_iam_role.MyHandlerFunction-Role"
+          ],
+          "identity_schema_version": 0,
+          "identity": {
+            "account_id": "111111111111",
+            "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+            "role": "REDACTED"
+          }
+        },
+        {
+          "address": "aws_lambda_event_source_mapping.MyHandlerFunction-Function-to-SQS",
+          "mode": "managed",
+          "type": "aws_lambda_event_source_mapping",
+          "name": "MyHandlerFunction-Function-to-SQS",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "amazon_managed_kafka_event_source_config": [],
+            "arn": "arn:aws:lambda:us-west-1:111111111111:event-source-mapping:a34a2c62-14b0-4bfa-abae-52eede9dd520",
+            "batch_size": 10,
+            "bisect_batch_on_function_error": false,
+            "destination_config": [],
+            "document_db_event_source_config": [],
+            "enabled": true,
+            "event_source_arn": "arn:aws:sqs:us-west-1:111111111111:s3-sqs-lambda-tf-SQSResizerQueue",
+            "filter_criteria": [],
+            "function_arn": "arn:aws:lambda:us-west-1:111111111111:function:s3-sqs-lambda-tf-LambdaFunction",
+            "function_name": "arn:aws:lambda:us-west-1:111111111111:function:s3-sqs-lambda-tf-LambdaFunction",
+            "function_response_types": null,
+            "id": "a34a2c62-14b0-4bfa-abae-52eede9dd520",
+            "kms_key_arn": "",
+            "last_modified": "2026-08-27T18:55:07Z",
+            "last_processing_result": "",
+            "maximum_batching_window_in_seconds": 0,
+            "maximum_record_age_in_seconds": 0,
+            "maximum_retry_attempts": 0,
+            "metrics_config": [],
+            "parallelization_factor": 0,
+            "provisioned_poller_config": [],
+            "queues": null,
+            "region": "us-west-1",
+            "scaling_config": [],
+            "self_managed_event_source": [],
+            "self_managed_kafka_event_source_config": [],
+            "source_access_configuration": [],
+            "starting_position": "",
+            "starting_position_timestamp": "",
+            "state": "Enabled",
+            "state_transition_reason": "USER_INITIATED",
+            "tags": null,
+            "tags_all": {},
+            "topics": null,
+            "tumbling_window_in_seconds": 0,
+            "uuid": "a34a2c62-14b0-4bfa-abae-52eede9dd520"
+          },
+          "sensitive_values": {
+            "amazon_managed_kafka_event_source_config": [],
+            "destination_config": [],
+            "document_db_event_source_config": [],
+            "filter_criteria": [],
+            "metrics_config": [],
+            "provisioned_poller_config": [],
+            "scaling_config": [],
+            "self_managed_event_source": [],
+            "self_managed_kafka_event_source_config": [],
+            "source_access_configuration": [],
+            "tags_all": {}
+          },
+          "depends_on": [
+            "aws_iam_role.MyHandlerFunction-Role",
+            "aws_lambda_function.MyHandlerFunction-Function",
+            "aws_sqs_queue.MyHandlerQueue",
+            "data.archive_file.LambdaZipFile"
+          ]
+        },
+        {
+          "address": "aws_lambda_function.MyHandlerFunction-Function",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "MyHandlerFunction-Function",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "architectures": [
+              "x86_64"
+            ],
+            "arn": "arn:aws:lambda:us-west-1:111111111111:function:s3-sqs-lambda-tf-LambdaFunction",
+            "code_sha256": "REDACTED",
+            "code_signing_config_arn": "",
+            "dead_letter_config": [],
+            "description": "",
+            "environment": [],
+            "ephemeral_storage": [
+              {
+                "size": 512
+              }
+            ],
+            "file_system_config": [],
+            "filename": "./lambda-src.zip",
+            "function_name": "s3-sqs-lambda-tf-LambdaFunction",
+            "handler": "app.handler",
+            "id": "s3-sqs-lambda-tf-LambdaFunction",
+            "image_config": [],
+            "image_uri": "",
+            "invoke_arn": "arn:aws:apigateway:us-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-west-1:111111111111:function:s3-sqs-lambda-tf-LambdaFunction/invocations",
+            "kms_key_arn": "",
+            "last_modified": "2026-08-27T18:54:51.366+0000",
+            "layers": null,
+            "logging_config": [
+              {
+                "application_log_level": "",
+                "log_format": "Text",
+                "log_group": "/aws/lambda/s3-sqs-lambda-tf-LambdaFunction",
+                "system_log_level": ""
+              }
+            ],
+            "memory_size": 128,
+            "package_type": "Zip",
+            "publish": false,
+            "qualified_arn": "arn:aws:lambda:us-west-1:111111111111:function:s3-sqs-lambda-tf-LambdaFunction:$LATEST",
+            "qualified_invoke_arn": "arn:aws:apigateway:us-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-west-1:111111111111:function:s3-sqs-lambda-tf-LambdaFunction:$LATEST/invocations",
+            "region": "us-west-1",
+            "replace_security_groups_on_destroy": null,
+            "replacement_security_group_ids": null,
+            "reserved_concurrent_executions": -1,
+            "role": "arn:aws:iam::111111111111:role/s3-sqs-lambda-tf-MyHandlerFunction-Role",
+            "runtime": "nodejs24.x",
+            "s3_bucket": null,
+            "s3_key": null,
+            "s3_object_version": null,
+            "signing_job_arn": "",
+            "signing_profile_version_arn": "",
+            "skip_destroy": false,
+            "snap_start": [],
+            "source_code_hash": "",
+            "source_code_size": 336,
+            "source_kms_key_arn": "",
+            "tags": null,
+            "tags_all": {},
+            "timeout": 3,
+            "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "PassThrough"
+              }
+            ],
+            "version": "$LATEST",
+            "vpc_config": []
+          },
+          "sensitive_values": {
+            "architectures": [
+              false
+            ],
+            "dead_letter_config": [],
+            "environment": [],
+            "ephemeral_storage": [
+              {}
+            ],
+            "file_system_config": [],
+            "image_config": [],
+            "logging_config": [
+              {}
+            ],
+            "snap_start": [],
+            "tags_all": {},
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": []
+          },
+          "depends_on": [
+            "aws_iam_role.MyHandlerFunction-Role",
+            "data.archive_file.LambdaZipFile"
+          ],
+          "identity_schema_version": 0,
+          "identity": {
+            "account_id": "111111111111",
+            "function_name": "s3-sqs-lambda-tf-LambdaFunction",
+            "region": "us-west-1"
+          }
+        },
+        {
+          "address": "aws_s3_bucket.MySourceS3Bucket",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "MySourceS3Bucket",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "acceleration_status": "",
+            "acl": null,
+            "arn": "arn:aws:s3:::s3-sqs-lambda-tf-sources3bucket-20260827185442152600000001",
+            "bucket": "REDACTED",
+            "bucket_domain_name": "s3-sqs-lambda-tf-sources3bucket-20260827185442152600000001.s3.amazonaws.com",
+            "bucket_prefix": "s3-sqs-lambda-tf-sources3bucket-",
+            "bucket_region": "us-west-1",
+            "bucket_regional_domain_name": "s3-sqs-lambda-tf-sources3bucket-20260827185442152600000001.s3.us-west-1.amazonaws.com",
+            "cors_rule": [],
+            "force_destroy": false,
+            "grant": [
+              {
+                "id": "0f79f2d70cbe095acb90b364023d22c30fe0b381309f7dbdecdc12bb7ab644ea",
+                "permissions": [
+                  "FULL_CONTROL"
+                ],
+                "type": "CanonicalUser",
+                "uri": ""
+              }
+            ],
+            "hosted_zone_id": "Z2F56UZL2M1ACD",
+            "id": "REDACTED",
+            "lifecycle_rule": [],
+            "logging": [],
+            "object_lock_configuration": [],
+            "object_lock_enabled": false,
+            "policy": "",
+            "region": "us-west-1",
+            "replication_configuration": [],
+            "request_payer": "BucketOwner",
+            "server_side_encryption_configuration": [
+              {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {
+                        "kms_master_key_id": "",
+                        "sse_algorithm": "AES256"
+                      }
+                    ],
+                    "bucket_key_enabled": false
+                  }
+                ]
+              }
+            ],
+            "tags": null,
+            "tags_all": {},
+            "timeouts": null,
+            "versioning": [
+              {
+                "enabled": false,
+                "mfa_delete": false
+              }
+            ],
+            "website": [],
+            "website_domain": null,
+            "website_endpoint": null
+          },
+          "sensitive_values": {
+            "cors_rule": [],
+            "grant": [
+              {
+                "permissions": [
+                  false
+                ]
+              }
+            ],
+            "lifecycle_rule": [],
+            "logging": [],
+            "object_lock_configuration": [],
+            "replication_configuration": [],
+            "server_side_encryption_configuration": [
+              {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {}
+                    ]
+                  }
+                ]
+              }
+            ],
+            "tags_all": {},
+            "versioning": [
+              {}
+            ],
+            "website": []
+          },
+          "identity_schema_version": 0,
+          "identity": {
+            "account_id": "111111111111",
+            "bucket": "REDACTED",
+            "region": "us-west-1"
+          }
+        },
+        {
+          "address": "aws_s3_bucket_notification.MySourceS3BucketNotification",
+          "mode": "managed",
+          "type": "aws_s3_bucket_notification",
+          "name": "MySourceS3BucketNotification",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "REDACTED",
+            "eventbridge": false,
+            "id": "REDACTED",
+            "lambda_function": [],
+            "queue": [
+              {
+                "events": [
+                  "s3:ObjectCreated:*"
+                ],
+                "filter_prefix": "",
+                "filter_suffix": ".jpg",
+                "id": "tf-s3-queue-20260827185507441400000002",
+                "queue_arn": "arn:aws:sqs:us-west-1:111111111111:s3-sqs-lambda-tf-SQSResizerQueue"
+              }
+            ],
+            "region": "us-west-1",
+            "topic": []
+          },
+          "sensitive_values": {
+            "lambda_function": [],
+            "queue": [
+              {
+                "events": [
+                  false
+                ]
+              }
+            ],
+            "topic": []
+          },
+          "depends_on": [
+            "aws_s3_bucket.MySourceS3Bucket",
+            "aws_sqs_queue.MyHandlerQueue"
+          ],
+          "identity_schema_version": 0,
+          "identity": {
+            "account_id": "111111111111",
+            "bucket": "REDACTED",
+            "region": "us-west-1"
+          }
+        },
+        {
+          "address": "aws_sqs_queue.MyHandlerQueue",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "MyHandlerQueue",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "arn": "arn:aws:sqs:us-west-1:111111111111:s3-sqs-lambda-tf-SQSResizerQueue",
+            "content_based_deduplication": false,
+            "deduplication_scope": "",
+            "delay_seconds": 0,
+            "fifo_queue": false,
+            "fifo_throughput_limit": "",
+            "id": "https://sqs.us-west-1.amazonaws.com/111111111111/s3-sqs-lambda-tf-SQSResizerQueue",
+            "kms_data_key_reuse_period_seconds": 300,
+            "kms_master_key_id": "",
+            "max_message_size": 262144,
+            "message_retention_seconds": 345600,
+            "name": "s3-sqs-lambda-tf-SQSResizerQueue",
+            "name_prefix": "",
+            "policy": "",
+            "receive_wait_time_seconds": 0,
+            "redrive_allow_policy": "",
+            "redrive_policy": "",
+            "region": "us-west-1",
+            "sqs_managed_sse_enabled": true,
+            "tags": null,
+            "tags_all": {},
+            "timeouts": null,
+            "url": "https://sqs.us-west-1.amazonaws.com/111111111111/s3-sqs-lambda-tf-SQSResizerQueue",
+            "visibility_timeout_seconds": 30
+          },
+          "sensitive_values": {
+            "tags_all": {}
+          },
+          "identity_schema_version": 1,
+          "identity": {
+            "url": "https://sqs.us-west-1.amazonaws.com/111111111111/s3-sqs-lambda-tf-SQSResizerQueue"
+          }
+        },
+        {
+          "address": "aws_sqs_queue_policy.MyHandlerQueuePolicy",
+          "mode": "managed",
+          "type": "aws_sqs_queue_policy",
+          "name": "MyHandlerQueuePolicy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "https://sqs.us-west-1.amazonaws.com/111111111111/s3-sqs-lambda-tf-SQSResizerQueue",
+            "policy": "{\"Id\":\"QueuePolicy\",\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Condition\":{\"ArnLike\":{\"aws:SourceArn\":\"arn:aws:s3:::s3-sqs-lambda-tf-sources3bucket-20260827185442152600000001\"},\"StringEquals\":{\"aws:SourceAccount\":\"111111111111\"}},\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"s3.amazonaws.com\"},\"Resource\":\"arn:aws:sqs:us-west-1:111111111111:s3-sqs-lambda-tf-SQSResizerQueue\",\"Sid\":\"Allow-SendMessage-To-Queue-From-S3-Event-Notification\"}],\"Version\":\"2012-10-17\"}",
+            "queue_url": "https://sqs.us-west-1.amazonaws.com/111111111111/s3-sqs-lambda-tf-SQSResizerQueue",
+            "region": "us-west-1"
+          },
+          "sensitive_values": {},
+          "depends_on": [
+            "aws_s3_bucket.MySourceS3Bucket",
+            "aws_sqs_queue.MyHandlerQueue",
+            "data.aws_caller_identity.current",
+            "data.aws_region.current"
+          ],
+          "identity_schema_version": 1,
+          "identity": {
+            "queue_url": "https://sqs.us-west-1.amazonaws.com/111111111111/s3-sqs-lambda-tf-SQSResizerQueue"
+          }
+        }
+      ]
+    }
+  }
+}
