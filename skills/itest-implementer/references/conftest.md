@@ -225,6 +225,18 @@ def events(aws_session: boto3.Session):
 
 
 @pytest.fixture(scope="session")
+def apigateway(aws_session: boto3.Session):
+    """Read-only API Gateway REST (v1) client (methods, integrations, stages)."""
+    return aws_session.client("apigateway")
+
+
+@pytest.fixture(scope="session")
+def apigatewayv2(aws_session: boto3.Session):
+    """Read-only API Gateway HTTP API (v2) client (routes, integrations, stages)."""
+    return aws_session.client("apigatewayv2")
+
+
+@pytest.fixture(scope="session")
 def resolve(tf_dir: str):
     """``resolve(hcl_address)`` -> live values, bound to the configured dir."""
 

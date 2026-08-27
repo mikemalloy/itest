@@ -26,6 +26,7 @@ CONFTEST_MD = SKILL_DIR / "references" / "conftest.md"
 SG_RECIPE = RECIPE_DIR / "sg_edge.md"
 IAM_RECIPE = RECIPE_DIR / "iam_edge.md"
 EVENT_RECIPE = RECIPE_DIR / "event_edge.md"
+ROUTE_RECIPE = RECIPE_DIR / "route_edge.md"
 
 TEMPLATE_BEGIN = "<!-- BEGIN conftest.py -->"
 TEMPLATE_END = "<!-- END conftest.py -->"
@@ -77,7 +78,7 @@ def emitted_point_types() -> set[str]:
 def test_skill_files_exist() -> None:
     assert SKILL_MD.is_file(), f"missing {SKILL_MD}"
     assert CONFTEST_MD.is_file(), f"missing {CONFTEST_MD}"
-    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE):
+    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE):
         assert recipe.is_file(), f"missing {recipe}"
 
 
@@ -115,6 +116,7 @@ def test_no_recipe_without_a_detector() -> None:
         (SG_RECIPE, "sg_edge"),
         (IAM_RECIPE, "iam_edge"),
         (EVENT_RECIPE, "event_edge"),
+        (ROUTE_RECIPE, "route_edge"),
     ],
 )
 def test_recipe_names_its_type_and_explains_failure(recipe: Path, heading: str) -> None:
@@ -127,13 +129,13 @@ def test_recipe_names_its_type_and_explains_failure(recipe: Path, heading: str) 
 
 @pytest.mark.parametrize("field", ["source", "target", "hcl_address"])
 def test_recipes_document_point_fields(field: str) -> None:
-    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE):
+    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE):
         assert field in recipe.read_text(encoding="utf-8"), f"{recipe.name}"
 
 
 def test_recipes_point_at_the_shared_conftest() -> None:
     """One resolver, referenced everywhere, so the recipes cannot diverge."""
-    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE):
+    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE):
         text = recipe.read_text(encoding="utf-8")
         assert "conftest.md" in text, f"{recipe.name} does not reference the template"
         assert TEMPLATE_BEGIN not in text, (
@@ -161,7 +163,10 @@ def test_conftest_template_reads_config_rather_than_hardcoding_it() -> None:
         assert key in source, f"template never reads {key}"
 
 
-@pytest.mark.parametrize("fixture", ["ec2", "iam", "lambda_", "sqs", "s3", "events"])
+@pytest.mark.parametrize(
+    "fixture",
+    ["ec2", "iam", "lambda_", "sqs", "s3", "events", "apigateway", "apigatewayv2"],
+)
 def test_conftest_template_provides_clients_for_every_recipe(fixture: str) -> None:
     """Each recipe's assertions need its service client to exist."""
     source = extract_conftest_template()
@@ -249,3 +254,44 @@ def test_iam_recipe_warns_about_service_arn_shapes() -> None:
     """Simulating against the wrong ARN shape fails a policy that is fine."""
     text = IAM_RECIPE.read_text(encoding="utf-8")
     assert "log-group:" in text, "no note on CloudWatch Logs ARN shapes"
+
+
+# --------------------------------------------------------------------------
+# The route recipe covers both API Gateway generations
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "get_integration",  # v1 and v2 both
+        "get_stage",
+        "aws_api_gateway_method",  # v1 hcl_address
+        "aws_apigatewayv2_route",  # v2 hcl_address
+        "route_key",
+    ],
+)
+def test_route_recipe_covers_both_generations(marker: str) -> None:
+    assert marker in ROUTE_RECIPE.read_text(encoding="utf-8")
+
+
+def test_route_recipe_forbids_calling_the_endpoint() -> None:
+    """Calling the route is an active probe and belongs to a later tier.
+
+    Checked inside the python blocks only: the prose has to be free to name
+    `test_invoke_method` in order to rule it out.
+    """
+    text = ROUTE_RECIPE.read_text(encoding="utf-8")
+    assert "active probe" in text.lower()
+
+    fence = re.compile(r"```python\n(.*?)```", re.DOTALL)
+    code = "\n".join(fence.findall(text))
+    for forbidden in ("requests.get(", "urlopen(", "test_invoke_method", "invoke("):
+        assert forbidden not in code, forbidden
+
+
+def test_skill_inventory_names_four_recipes() -> None:
+    """The inventory step tells the agent what it may implement."""
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert "Four ship today" in text
+    assert "route_edge" in text

@@ -45,14 +45,17 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   shorthand lists matches and exits; it never guesses.
 
 ## Detector architecture
-- Detectors emit typed primitive integration points. Three ship today:
+- Detectors emit typed primitive integration points. Four ship today:
   `sg_edge` (security-group reachability: source, target, protocol, ports,
   direction), `iam_edge` (role -> resource grants: actions ride in attributes,
   with wildcard_action / wildcard_resource / external / managed /
   broad_managed_policy flags; `external: true` is how cross-stack references
   surface), and `event_edge` (event source mappings, SQS DLQ redrive, Lambda
-  permissions; `mechanism` attribute). The Scope ledger below is the current
-  record of what exists.
+  permissions; `mechanism` attribute). A fourth, `route_edge`, covers API
+  Gateway: a route -> what it invokes, across both the REST (v1) and HTTP API
+  (v2) shapes, with `auth: NONE` surfaced as `[open]` the way
+  `wildcard_resource` is surfaced on an IAM edge. The Scope ledger below is
+  the current record of what exists.
 - Every place a point is printed (plan changeset, Mermaid labels, stub names
   and docstrings) dispatches on point type via `itest/core/points.py`. A new
   detector must add its type there, never leave another command printing
@@ -116,6 +119,7 @@ Shipped:
 - IAM edge detector (role -> resource, wildcard / cross-stack / managed flags)
 - Event edge detector (event source mapping, DLQ redrive, lambda_permission,
   s3_notification, eventbridge_target)
+- API Gateway route detector (REST + HTTP API)
 - Plan and state JSON roots both accepted by the plan entry point
 - Manifest schema v2 (tier, resource_group, last_duration_seconds — schema
   and v1 migration only; nothing schedules on them yet)
@@ -130,7 +134,8 @@ Shipped:
   Lambda env allowlist, credential patterns, account pseudonymization, `--check`)
 - Ruff lint/format as part of Development discipline
 - itest-implementer agent skill (interview, read-only default, and a recipe
-  per detector: sg_edge, iam_edge, event_edge, over one shared conftest)
+  per detector: sg_edge, iam_edge, event_edge, route_edge, over one shared
+  conftest)
 
 Not yet built (do not build without explicit instruction):
 - DNS and endpoint-availability detectors

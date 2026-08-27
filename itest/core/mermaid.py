@@ -11,8 +11,9 @@ def generate_mermaid(points: list[IntegrationPoint]) -> str:
 
     Nodes are resources, CIDRs, or external ARNs; edges are labelled per point
     type (``protocol:ports`` for sg_edge, action summary for iam_edge, the
-    mechanism for event_edge) and drawn from source to target. Node order
-    follows first appearance so the output is deterministic across runs.
+    mechanism for event_edge, ``METHOD /path`` for route_edge) and drawn from
+    source to target. Node order follows first appearance so the output is
+    deterministic across runs.
     """
     lines = ["flowchart LR"]
     node_ids: dict[str, str] = {}

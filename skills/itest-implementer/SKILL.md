@@ -50,13 +50,13 @@ Parse the manifest. List every test whose `status` is `stub`, grouped by the
 `IntegrationPoint`).
 
 For each group, check whether a recipe exists at
-`references/recipes/<type>.md`. Three ship today — `sg_edge`, `iam_edge`, and
-`event_edge` — one per detector ITest has.
+`references/recipes/<type>.md`. Four ship today — `sg_edge`, `iam_edge`,
+`event_edge`, and `route_edge` — one per detector ITest has.
 
 If a type has **no** recipe, say so plainly:
 
 > N points of type `<type>` have no recipe in this skill, so I am skipping
-> them. Recipes exist for: sg_edge, iam_edge, event_edge.
+> them. Recipes exist for: sg_edge, iam_edge, event_edge, route_edge.
 
 Then skip them. Never improvise a recipe for a type you have no instructions
 for — a guessed assertion that passes is worse than no test.
@@ -191,15 +191,16 @@ reflects reality is the tool working.
 
 ## Scope
 
-Three recipes ship today, one per detector ITest has:
+Four recipes ship today, one per detector ITest has:
 
 | Recipe | Covers | Assertion rests on |
 |---|---|---|
 | [`sg_edge`](references/recipes/sg_edge.md) | Security-group reachability | `ec2:DescribeSecurityGroups` |
 | [`iam_edge`](references/recipes/iam_edge.md) | Role -> resource grants | `iam:SimulatePrincipalPolicy`, falling back to reading the policy |
 | [`event_edge`](references/recipes/event_edge.md) | ESM, DLQ redrive, Lambda permission, S3 notification, EventBridge target | `lambda:ListEventSourceMappings`, `sqs:GetQueueAttributes`, `lambda:GetPolicy`, `s3:GetBucketNotification`, `events:DescribeRule`, `events:ListTargetsByRule` |
+| [`route_edge`](references/recipes/route_edge.md) | API Gateway route -> integration | `apigateway:GET` on methods, integrations and stages; `apigatewayv2:GET` on routes, integrations and stages |
 
-All three share one `conftest.py`, from
+All four share one `conftest.py`, from
 [`references/conftest.md`](references/conftest.md).
 
 DESIGN.md's Scope ledger is the authoritative list of what ITest detects. When
