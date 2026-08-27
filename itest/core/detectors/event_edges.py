@@ -32,9 +32,16 @@ from itest.core.manifest import IntegrationPoint
 _REFERENCE_TYPES = {"aws_lambda_event_source_mapping", "aws_lambda_permission"}
 
 
-def _point_id(source: str, target: str, mechanism: str) -> str:
-    raw = "|".join(["event_edge", source, target, mechanism])
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+def _point_id(
+    source: str, target: str, mechanism: str, qualifier: str | None = None
+) -> str:
+    parts = ["event_edge", source, target, mechanism]
+    # A Lambda permission on a version/alias is a different grant from the
+    # unqualified one (terraform-aws-modules/lambda creates both per trigger).
+    # Appended only when non-empty so existing ids are unchanged.
+    if qualifier:
+        parts.append(f"qualifier={qualifier}")
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
 
 
 def _make_point(
@@ -42,7 +49,9 @@ def _make_point(
 ) -> IntegrationPoint:
     now = datetime.now(UTC)
     return IntegrationPoint(
-        id=_point_id(source, target, attributes["mechanism"]),
+        id=_point_id(
+            source, target, attributes["mechanism"], attributes.get("qualifier")
+        ),
         type="event_edge",
         source=source,
         target=target,
@@ -68,6 +77,7 @@ class EventEdgeDetector:
 
         resources = [r for r in iter_resources(plan_json) if r.get("mode") == "managed"]
         lookup = self._identity_map(resources)
+        functions = self._function_map(resources)
 
         def resolve(value) -> tuple[str, bool]:
             """Return (label, external)."""
@@ -76,7 +86,26 @@ class EventEdgeDetector:
             address = lookup.get(value)
             return (address, False) if address else (value, True)
 
+        def resolve_function(value) -> tuple[str, bool]:
+            """Resolve a Lambda function reference against functions FIRST.
+
+            A ``function_name`` names a Lambda; resolving it against every
+            resource lets a same-named IAM role (terraform-aws-modules/lambda
+            names both identically) win by sort order.
+            """
+            if isinstance(value, str) and value in functions:
+                return (functions[value], False)
+            return resolve(value)
+
         points: list[IntegrationPoint] = []
+        seen: set[str] = set()
+
+        def emit(point: IntegrationPoint) -> None:
+            if point.id in seen:
+                return
+            seen.add(point.id)
+            points.append(point)
+
         for resource in resources:
             rtype = resource.get("type")
             values = resource.get("values") or {}
@@ -84,12 +113,12 @@ class EventEdgeDetector:
 
             if rtype == "aws_lambda_event_source_mapping":
                 source, src_ext = resolve(values.get("event_source_arn"))
-                target, tgt_ext = resolve(
+                target, tgt_ext = resolve_function(
                     values.get("function_arn") or values.get("function_name")
                 )
                 if not source or not target:
                     continue
-                points.append(
+                emit(
                     _make_point(
                         source,
                         target,
@@ -110,7 +139,7 @@ class EventEdgeDetector:
                 target, tgt_ext = resolve(policy.get("deadLetterTargetArn"))
                 if not target:
                     continue
-                points.append(
+                emit(
                     _make_point(
                         address,
                         target,
@@ -130,10 +159,10 @@ class EventEdgeDetector:
                     source, src_ext = resolve(source_arn)
                 else:
                     source, src_ext = principal, True
-                target, tgt_ext = resolve(values.get("function_name"))
+                target, tgt_ext = resolve_function(values.get("function_name"))
                 if not source or not target:
                     continue
-                points.append(
+                emit(
                     _make_point(
                         source,
                         target,
@@ -141,6 +170,7 @@ class EventEdgeDetector:
                             "mechanism": "lambda_permission",
                             "action": values.get("action"),
                             "principal": principal,
+                            "qualifier": values.get("qualifier") or "",
                             "external": src_ext or tgt_ext,
                         },
                         address,
@@ -163,6 +193,20 @@ class EventEdgeDetector:
                 continue
             values = resource.get("values") or {}
             for key in ("arn", "id", "function_name", "name", "url"):
+                value = values.get(key)
+                if isinstance(value, str) and value and value not in mapping:
+                    mapping[value] = resource["address"]
+        return mapping
+
+    @staticmethod
+    def _function_map(resources: list[dict]) -> dict[str, str]:
+        """Map Lambda function names, ARNs, and ids to their addresses."""
+        mapping: dict[str, str] = {}
+        for resource in resources:
+            if resource.get("type") != "aws_lambda_function":
+                continue
+            values = resource.get("values") or {}
+            for key in ("arn", "function_name", "id", "qualified_arn"):
                 value = values.get(key)
                 if isinstance(value, str) and value and value not in mapping:
                     mapping[value] = resource["address"]

@@ -74,6 +74,8 @@ def summary(point: IntegrationPoint) -> str:
             extra = f" batch={attrs.get('batch_size')}"
         elif mechanism == "lambda_permission":
             extra = f" {attrs.get('action')}"
+            if attrs.get("qualifier"):
+                extra += f" @{attrs['qualifier']}"
         return mechanism + extra
     return point.type
 
