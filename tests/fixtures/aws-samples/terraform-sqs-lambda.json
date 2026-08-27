@@ -1,0 +1,996 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.15.4",
+  "values": {
+    "outputs": {
+      "lambda_function_arn": {
+        "sensitive": false,
+        "value": "arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda",
+        "type": "string"
+      },
+      "lambda_function_invoke_arn": {
+        "sensitive": false,
+        "value": "arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda/invocations",
+        "type": "string"
+      },
+      "lambda_function_name": {
+        "sensitive": false,
+        "value": "evolved-ape-lambda",
+        "type": "string"
+      },
+      "lambda_function_qualified_arn": {
+        "sensitive": false,
+        "value": "arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda:1",
+        "type": "string"
+      },
+      "lambda_function_version": {
+        "sensitive": false,
+        "value": "1",
+        "type": "string"
+      },
+      "lambda_role_arn": {
+        "sensitive": false,
+        "value": "arn:aws:iam::111111111111:role/evolved-ape-lambda",
+        "type": "string"
+      },
+      "sqs_queue_arn": {
+        "sensitive": false,
+        "value": "arn:aws:sqs:eu-west-1:111111111111:evolved-ape",
+        "type": "string"
+      },
+      "sqs_queue_id": {
+        "sensitive": false,
+        "value": "https://sqs.eu-west-1.amazonaws.com/111111111111/evolved-ape",
+        "type": "string"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "random_pet.this",
+          "mode": "managed",
+          "type": "random_pet",
+          "name": "this",
+          "provider_name": "registry.terraform.io/hashicorp/random",
+          "schema_version": 0,
+          "values": {
+            "id": "evolved-ape",
+            "keepers": null,
+            "length": 2,
+            "prefix": null,
+            "separator": "-"
+          },
+          "sensitive_values": {}
+        }
+      ],
+      "child_modules": [
+        {
+          "resources": [
+            {
+              "address": "module.lambda_function.data.aws_caller_identity.current",
+              "mode": "data",
+              "type": "aws_caller_identity",
+              "name": "current",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "account_id": "111111111111",
+                "arn": "arn:aws:iam::111111111111:user/aiengineer",
+                "id": "111111111111",
+                "user_id": "AIDAEXAMPLE1000000000"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.lambda_function.data.aws_iam_policy_document.assume_role[0]",
+              "mode": "data",
+              "type": "aws_iam_policy_document",
+              "name": "assume_role",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "id": "2690255455",
+                "json": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": \"sts:AssumeRole\",\n      \"Principal\": {\n        \"Service\": \"lambda.amazonaws.com\"\n      }\n    }\n  ]\n}",
+                "minified_json": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}",
+                "override_json": null,
+                "override_policy_documents": null,
+                "policy_id": null,
+                "source_json": null,
+                "source_policy_documents": null,
+                "statement": [
+                  {
+                    "actions": [
+                      "sts:AssumeRole"
+                    ],
+                    "condition": [],
+                    "effect": "Allow",
+                    "not_actions": [],
+                    "not_principals": [],
+                    "not_resources": [],
+                    "principals": [
+                      {
+                        "identifiers": [
+                          "lambda.amazonaws.com"
+                        ],
+                        "type": "Service"
+                      }
+                    ],
+                    "resources": [],
+                    "sid": ""
+                  }
+                ],
+                "version": "2012-10-17"
+              },
+              "sensitive_values": {
+                "statement": [
+                  {
+                    "actions": [
+                      false
+                    ],
+                    "condition": [],
+                    "not_actions": [],
+                    "not_principals": [],
+                    "not_resources": [],
+                    "principals": [
+                      {
+                        "identifiers": [
+                          false
+                        ]
+                      }
+                    ],
+                    "resources": []
+                  }
+                ]
+              }
+            },
+            {
+              "address": "module.lambda_function.data.aws_iam_policy_document.logs[0]",
+              "mode": "data",
+              "type": "aws_iam_policy_document",
+              "name": "logs",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "id": "2302104018",
+                "json": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"logs:PutLogEvents\",\n        \"logs:CreateLogStream\",\n        \"logs:CreateLogGroup\"\n      ],\n      \"Resource\": [\n        \"arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*:*\",\n        \"arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*\"\n      ]\n    }\n  ]\n}",
+                "minified_json": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"logs:PutLogEvents\",\"logs:CreateLogStream\",\"logs:CreateLogGroup\"],\"Resource\":[\"arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*:*\",\"arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*\"]}]}",
+                "override_json": null,
+                "override_policy_documents": null,
+                "policy_id": null,
+                "source_json": null,
+                "source_policy_documents": null,
+                "statement": [
+                  {
+                    "actions": [
+                      "logs:CreateLogGroup",
+                      "logs:CreateLogStream",
+                      "logs:PutLogEvents"
+                    ],
+                    "condition": [],
+                    "effect": "Allow",
+                    "not_actions": [],
+                    "not_principals": [],
+                    "not_resources": [],
+                    "principals": [],
+                    "resources": [
+                      "arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*",
+                      "arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*:*"
+                    ],
+                    "sid": ""
+                  }
+                ],
+                "version": "2012-10-17"
+              },
+              "sensitive_values": {
+                "statement": [
+                  {
+                    "actions": [
+                      false,
+                      false,
+                      false
+                    ],
+                    "condition": [],
+                    "not_actions": [],
+                    "not_principals": [],
+                    "not_resources": [],
+                    "principals": [],
+                    "resources": [
+                      false,
+                      false
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "address": "module.lambda_function.data.aws_partition.current",
+              "mode": "data",
+              "type": "aws_partition",
+              "name": "current",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "dns_suffix": "amazonaws.com",
+                "id": "aws",
+                "partition": "aws",
+                "reverse_dns_prefix": "com.amazonaws"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.lambda_function.data.aws_region.current",
+              "mode": "data",
+              "type": "aws_region",
+              "name": "current",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "description": "Europe (Ireland)",
+                "endpoint": "ec2.eu-west-1.amazonaws.com",
+                "id": "eu-west-1",
+                "name": "eu-west-1",
+                "region": "eu-west-1"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.lambda_function.data.external.archive_prepare[0]",
+              "mode": "data",
+              "type": "external",
+              "name": "archive_prepare",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/external",
+              "schema_version": 0,
+              "values": {
+                "id": "-",
+                "program": [
+                  "python3",
+                  ".terraform/modules/lambda_function/package.py",
+                  "prepare"
+                ],
+                "query": {
+                  "artifacts_dir": "builds",
+                  "docker": null,
+                  "hash_extra": "",
+                  "hash_internal": "[\"eadf00000bd002258fe264981f05a7125cce4d9860ee10a9f817d05fb67b4aa9\"]",
+                  "paths": "{\"cwd\":\"/Users/michaelmalloy/itest-validation/serverless-patterns/terraform-sqs-lambda\",\"module\":\".terraform/modules/lambda_function\",\"root\":\".\"}",
+                  "quiet": "true",
+                  "recreate_missing_package": "true",
+                  "runtime": "python3.14",
+                  "source_path": "./../terraform-fixtures/python"
+                },
+                "result": {
+                  "build_plan": "{\"filename\": \"builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.zip\", \"runtime\": \"python3.14\", \"artifacts_dir\": \"builds\", \"build_plan\": [[[\"pip\", \"python3.14\", \"../terraform-fixtures/python/requirements.txt\", null, null], [\"zip\", \"../terraform-fixtures/python\", null]]], \"quiet\": \"true\"}",
+                  "build_plan_filename": "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.plan.json",
+                  "filename": "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.zip",
+                  "timestamp": "1787854798340234000"
+                },
+                "working_dir": null
+              },
+              "sensitive_values": {
+                "program": [
+                  false,
+                  false,
+                  false
+                ],
+                "query": {},
+                "result": {}
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_cloudwatch_log_group.lambda[0]",
+              "mode": "managed",
+              "type": "aws_cloudwatch_log_group",
+              "name": "lambda",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "arn": "arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda",
+                "deletion_protection_enabled": false,
+                "id": "/aws/lambda/evolved-ape-lambda",
+                "kms_key_id": "",
+                "log_group_class": "STANDARD",
+                "name": "/aws/lambda/evolved-ape-lambda",
+                "name_prefix": "",
+                "region": "eu-west-1",
+                "retention_in_days": 0,
+                "skip_destroy": false,
+                "tags": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "tags_all": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                }
+              },
+              "sensitive_values": {
+                "tags": {},
+                "tags_all": {}
+              },
+              "depends_on": [
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "name": "/aws/lambda/evolved-ape-lambda",
+                "region": "eu-west-1"
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_iam_role.lambda[0]",
+              "mode": "managed",
+              "type": "aws_iam_role",
+              "name": "lambda",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "arn": "arn:aws:iam::111111111111:role/evolved-ape-lambda",
+                "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+                "create_date": "2026-08-27T18:20:00Z",
+                "description": "",
+                "force_detach_policies": true,
+                "id": "evolved-ape-lambda",
+                "inline_policy": [],
+                "managed_policy_arns": [],
+                "max_session_duration": 3600,
+                "name": "evolved-ape-lambda",
+                "name_prefix": "",
+                "path": "/",
+                "permissions_boundary": "",
+                "tags": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "tags_all": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "unique_id": "AROAEXAMPLE2000000000"
+              },
+              "sensitive_values": {
+                "inline_policy": [],
+                "managed_policy_arns": [],
+                "tags": {},
+                "tags_all": {}
+              },
+              "depends_on": [
+                "module.lambda_function.data.aws_iam_policy_document.assume_role",
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "name": "evolved-ape-lambda"
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_iam_role_policy.logs[0]",
+              "mode": "managed",
+              "type": "aws_iam_role_policy",
+              "name": "logs",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "id": "evolved-ape-lambda:evolved-ape-lambda-logs",
+                "name": "evolved-ape-lambda-logs",
+                "name_prefix": "",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"logs:PutLogEvents\",\"logs:CreateLogStream\",\"logs:CreateLogGroup\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*:*\",\"arn:aws:logs:eu-west-1:111111111111:log-group:/aws/lambda/evolved-ape-lambda:*\"]}]}",
+                "role": "evolved-ape-lambda"
+              },
+              "sensitive_values": {},
+              "depends_on": [
+                "module.lambda_function.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.aws_iam_role.lambda",
+                "module.lambda_function.data.aws_arn.log_group_arn",
+                "module.lambda_function.data.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.data.aws_iam_policy_document.assume_role",
+                "module.lambda_function.data.aws_iam_policy_document.logs",
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "name": "evolved-ape-lambda-logs",
+                "role": "evolved-ape-lambda"
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_iam_role_policy_attachment.additional_many[0]",
+              "mode": "managed",
+              "type": "aws_iam_role_policy_attachment",
+              "name": "additional_many",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "id": "evolved-ape-lambda/arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+                "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+                "role": "evolved-ape-lambda"
+              },
+              "sensitive_values": {},
+              "depends_on": [
+                "module.lambda_function.aws_iam_role.lambda",
+                "module.lambda_function.data.aws_iam_policy_document.assume_role",
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "policy_arn": "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+                "role": "evolved-ape-lambda"
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_lambda_event_source_mapping.this[\"sqs\"]",
+              "mode": "managed",
+              "type": "aws_lambda_event_source_mapping",
+              "name": "this",
+              "index": "sqs",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "amazon_managed_kafka_event_source_config": [],
+                "arn": "arn:aws:lambda:eu-west-1:111111111111:event-source-mapping:efd1d7bb-faf5-406a-93ac-a1f3bc78a08d",
+                "batch_size": 10,
+                "bisect_batch_on_function_error": false,
+                "destination_config": [],
+                "document_db_event_source_config": [],
+                "enabled": true,
+                "event_source_arn": "arn:aws:sqs:eu-west-1:111111111111:evolved-ape",
+                "filter_criteria": [],
+                "function_arn": "arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda",
+                "function_name": "arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda",
+                "function_response_types": [
+                  "ReportBatchItemFailures"
+                ],
+                "id": "efd1d7bb-faf5-406a-93ac-a1f3bc78a08d",
+                "kms_key_arn": "",
+                "last_modified": "2026-08-27T18:20:27Z",
+                "last_processing_result": "",
+                "maximum_batching_window_in_seconds": 0,
+                "maximum_record_age_in_seconds": 0,
+                "maximum_retry_attempts": 0,
+                "metrics_config": [],
+                "parallelization_factor": 0,
+                "provisioned_poller_config": [],
+                "queues": null,
+                "region": "eu-west-1",
+                "scaling_config": [],
+                "self_managed_event_source": [],
+                "self_managed_kafka_event_source_config": [],
+                "source_access_configuration": [],
+                "starting_position": "",
+                "starting_position_timestamp": "",
+                "state": "Enabled",
+                "state_transition_reason": "USER_INITIATED",
+                "tags": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "tags_all": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "timeouts": null,
+                "topics": null,
+                "tumbling_window_in_seconds": 0,
+                "use_resource_timeout_for_propagation": null,
+                "uuid": "efd1d7bb-faf5-406a-93ac-a1f3bc78a08d"
+              },
+              "sensitive_values": {
+                "amazon_managed_kafka_event_source_config": [],
+                "destination_config": [],
+                "document_db_event_source_config": [],
+                "filter_criteria": [],
+                "function_response_types": [
+                  false
+                ],
+                "metrics_config": [],
+                "provisioned_poller_config": [],
+                "scaling_config": [],
+                "self_managed_event_source": [],
+                "self_managed_kafka_event_source_config": [],
+                "source_access_configuration": [],
+                "tags": {},
+                "tags_all": {}
+              },
+              "depends_on": [
+                "module.lambda_function.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.aws_iam_role.lambda",
+                "module.lambda_function.aws_iam_role_policy.additional_inline",
+                "module.lambda_function.aws_iam_role_policy.additional_json",
+                "module.lambda_function.aws_iam_role_policy.additional_jsons",
+                "module.lambda_function.aws_iam_role_policy.async",
+                "module.lambda_function.aws_iam_role_policy.dead_letter",
+                "module.lambda_function.aws_iam_role_policy.logs",
+                "module.lambda_function.aws_iam_role_policy.tracing",
+                "module.lambda_function.aws_iam_role_policy.vpc",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_many",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_one",
+                "module.lambda_function.aws_lambda_function.this",
+                "module.lambda_function.aws_s3_object.lambda_package",
+                "module.lambda_function.data.aws_arn.log_group_arn",
+                "module.lambda_function.data.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.data.aws_iam_policy.tracing",
+                "module.lambda_function.data.aws_iam_policy.vpc",
+                "module.lambda_function.data.aws_iam_policy_document.additional_inline",
+                "module.lambda_function.data.aws_iam_policy_document.assume_role",
+                "module.lambda_function.data.aws_iam_policy_document.async",
+                "module.lambda_function.data.aws_iam_policy_document.dead_letter",
+                "module.lambda_function.data.aws_iam_policy_document.logs",
+                "module.lambda_function.data.aws_partition.current",
+                "module.lambda_function.data.external.archive_prepare",
+                "module.lambda_function.local_file.archive_plan",
+                "module.lambda_function.null_resource.archive",
+                "module.lambda_function.terraform_data.package_filename_for_hash",
+                "module.sqs.aws_sqs_queue.this",
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "region": "eu-west-1",
+                "uuid": "efd1d7bb-faf5-406a-93ac-a1f3bc78a08d"
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_lambda_function.this[0]",
+              "mode": "managed",
+              "type": "aws_lambda_function",
+              "name": "this",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "architectures": [
+                  "x86_64"
+                ],
+                "arn": "arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda",
+                "capacity_provider_config": [],
+                "code_sha256": "REDACTED",
+                "code_signing_config_arn": "",
+                "dead_letter_config": [],
+                "description": "My awesome lambda function",
+                "durable_config": [],
+                "environment": [],
+                "ephemeral_storage": [
+                  {
+                    "size": 512
+                  }
+                ],
+                "file_system_config": [],
+                "filename": "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.zip",
+                "function_name": "evolved-ape-lambda",
+                "handler": "index.lambda_handler",
+                "id": "evolved-ape-lambda",
+                "image_config": [],
+                "image_uri": "",
+                "invoke_arn": "arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda/invocations",
+                "kms_key_arn": "",
+                "last_modified": "2026-08-27T18:20:12.547+0000",
+                "layers": null,
+                "logging_config": [
+                  {
+                    "application_log_level": "",
+                    "log_format": "Text",
+                    "log_group": "/aws/lambda/evolved-ape-lambda",
+                    "system_log_level": ""
+                  }
+                ],
+                "memory_size": 128,
+                "package_type": "Zip",
+                "publish": true,
+                "publish_to": null,
+                "qualified_arn": "arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda:1",
+                "qualified_invoke_arn": "arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda:1/invocations",
+                "region": "eu-west-1",
+                "replace_security_groups_on_destroy": null,
+                "replacement_security_group_ids": null,
+                "reserved_concurrent_executions": -1,
+                "response_streaming_invoke_arn": "arn:aws:apigateway:eu-west-1:lambda:path/2021-11-15/functions/arn:aws:lambda:eu-west-1:111111111111:function:evolved-ape-lambda/response-streaming-invocations",
+                "role": "arn:aws:iam::111111111111:role/evolved-ape-lambda",
+                "runtime": "python3.14",
+                "s3_bucket": null,
+                "s3_key": null,
+                "s3_object_version": null,
+                "signing_job_arn": "",
+                "signing_profile_version_arn": "",
+                "skip_destroy": false,
+                "snap_start": [],
+                "source_code_hash": "REDACTED",
+                "source_code_size": 202728,
+                "source_kms_key_arn": "",
+                "tags": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "tags_all": {
+                  "Module": "lambda_function",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "tenancy_config": [],
+                "timeout": 3,
+                "timeouts": null,
+                "tracing_config": [
+                  {
+                    "mode": "PassThrough"
+                  }
+                ],
+                "use_resource_timeout_for_propagation": null,
+                "version": "1",
+                "vpc_config": []
+              },
+              "sensitive_values": {
+                "architectures": [
+                  false
+                ],
+                "capacity_provider_config": [],
+                "dead_letter_config": [],
+                "durable_config": [],
+                "environment": [],
+                "ephemeral_storage": [
+                  {}
+                ],
+                "file_system_config": [],
+                "image_config": [],
+                "logging_config": [
+                  {}
+                ],
+                "snap_start": [],
+                "tags": {},
+                "tags_all": {},
+                "tenancy_config": [],
+                "tracing_config": [
+                  {}
+                ],
+                "vpc_config": []
+              },
+              "depends_on": [
+                "module.lambda_function.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.aws_iam_role.lambda",
+                "module.lambda_function.aws_iam_role_policy.additional_inline",
+                "module.lambda_function.aws_iam_role_policy.additional_json",
+                "module.lambda_function.aws_iam_role_policy.additional_jsons",
+                "module.lambda_function.aws_iam_role_policy.async",
+                "module.lambda_function.aws_iam_role_policy.dead_letter",
+                "module.lambda_function.aws_iam_role_policy.logs",
+                "module.lambda_function.aws_iam_role_policy.tracing",
+                "module.lambda_function.aws_iam_role_policy.vpc",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_many",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_one",
+                "module.lambda_function.aws_s3_object.lambda_package",
+                "module.lambda_function.data.aws_arn.log_group_arn",
+                "module.lambda_function.data.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.data.aws_iam_policy.tracing",
+                "module.lambda_function.data.aws_iam_policy.vpc",
+                "module.lambda_function.data.aws_iam_policy_document.additional_inline",
+                "module.lambda_function.data.aws_iam_policy_document.assume_role",
+                "module.lambda_function.data.aws_iam_policy_document.async",
+                "module.lambda_function.data.aws_iam_policy_document.dead_letter",
+                "module.lambda_function.data.aws_iam_policy_document.logs",
+                "module.lambda_function.data.aws_partition.current",
+                "module.lambda_function.data.external.archive_prepare",
+                "module.lambda_function.local_file.archive_plan",
+                "module.lambda_function.null_resource.archive",
+                "module.lambda_function.terraform_data.package_filename_for_hash",
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "function_name": "evolved-ape-lambda",
+                "region": "eu-west-1"
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_lambda_permission.current_version_triggers[\"sqs\"]",
+              "mode": "managed",
+              "type": "aws_lambda_permission",
+              "name": "current_version_triggers",
+              "index": "sqs",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "action": "lambda:InvokeFunction",
+                "event_source_token": null,
+                "function_name": "evolved-ape-lambda",
+                "function_url_auth_type": null,
+                "id": "sqsbb0768a4631bf79b31d9e7de31",
+                "invoked_via_function_url": null,
+                "principal": "sqs.amazonaws.com",
+                "principal_org_id": null,
+                "qualifier": "1",
+                "region": "eu-west-1",
+                "source_account": null,
+                "source_arn": "arn:aws:sqs:eu-west-1:111111111111:evolved-ape",
+                "statement_id": "sqsbb0768a4631bf79b31d9e7de31",
+                "statement_id_prefix": "sqs",
+                "timeouts": null
+              },
+              "sensitive_values": {},
+              "depends_on": [
+                "module.lambda_function.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.aws_iam_role.lambda",
+                "module.lambda_function.aws_iam_role_policy.additional_inline",
+                "module.lambda_function.aws_iam_role_policy.additional_json",
+                "module.lambda_function.aws_iam_role_policy.additional_jsons",
+                "module.lambda_function.aws_iam_role_policy.async",
+                "module.lambda_function.aws_iam_role_policy.dead_letter",
+                "module.lambda_function.aws_iam_role_policy.logs",
+                "module.lambda_function.aws_iam_role_policy.tracing",
+                "module.lambda_function.aws_iam_role_policy.vpc",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_many",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_one",
+                "module.lambda_function.aws_lambda_function.this",
+                "module.lambda_function.aws_s3_object.lambda_package",
+                "module.lambda_function.data.aws_arn.log_group_arn",
+                "module.lambda_function.data.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.data.aws_iam_policy.tracing",
+                "module.lambda_function.data.aws_iam_policy.vpc",
+                "module.lambda_function.data.aws_iam_policy_document.additional_inline",
+                "module.lambda_function.data.aws_iam_policy_document.assume_role",
+                "module.lambda_function.data.aws_iam_policy_document.async",
+                "module.lambda_function.data.aws_iam_policy_document.dead_letter",
+                "module.lambda_function.data.aws_iam_policy_document.logs",
+                "module.lambda_function.data.aws_partition.current",
+                "module.lambda_function.data.external.archive_prepare",
+                "module.lambda_function.local_file.archive_plan",
+                "module.lambda_function.null_resource.archive",
+                "module.lambda_function.terraform_data.package_filename_for_hash",
+                "module.sqs.aws_sqs_queue.this",
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "function_name": "evolved-ape-lambda",
+                "qualifier": "1",
+                "region": "eu-west-1",
+                "statement_id": "sqsbb0768a4631bf79b31d9e7de31"
+              }
+            },
+            {
+              "address": "module.lambda_function.aws_lambda_permission.unqualified_alias_triggers[\"sqs\"]",
+              "mode": "managed",
+              "type": "aws_lambda_permission",
+              "name": "unqualified_alias_triggers",
+              "index": "sqs",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "action": "lambda:InvokeFunction",
+                "event_source_token": null,
+                "function_name": "evolved-ape-lambda",
+                "function_url_auth_type": null,
+                "id": "sqsdce1f0fd12212600609a8706db",
+                "invoked_via_function_url": null,
+                "principal": "sqs.amazonaws.com",
+                "principal_org_id": null,
+                "qualifier": "",
+                "region": "eu-west-1",
+                "source_account": null,
+                "source_arn": "arn:aws:sqs:eu-west-1:111111111111:evolved-ape",
+                "statement_id": "sqsdce1f0fd12212600609a8706db",
+                "statement_id_prefix": "sqs",
+                "timeouts": null
+              },
+              "sensitive_values": {},
+              "depends_on": [
+                "module.lambda_function.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.aws_iam_role.lambda",
+                "module.lambda_function.aws_iam_role_policy.additional_inline",
+                "module.lambda_function.aws_iam_role_policy.additional_json",
+                "module.lambda_function.aws_iam_role_policy.additional_jsons",
+                "module.lambda_function.aws_iam_role_policy.async",
+                "module.lambda_function.aws_iam_role_policy.dead_letter",
+                "module.lambda_function.aws_iam_role_policy.logs",
+                "module.lambda_function.aws_iam_role_policy.tracing",
+                "module.lambda_function.aws_iam_role_policy.vpc",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_many",
+                "module.lambda_function.aws_iam_role_policy_attachment.additional_one",
+                "module.lambda_function.aws_lambda_function.this",
+                "module.lambda_function.aws_s3_object.lambda_package",
+                "module.lambda_function.data.aws_arn.log_group_arn",
+                "module.lambda_function.data.aws_cloudwatch_log_group.lambda",
+                "module.lambda_function.data.aws_iam_policy.tracing",
+                "module.lambda_function.data.aws_iam_policy.vpc",
+                "module.lambda_function.data.aws_iam_policy_document.additional_inline",
+                "module.lambda_function.data.aws_iam_policy_document.assume_role",
+                "module.lambda_function.data.aws_iam_policy_document.async",
+                "module.lambda_function.data.aws_iam_policy_document.dead_letter",
+                "module.lambda_function.data.aws_iam_policy_document.logs",
+                "module.lambda_function.data.aws_partition.current",
+                "module.lambda_function.data.external.archive_prepare",
+                "module.lambda_function.local_file.archive_plan",
+                "module.lambda_function.null_resource.archive",
+                "module.lambda_function.terraform_data.package_filename_for_hash",
+                "module.sqs.aws_sqs_queue.this",
+                "random_pet.this"
+              ],
+              "identity_schema_version": 0,
+              "identity": {
+                "account_id": "111111111111",
+                "function_name": "evolved-ape-lambda",
+                "qualifier": null,
+                "region": "eu-west-1",
+                "statement_id": "sqsdce1f0fd12212600609a8706db"
+              }
+            },
+            {
+              "address": "module.lambda_function.local_file.archive_plan[0]",
+              "mode": "managed",
+              "type": "local_file",
+              "name": "archive_plan",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/local",
+              "schema_version": 0,
+              "values": {
+                "content": "REDACTED",
+                "content_base64": null,
+                "content_base64sha256": "REDACTED",
+                "content_base64sha512": "REDACTED",
+                "content_md5": "a1b2ee775befdba7313f41c5448411b3",
+                "content_sha1": "1d2647df1e663701eea1663353b065a34ac21fce",
+                "content_sha256": "22fa114b5df7b95b36f2bc668a743f30f07b0e117f924f8def49d0006f73249e",
+                "content_sha512": "781cda2696fd6fffe6e18b1988fc21eebf90317fd220222a36edcea54237967fb8bec01cb1e6cfe46b15d45af31321c5b2bf60d8bc5970433c33c75dd9b67ff7",
+                "directory_permission": "0755",
+                "file_permission": "0644",
+                "filename": "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.plan.json",
+                "id": "1d2647df1e663701eea1663353b065a34ac21fce",
+                "sensitive_content": "REDACTED",
+                "source": null
+              },
+              "sensitive_values": {
+                "content": true,
+                "sensitive_content": true
+              },
+              "depends_on": [
+                "module.lambda_function.data.external.archive_prepare"
+              ]
+            },
+            {
+              "address": "module.lambda_function.null_resource.archive[0]",
+              "mode": "managed",
+              "type": "null_resource",
+              "name": "archive",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/null",
+              "schema_version": 0,
+              "values": {
+                "id": "4523843477037316005",
+                "triggers": {
+                  "filename": "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.zip",
+                  "timestamp": "1787854798340234000"
+                }
+              },
+              "sensitive_values": {
+                "triggers": {}
+              },
+              "depends_on": [
+                "module.lambda_function.data.external.archive_prepare",
+                "module.lambda_function.local_file.archive_plan"
+              ]
+            },
+            {
+              "address": "module.lambda_function.terraform_data.package_filename_for_hash[0]",
+              "mode": "managed",
+              "type": "terraform_data",
+              "name": "package_filename_for_hash",
+              "index": 0,
+              "provider_name": "terraform.io/builtin/terraform",
+              "schema_version": 0,
+              "values": {
+                "id": "28471712-66b6-45f0-b1c0-218197c8f648",
+                "input": {
+                  "filename": "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.zip"
+                },
+                "output": {
+                  "filename": "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.zip"
+                },
+                "triggers_replace": [
+                  "builds/50b26ddff376df8e4699ef69bd43d595e0b5c7b97498d50cdcf976ccfb088f52.zip"
+                ]
+              },
+              "sensitive_values": {
+                "input": {},
+                "output": {},
+                "triggers_replace": [
+                  false
+                ]
+              },
+              "depends_on": [
+                "module.lambda_function.data.external.archive_prepare",
+                "module.lambda_function.local_file.archive_plan",
+                "module.lambda_function.null_resource.archive"
+              ]
+            }
+          ],
+          "address": "module.lambda_function"
+        },
+        {
+          "resources": [
+            {
+              "address": "module.sqs.data.aws_arn.this[0]",
+              "mode": "data",
+              "type": "aws_arn",
+              "name": "this",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "account": "111111111111",
+                "arn": "arn:aws:sqs:eu-west-1:111111111111:evolved-ape",
+                "id": "arn:aws:sqs:eu-west-1:111111111111:evolved-ape",
+                "partition": "aws",
+                "region": "eu-west-1",
+                "resource": "evolved-ape",
+                "service": "sqs"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.sqs.aws_sqs_queue.this[0]",
+              "mode": "managed",
+              "type": "aws_sqs_queue",
+              "name": "this",
+              "index": 0,
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "arn": "arn:aws:sqs:eu-west-1:111111111111:evolved-ape",
+                "content_based_deduplication": false,
+                "deduplication_scope": "",
+                "delay_seconds": 0,
+                "fifo_queue": false,
+                "fifo_throughput_limit": "",
+                "id": "https://sqs.eu-west-1.amazonaws.com/111111111111/evolved-ape",
+                "kms_data_key_reuse_period_seconds": 300,
+                "kms_master_key_id": "",
+                "max_message_size": 262144,
+                "message_retention_seconds": 345600,
+                "name": "evolved-ape",
+                "name_prefix": "",
+                "policy": "",
+                "receive_wait_time_seconds": 0,
+                "redrive_allow_policy": "",
+                "redrive_policy": "",
+                "region": "eu-west-1",
+                "sqs_managed_sse_enabled": true,
+                "tags": {
+                  "Module": "sqs",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "tags_all": {
+                  "Module": "sqs",
+                  "Pattern": "terraform-sqs-lambda"
+                },
+                "timeouts": null,
+                "url": "https://sqs.eu-west-1.amazonaws.com/111111111111/evolved-ape",
+                "visibility_timeout_seconds": 30
+              },
+              "sensitive_values": {
+                "tags": {},
+                "tags_all": {}
+              },
+              "depends_on": [
+                "random_pet.this"
+              ],
+              "identity_schema_version": 1,
+              "identity": {
+                "url": "https://sqs.eu-west-1.amazonaws.com/111111111111/evolved-ape"
+              }
+            }
+          ],
+          "address": "module.sqs"
+        }
+      ]
+    }
+  }
+}
