@@ -32,6 +32,7 @@ class SyncResult(BaseModel):
     added_stubs: int = 0
     flagged_orphans: int = 0
     resurrected_tests: int = 0
+    reclassified_tests: int = 0
     human_modified_files: int = 0
 
     def summary(self) -> str:
@@ -40,10 +41,16 @@ class SyncResult(BaseModel):
             if self.resurrected_tests
             else ""
         )
+        reclassified = (
+            f"reclassified {self.reclassified_tests} test(s), "
+            if self.reclassified_tests
+            else ""
+        )
         return (
             f"Applied: added {self.added_stubs} stub(s), "
             f"flagged {self.flagged_orphans} orphan(s), "
             f"{resurrected}"
+            f"{reclassified}"
             f"{self.human_modified_files} human-modified file(s) preserved."
         )
 
@@ -96,6 +103,9 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
     resurrected = _resurrect_tests(manifest, changeset, base_dir)
     flagged = _flag_orphans(manifest, changeset)
     added, human_modified_files = _generate_stubs(manifest, changeset, base_dir)
+    # Last, so it reads the stubs this run just wrote as well as the ones a
+    # human implemented since the previous run.
+    reclassified = _reclassify_statuses(manifest, base_dir)
 
     manifest.generated_at = now
     save_manifest(manifest, manifest_file)
@@ -104,8 +114,29 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         added_stubs=added,
         flagged_orphans=flagged,
         resurrected_tests=resurrected,
+        reclassified_tests=reclassified,
         human_modified_files=human_modified_files,
     )
+
+
+def reconcile(base_dir: Path) -> int:
+    """Reclassify statuses from bodies when the changeset itself is a no-op.
+
+    ``apply`` is skipped entirely when a plan proposes nothing (DESIGN.md's
+    plan/apply model), but a human implementing a stub changes no plan -- so
+    without this the manifest would never learn that the test is implemented.
+    Returns the number of entries whose status changed; writes only when one
+    did, so a genuine no-op leaves the file untouched.
+    """
+    manifest_file = planner.manifest_path(base_dir)
+    if not manifest_file.exists():
+        return 0
+
+    manifest = load_manifest(manifest_file)
+    changed = _reclassify_statuses(manifest, base_dir)
+    if changed:
+        save_manifest(manifest, manifest_file)
+    return changed
 
 
 def _refresh_point_registry(
@@ -143,6 +174,27 @@ def _status_from_body(path: Path, test_name: str) -> Literal["stub", "implemente
     next_def = rest.find("\ndef ", 1)
     body = rest if next_def == -1 else rest[:next_def]
     return "stub" if stubgen.STUB_SKIP_LINE in body else "implemented"
+
+
+def _reclassify_statuses(manifest: Manifest, base_dir: Path) -> int:
+    """Re-derive every live test's status from the body on disk.
+
+    The body is the truth: a test holding the generated skip line is a stub,
+    and one that does not is implemented. Orphaned entries are left alone --
+    orphaning is a statement about the point, not about the body, and only a
+    resurrection may lift it.
+
+    Returns the number of entries whose recorded status changed.
+    """
+    changed = 0
+    for test in manifest.tests:
+        if test.status == "orphaned":
+            continue
+        status = _status_from_body(base_dir / test.path, test.test_name)
+        if status != test.status:
+            test.status = status
+            changed += 1
+    return changed
 
 
 def _resurrect_tests(manifest: Manifest, changeset: Changeset, base_dir: Path) -> int:

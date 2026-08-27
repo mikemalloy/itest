@@ -93,7 +93,14 @@ def sync(
     typer.echo("")
 
     if syncer.is_noop(changeset):
-        typer.echo("No changes to apply. Manifest is up to date.")
+        # Nothing to apply, but a stub implemented by hand since the last run
+        # still has to be recorded: status is derived from the body, not from
+        # whether the plan moved.
+        reclassified = syncer.reconcile(base_dir)
+        if reclassified:
+            typer.echo(f"Reclassified {reclassified} test(s) from their bodies.")
+        else:
+            typer.echo("No changes to apply. Manifest is up to date.")
         return
 
     if not auto_approve:

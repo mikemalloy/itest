@@ -176,3 +176,57 @@ def test_orphaned_test_is_resurrected_when_point_returns(workdir: Path) -> None:
     # End to end: verify credits the point to the passing human test.
     verified = runner.invoke(app, ["verify"])
     assert "[PASS] aws_security_group.web -> aws_security_group.db" in verified.output
+
+
+def test_sync_reclassifies_hand_implemented_test_on_every_run(workdir: Path) -> None:
+    """A stub implemented by hand is recorded as implemented by the next sync.
+
+    Regression: status was only ever derived from a body during an orphan
+    resurrection, so on a project whose plan had not changed, sync hit the
+    no-op early return and the entry stayed `status: stub` forever -- even
+    though the test on disk was implemented and verify reported it [PASS].
+    """
+    # (1) Sync: three stubs, all recorded as stubs.
+    runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    assert all(t.status == "stub" for t in manifest.tests)
+
+    # (2) A human implements one of them, leaving the other two untouched.
+    stub_path = workdir / STUB_FILE
+    original = stub_path.read_text()
+    marker = "def test_sg_web_to_db_5432():"
+    idx = original.index(marker)
+    stub_path.write_text(
+        original[:idx]
+        + marker
+        + '\n    """human implemented"""\n'
+        + "    assert 1 + 1 == 2  # real assertion, no pytest.skip\n"
+    )
+    implemented_body = stub_path.read_text()
+
+    # (3) Sync again. The plan itself is unchanged -- this is the no-op path --
+    # but the manifest must still pick up the new status from the body.
+    result = runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
+    assert result.exit_code == 0, result.output
+    assert "Reclassified 1 test(s)" in result.output
+
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    by_name = {t.test_name: t for t in manifest.tests}
+    assert by_name["test_sg_web_to_db_5432"].status == "implemented"
+    # The still-stub entries are left alone.
+    assert by_name["test_sg_internet_to_alb_443"].status == "stub"
+    assert by_name["test_sg_alb_to_web_80"].status == "stub"
+
+    # The human's file was not rewritten.
+    assert stub_path.read_text() == implemented_body
+
+    # (4) A third sync has nothing left to reclassify: a genuine no-op.
+    result = runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(FIXTURE)])
+    assert result.exit_code == 0, result.output
+    assert "Reclassified" not in result.output
+    assert "No changes to apply" in result.output
+
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    by_name = {t.test_name: t for t in manifest.tests}
+    assert by_name["test_sg_web_to_db_5432"].status == "implemented"
+    assert by_name["test_sg_alb_to_web_80"].status == "stub"
