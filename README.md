@@ -2,6 +2,17 @@
 
 **Terraform tells you what you declared. ITest tells you what is actually connected — and when it stops being.**
 
+You are about to ship, or you just did, and you need to know that every
+component in the system is wired to the others and running — no hand-waving,
+no "it should be fine." Today that answer takes a war room, a checklist, and
+someone clicking through the console. With ITest it takes minutes: one command
+lists every integration your Terraform creates, one command verifies each of
+them against the live account, and the result is a single line — *14 of 14
+integrations passing* — that a release owner can act on. Run it before the
+release, after the release, and on every CI run in between, and the first
+sign of something coming unwired is a red line naming the integration, not a
+page at 3 a.m.
+
 ITest reads the Terraform you already have, extracts the integration points it
 creates — the security-group rule that says *A can reach B on 5432*, the IAM
 grant that says *this role may call that queue*, the event source mapping that
