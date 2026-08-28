@@ -45,7 +45,7 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   shorthand lists matches and exits; it never guesses.
 
 ## Detector architecture
-- Detectors emit typed primitive integration points. Four ship today:
+- Detectors emit typed primitive integration points. Five ship today:
   `sg_edge` (security-group reachability: source, target, protocol, ports,
   direction), `iam_edge` (role -> resource grants: actions ride in attributes,
   with wildcard_action / wildcard_resource / external / managed /
@@ -54,8 +54,9 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   permissions; `mechanism` attribute). A fourth, `route_edge`, covers API
   Gateway: a route -> what it invokes, across both the REST (v1) and HTTP API
   (v2) shapes, with `auth: NONE` surfaced as `[open]` the way
-  `wildcard_resource` is surfaced on an IAM edge. The Scope ledger below is
-  the current record of what exists.
+  `wildcard_resource` is surfaced on an IAM edge. A fifth, `lb_edge`, covers
+  the load balancer / container spine. The Scope ledger below is the current
+  record of what exists.
 - Every place a point is printed (plan changeset, Mermaid labels, stub names
   and docstrings) dispatches on point type via `itest/core/points.py`. A new
   detector must add its type there, never leave another command printing
@@ -75,6 +76,25 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 - Point IDs must be stable across runs (derived from resource addresses +
   rule content, not array indices).
 - Unknown resource types are reported as "not analyzed", never silently skipped.
+- **Two hops, one type, in `lb_edge`.** The chain listener -> target group ->
+  service is emitted as two kinds of edge under one point type, keyed by the
+  `hop` attribute, so each link is independently verifiable: a listener can
+  forward correctly into a group nothing has registered into, and an ECS
+  service can be wired to a group no listener names. A group nothing feeds
+  emits an edge to `(empty)` rather than nothing at all — an ALB routing into
+  an empty group is the finding, and silence would hide it.
+- **Blue/green alternate groups in `lb_edge`.** An ECS service's
+  `load_balancer` block can name a second group in
+  `advanced_configuration.alternate_target_group_arn`. That group is fed, so
+  reading only `target_group_arn` would report a live standby group as empty.
+  `deployment_role` records which side an edge describes and is what keeps
+  the two edges' ids distinct.
+- **Context claimed without an edge in `lb_edge`.** `aws_ecs_cluster` and
+  `aws_ecs_task_definition` are in `handled_types` but emit no edge of their
+  own: they are resolved onto the service's edges as `cluster` and
+  `task_definition`. A cluster does not route to anything, so an edge for it
+  would be an invention; claiming them is honest only because they are
+  genuinely read.
 - **Egress asymmetry in `sg_edge`.** An ingress rule always produces an edge;
   an egress rule only when it targets another security group, so "allow all
   outbound" is not treated as an integration point. This is what yields exactly
@@ -120,6 +140,10 @@ Shipped:
 - Event edge detector (event source mapping, DLQ redrive, lambda_permission,
   s3_notification, eventbridge_target)
 - API Gateway route detector (REST + HTTP API)
+- Load balancer / container detector (`lb_edge`: listener and listener-rule
+  forwards, weighted forwards, redirect and fixed-response actions, target
+  group -> ECS service including the blue/green alternate group, target group
+  attachments, and the empty-target-group finding)
 - Plan and state JSON roots both accepted by the plan entry point
 - Manifest schema v2 (tier, resource_group, last_duration_seconds — schema
   and v1 migration only; nothing schedules on them yet)
@@ -134,11 +158,16 @@ Shipped:
   Lambda env allowlist, credential patterns, account pseudonymization, `--check`)
 - Ruff lint/format as part of Development discipline
 - itest-implementer agent skill (interview, read-only default, and a recipe
-  per detector: sg_edge, iam_edge, event_edge, route_edge, over one shared
-  conftest)
+  per detector: sg_edge, iam_edge, event_edge, route_edge, lb_edge, over one
+  shared conftest; lb_edge is the first recipe asserting liveness — registered
+  and healthy targets — rather than wiring alone)
 
 Not yet built (do not build without explicit instruction):
 - DNS and endpoint-availability detectors
+- EKS. Explicitly out of scope: a Kubernetes Service, Ingress, or Deployment
+  is not in Terraform state, so there is nothing for a detector to read. The
+  `aws_eks_cluster` resource is the container the objects live in, not the
+  wiring between them, and inventing edges from it would mean guessing.
 - Parallel / scheduled execution (xdist, resource_group serialization,
   duration packing, change-scoped verify)
 - Labels, filtering, and test groups
