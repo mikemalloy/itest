@@ -48,6 +48,28 @@ broken integration and exits 1:
 That is a re-cut of a [real recording](docs/demo/alex-s6-drift-demo.cast)
 against a production stack; the outputs are verbatim.
 
+And the harder case: nothing wrong with the wiring, nothing running behind
+it. On a live ALB → ECS stack, scaling the service to zero flipped exactly
+two integration points red — the listener checks stayed green, because the
+routing really is still declared correctly, and Terraform still saw a
+perfect deployment. Excerpted from that run (`--redact` applied):
+
+```
+12 integration points: 5 passing, 2 failing, 0 errored, 5 stubs, 0 orphaned tests.
+...
+  [FAIL] module.alb.aws_lb_target_group.this["ex-ecs"]
+           -> module.ecs_service.aws_ecs_service.this[0]
+           (-> module.ecs_service.aws_ecs_service.this[0] :3000 [health /])
+
+  AssertionError: Neither side of the blue/green pair has a healthy target.
+  The service reports 0 running of 0 desired, status ACTIVE.
+```
+
+(Lines wrapped here for width; the tokens are the run's own.)
+
+A service quietly scaled to zero is invisible to `terraform plan` and to
+every config scanner. Here it is one red line with the diagnosis attached.
+
 ## Proof it works on infrastructure you did not write
 
 Beyond its author's own systems, ITest has been run end to end — applied,
@@ -216,7 +238,9 @@ implemented. It pauses for confirmation unless `--auto-approve`.
 point, and rolls up: fail > error > pass > stub. Collection errors are
 reported as errors, never mistaken for untouched stubs, and one broken module
 cannot blind the rest. `--output json`, `--output junit`, `--redact`. Exit 0
-green, 1 failures, 2 environment problems.
+green, 1 failures, 2 environment problems. On a terminal the output is
+colored; piped it is byte-for-byte the plain text you see in this README —
+enforced by test — and `NO_COLOR` / `--no-color` are respected.
 
 **Ownership hashes** keep sync safe: it records each generated file's SHA-256
 and, on a mismatch, appends but never rewrites or deletes a function you have
