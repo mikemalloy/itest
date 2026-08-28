@@ -46,6 +46,7 @@ def iter_resources(plan_json: dict) -> Iterator[dict]:
 # The active detector registry. Import-time population keeps wiring trivial.
 from itest.core.detectors.event_edges import EventEdgeDetector  # noqa: E402
 from itest.core.detectors.iam_edges import IamEdgeDetector  # noqa: E402
+from itest.core.detectors.lb_edges import LoadBalancerEdgeDetector  # noqa: E402
 from itest.core.detectors.route_edges import RouteEdgeDetector  # noqa: E402
 from itest.core.detectors.sg_edges import SecurityGroupEdgeDetector  # noqa: E402
 
@@ -54,6 +55,7 @@ DETECTORS: list[Detector] = [
     IamEdgeDetector(),
     EventEdgeDetector(),
     RouteEdgeDetector(),
+    LoadBalancerEdgeDetector(),
 ]
 
 

@@ -64,10 +64,12 @@ def test_detect_all_reports_unanalyzed_types() -> None:
     # SG resources are handled; everything else managed is "not analyzed".
     assert "aws_security_group" not in unanalyzed
     assert "aws_security_group_rule" not in unanalyzed
+    # aws_lb is claimed by the lb_edge detector. This plan has a load
+    # balancer with no listener behind it, so it is analyzed and emits
+    # nothing -- which is not the same as being skipped.
     assert unanalyzed == {
         "aws_vpc": 1,
         "aws_subnet": 2,
-        "aws_lb": 1,
         "aws_instance": 2,
         "aws_db_instance": 1,
     }
