@@ -451,20 +451,20 @@ The pair is the rule's own forward set, so this hop needs no ECS call. Assert
 membership and the weight *invariant*, never the split:
 
 ```python
-    live = live_rule(elbv2, rule)
-    targets = dict(forward_targets(live))
-    assert group["arn"] in targets, (
-        f"Rule priority {live['Priority']} no longer forwards to "
-        f"{group['arn']}. Forward targets: {sorted(targets)}"
-    )
-    total = sum(weight or 0 for weight in targets.values())
-    assert total == 100, (
-        f"Forward weights across the pair sum to {total}, not 100: {targets}"
-    )
-    assert any(targets.values()), (
-        f"Every group in the pair carries weight 0, so the rule forwards "
-        f"nowhere: {targets}"
-    )
+live = live_rule(elbv2, rule)
+targets = dict(forward_targets(live))
+assert group["arn"] in targets, (
+    f"Rule priority {live['Priority']} no longer forwards to "
+    f"{group['arn']}. Forward targets: {sorted(targets)}"
+)
+total = sum(weight or 0 for weight in targets.values())
+assert total == 100, (
+    f"Forward weights across the pair sum to {total}, not 100: {targets}"
+)
+assert any(targets.values()), (
+    f"Every group in the pair carries weight 0, so the rule forwards "
+    f"nowhere: {targets}"
+)
 ```
 
 Which member carries the weight is deliberately unasserted. Say so in the
@@ -478,14 +478,14 @@ both are Terraform's. Replace only the per-group healthy assertion with a
 pair-level one, so the check still proves something is serving:
 
 ```python
-    this_side = target_states(elbv2, group["arn"])
-    other_side = target_states(elbv2, partner_arn)
-    assert this_side.count("healthy") + other_side.count("healthy") >= 1, (
-        f"Neither side of the blue/green pair has a healthy target. "
-        f"{group['arn']}: {this_side}; {partner_arn}: {other_side}. The "
-        f"service reports {service['runningCount']} running of "
-        f"{service['desiredCount']} desired, status {service['status']}."
-    )
+this_side = target_states(elbv2, group["arn"])
+other_side = target_states(elbv2, partner_arn)
+assert this_side.count("healthy") + other_side.count("healthy") >= 1, (
+    f"Neither side of the blue/green pair has a healthy target. "
+    f"{group['arn']}: {this_side}; {partner_arn}: {other_side}. The "
+    f"service reports {service['runningCount']} running of "
+    f"{service['desiredCount']} desired, status {service['status']}."
+)
 ```
 
 The partner ARN comes from the service, not from a second `resolve`: the

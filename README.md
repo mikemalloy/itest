@@ -54,17 +54,25 @@ Beyond its author's own systems, ITest has been run end to end — applied,
 implemented by the bundled agent skill, verified green against a live account,
 destroyed — on four of AWS's own
 [serverless-patterns](https://github.com/aws-samples/serverless-patterns)
-reference stacks, including one built entirely from `terraform-aws-modules`:
+reference stacks and on the
+[`terraform-aws-modules/ecs`](https://github.com/terraform-aws-modules/terraform-aws-ecs)
+Fargate example, an ALB fronting a blue/green ECS service built entirely from
+modules:
 
 | Stack | Shape | Points | Result |
 |---|---|---|---|
 | terraform-sqs-lambda | 12 of 13 resources module-nested | 6 | **6/6 verified** |
-| s3-sqs-lambda-terraform | S3 → SQS → Lambda, inline IAM | 5 | **5/5 verified** |
+| s3-sqs-lambda-terraform | S3 → SQS → Lambda, inline IAM | 6 | **6/6 verified** |
 | lambda-sqs-terraform | customer-managed policy | 2 | **2/2 verified** |
-| eventbridge-lambda-terraform | rule → Lambda via permission | 2 | **2/2 verified** |
+| eventbridge-lambda-terraform | rule → Lambda via permission | 3 | **3/3 verified** |
+| ecs-fargate-alb | ALB → blue/green pair → ECS service, 61 of 62 resources module-nested | 12 | **7/7 implemented verified** (5 wildcard-IAM stubs by choice); failure drills named a detached policy and a scaled-to-zero service exactly |
 
-Those runs surfaced six defects; each is fixed with the sample's sanitized
-state as the regression fixture. The full table, including six production
+Those runs surfaced six defects — each fixed with the sample's sanitized
+state as the regression fixture — plus a design finding on the ECS run: ECS
+blue/green deployments rewrite listener weights and move tasks between the
+target groups at runtime, so the lb_edge recipe asserts what Terraform owns
+directly and the runtime split only as an invariant (weights sum to 100, at
+least one side of the pair healthy). The full table, including six production
 stages and the resource types ITest does **not** analyze yet, is in
 [docs/compatibility.md](docs/compatibility.md) and is pinned by tests so it
 cannot drift from the code.
@@ -99,10 +107,9 @@ New integration points (3):
 Orphan candidates (0):
   (none)
 
-Not analyzed (7 resource(s)):
+Not analyzed (6 resource(s)):
   aws_db_instance  1
   aws_instance     2
-  aws_lb           1
   aws_subnet       2
   aws_vpc          1
 ```
@@ -145,13 +152,15 @@ in the current directory and accepts either plan or state output. Add
 `--redact` to `verify` before sharing output — it pseudonymizes account IDs
 in every format. `itest redact` does the same for plan and state JSON.
 
-## Three detectors, one graph
+## Five detectors, one graph
 
 | Point type | What it is | Where it comes from |
 |---|---|---|
 | `sg_edge` | *A can reach B* on a protocol and port range | security-group rules, inline and standalone |
 | `iam_edge` | *this role may call that resource* — actions ride in attributes; wildcards, broad managed policies, and cross-stack targets are flagged | inline policies, `aws_iam_role_policy`, and attachments; customer-managed policies in the same state resolve into real grants |
-| `event_edge` | *this drives that* | event source mappings, SQS dead-letter redrive, Lambda permissions |
+| `event_edge` | *this drives that* | event source mappings, SQS dead-letter redrive, Lambda permissions, S3 bucket notifications, EventBridge rule → target |
+| `route_edge` | *this route reaches that handler* — unauthenticated routes are flagged `[open]` | API Gateway REST (v1) and HTTP API (v2) routes, integrations, and the Lambda behind them |
+| `lb_edge` | *the load balancer serves this* — two hops, each verified on its own: listener → target group, and target group → what feeds it; empty groups and blue/green standbys are distinguished | `aws_lb_listener`(+rules), `aws_lb_target_group`(+attachments), ECS services including blue/green alternate groups |
 
 Each detector emits typed primitives with content-hashed, stable IDs. A
 resource ARN found in the same state resolves to its HCL address; anything
@@ -242,14 +251,18 @@ The full record — including what is deliberately *not* built — is in
 
 Stated up front, because it is the first question anyone asks:
 
-- **Detectors are AWS-only**, and cover security groups, IAM, and event
-  wiring. API Gateway routes, S3 bucket notifications, EventBridge rules,
-  resource-based policies, CloudFront origins, and DNS are on the roadmap;
+- **Detectors are AWS-only**, and cover security groups, IAM, event wiring,
+  API Gateway routes, and load balancers. Resource-based policies (queue and
+  bucket policies), CloudFront origins, the newer standalone
+  `aws_vpc_security_group_*_rule` resources, and DNS are on the roadmap;
   today they appear in the not-analyzed list.
-- **Checks are configuration assertions.** They prove the deployed wiring
-  matches Terraform — the mapping exists and is enabled, the grant evaluates
-  to allow — not that a message actually flowed. Active probes that send a
-  marked message and observe delivery are designed and next.
+- **Checks are configuration assertions, plus first liveness.** Most checks
+  prove the deployed wiring matches Terraform — the mapping exists and is
+  enabled, the grant evaluates to allow — not that a message actually flowed.
+  The lb_edge check goes one step further: it requires at least one healthy
+  target behind the traffic-bearing group, so a scaled-to-zero or crash-looping
+  service fails the run. Active probes that send a marked message and observe
+  delivery are designed and next.
 - **State beats plan.** In plan JSON most ARNs are "known after apply," so
   IAM resolution is weaker; run ITest against applied infrastructure.
 
@@ -257,12 +270,14 @@ Stated up front, because it is the first question anyone asks:
 
 In order:
 
-1. S3 bucket notifications, EventBridge rule → target, and API Gateway
-   route → integration detectors (fixtures already committed).
-2. An active-probe library — self-cleaning, edge-shaped, opt-in per
-   environment — starting with queue → function delivery.
-3. A release readiness page: one URL, one verdict, the graph, posture, and
+1. An active-probe library — self-cleaning, edge-shaped, opt-in per
+   environment — starting with HTTP endpoints driven by the app's own
+   OpenAPI document.
+2. A release readiness page: one URL, one verdict, the graph, posture, and
    what changed since the last release.
+3. Resource-based policy detectors (queue and bucket policies — the other
+   side of an IAM edge) and the newer standalone security-group rule
+   resources.
 4. Parallel execution driven by the manifest's `tier` and `resource_group`
    fields (schema shipped; runner not).
 
