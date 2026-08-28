@@ -445,3 +445,12 @@ def test_redact_findings_headers_and_details() -> None:
 def test_redact_clean_summary_is_bold() -> None:
     line = "No secrets found. Safe to share."
     assert "bold" in _styles_over(style.render(line), line)
+
+
+def test_rollup_zero_passing_stubs_only_not_green() -> None:
+    """A stubs-only run is clean, but "0 passing" must not render green."""
+    line = (
+        "12 integration points: 0 passing, 0 failing, 0 errored, "
+        "12 stubs, 0 orphaned tests."
+    )
+    assert "bold green" not in _styles_over(style.render(line), "0 passing")

@@ -168,16 +168,19 @@ def _plan_new_spans(line: str, match: re.Match[str]) -> Iterable[tuple[int, int,
 
 
 def _verify_rollup_refine(match: re.Match[str]) -> Iterable[tuple[str, str]]:
-    """Red the failing count when nonzero; green the passing count when clean.
+    """Red the failing count when nonzero; green the passing count when earned.
 
-    Green is withheld while anything errored: the suite could not run, so
-    "all passing" would be a claim the run did not earn.
+    Green is withheld while anything errored (the suite could not run, so
+    "all passing" would be a claim the run did not earn) and when nothing
+    passed at all — "0 passing" on a stubs-only run is clean, but green
+    would celebrate work not yet done.
     """
     failing = int(match.group("failing_n"))
     errored = int(match.group("errored_n") or 0)
+    passing = int(match.group("passing_n"))
     if failing:
         yield ("failing", "bold red")
-    elif not errored:
+    elif passing and not errored:
         yield ("passing", "bold green")
 
 
