@@ -223,6 +223,10 @@ RULES: tuple[Rule, ...] = (
         refine=_verify_rollup_refine,
     ),
     Rule("sync_applied", re.compile(r"^Applied: "), {LINE: "bold"}),
+    # The one interactive moment in the tool, and the one styled string the
+    # CLI owns rather than a render function.
+    Rule("sync_prompt", re.compile(r"^Apply these changes\?$"), {LINE: "bold"}),
+    Rule("sync_cancelled", re.compile(r"^Apply cancelled\.$"), {LINE: "yellow"}),
     Rule("sync_noop", re.compile(r"^No changes to apply\. "), {LINE: "bold"}),
     Rule("sync_reclassified", re.compile(r"^Reclassified \d+ test"), {LINE: "bold"}),
     Rule("redact_findings", re.compile(r"^\d+ finding\(s\) — "), {LINE: "bold"}),

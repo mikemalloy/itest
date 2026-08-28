@@ -18,6 +18,10 @@ app = typer.Typer(
 )
 
 
+#: The one canonical string the CLI itself owns rather than a render function.
+CONFIRM_PROMPT = "Apply these changes?"
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(__version__)
@@ -27,13 +31,21 @@ def _version_callback(value: bool) -> None:
 def echo(message: str, err: bool = False) -> None:
     """Print one canonical string, styled when the stream is a terminal.
 
-    The single styled output path. `style.decorate` returns its argument
-    unchanged whenever styling is off — no terminal, NO_COLOR, --no-color —
-    so this is byte-for-byte the `typer.echo` call it replaced. Paths whose
-    bytes are consumed by a machine (json payloads, the junit note, the
-    version) keep calling `typer.echo` directly.
+    The single styled output path. When styling is off — no terminal,
+    NO_COLOR, --no-color — this is byte-for-byte the `typer.echo` call it
+    replaced. Paths whose bytes are consumed by a machine (json payloads, the
+    JUnit note, the sanitized document, the version) keep calling
+    `typer.echo` directly.
+
+    `color=True` on the styled branch stops click from stripping the escapes
+    back out again: click removes ANSI when its stream is not a terminal, and
+    the one case where we style anyway is the documented ITEST_FORCE_COLOR
+    hatch. On a real terminal click passes them through regardless.
     """
-    typer.echo(style.decorate(message, err=err), err=err)
+    if not style.enabled(err=err):
+        typer.echo(message, err=err)
+        return
+    typer.echo(style.render_ansi(message, error=err), err=err, color=True)
 
 
 @app.callback()
@@ -77,13 +89,13 @@ def plan(
     try:
         changeset = planner.run_plan(tf_json, base_dir)
     except planner.PlanInputError as exc:
-        typer.echo(str(exc), err=True)
+        echo(str(exc), err=True)
         raise typer.Exit(code=1) from None
 
     if output == "json":
         typer.echo(changeset.model_dump_json(indent=2))
     else:
-        typer.echo(planner.render_changeset(changeset))
+        echo(planner.render_changeset(changeset))
 
 
 @app.command()
@@ -105,13 +117,13 @@ def sync(
     try:
         changeset, note = syncer.prepare(tf_json, base_dir)
     except planner.PlanInputError as exc:
-        typer.echo(str(exc), err=True)
+        echo(str(exc), err=True)
         raise typer.Exit(code=1) from None
 
     if note:
-        typer.echo(note)
-    typer.echo(planner.render_changeset(changeset))
-    typer.echo("")
+        echo(note)
+    echo(planner.render_changeset(changeset))
+    echo("")
 
     if syncer.is_noop(changeset):
         # Nothing to apply, but a stub implemented by hand since the last run
@@ -119,18 +131,20 @@ def sync(
         # whether the plan moved.
         reclassified = syncer.reconcile(base_dir)
         if reclassified:
-            typer.echo(f"Reclassified {reclassified} test(s) from their bodies.")
+            echo(f"Reclassified {reclassified} test(s) from their bodies.")
         else:
-            typer.echo("No changes to apply. Manifest is up to date.")
+            echo("No changes to apply. Manifest is up to date.")
         return
 
     if not auto_approve:
-        if not typer.confirm("Apply these changes?"):
-            typer.echo("Apply cancelled.")
+        # click writes the prompt itself, so it is decorated rather than
+        # echoed; on a non-terminal `decorate` hands back the same string.
+        if not typer.confirm(style.decorate(CONFIRM_PROMPT)):
+            echo("Apply cancelled.")
             raise typer.Exit(code=1)
 
     result = syncer.apply(changeset, base_dir)
-    typer.echo(result.summary())
+    echo(result.summary())
 
 
 @app.command()
@@ -151,16 +165,20 @@ def verify(
     try:
         report = verifier.run_verify(base_dir, output=output, redact_accounts=redact)
     except verifier.VerifyConfigError as exc:
-        typer.echo(str(exc), err=True)
+        echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
 
     if output == "json":
         typer.echo(report.model_dump_json(indent=2))
     elif output == "junit":
+        # The note names a file for a machine to pick up; the rollup after it
+        # is for the human, so only that one is styled.
         typer.echo(f"Wrote JUnit XML to {verifier.JUNIT_NAME}")
-        typer.echo(render_verify_line(report))
+        echo(render_verify_line(report))
     else:
-        typer.echo(verifier.render_human(report, redacted=redact))
+        # `run_verify` already pseudonymized the report when --redact was
+        # given, so this styles text that is safe to share, never before.
+        echo(verifier.render_human(report, redacted=redact))
 
     if report.exit_code != 0:
         raise typer.Exit(code=report.exit_code)
@@ -198,14 +216,14 @@ def redact(
     else:
         source = str(input_path)
         if not input_path.exists():
-            typer.echo(f"Input file not found: {source}", err=True)
+            echo(f"Input file not found: {source}", err=True)
             raise typer.Exit(code=2)
         raw = input_path.read_text(encoding="utf-8")
 
     try:
         document = json.loads(raw)
     except json.JSONDecodeError as exc:
-        typer.echo(f"{source} is not valid JSON: {exc}", err=True)
+        echo(f"{source} is not valid JSON: {exc}", err=True)
         raise typer.Exit(code=2) from None
 
     clean, findings = redact_engine.redact_document(document)
@@ -217,7 +235,7 @@ def redact(
             )
             typer.echo(result.model_dump_json(indent=2))
         else:
-            typer.echo(redact_engine.render_findings(findings))
+            echo(redact_engine.render_findings(findings))
         if findings:
             raise typer.Exit(code=1)
         return
@@ -228,6 +246,8 @@ def redact(
     else:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(payload, encoding="utf-8")
+        # A status note on the machine channel, like the JUnit note: stderr
+        # carries it so stdout stays a clean pipe, and it stays unstyled.
         typer.echo(
             f"Wrote sanitized copy to {out} ({len(findings)} redaction(s)).",
             err=True,
