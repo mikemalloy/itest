@@ -408,6 +408,95 @@ confirms the deployment strategy keeps both sides warm. Say in the failure
 message which side the point covers, so nobody reads a standby group's
 emptiness as an outage.
 
+### 5e. Blue/green pairs -- the weights and the live side are runtime-owned
+
+`deployment_role` marks a point as one half of a pair. When the service's live
+`deploymentConfiguration.strategy` is `BLUE_GREEN` (or `LINEAR` / `CANARY`),
+**ECS owns two things the manifest froze at apply time**:
+
+- the listener rule's forward **weights**, which it rewrites on every deploy, and
+- **which group holds tasks** -- after a flip the group Terraform called
+  `production` is legitimately empty and the `alternate` holds the healthy task.
+
+So a point that pins `weight: 100` to a named group, or asserts healthy targets
+behind the `production` group specifically, goes red on a completely healthy
+service the first time anyone deploys. That is neither drift nor a bad
+deployment: it is the assertion claiming ownership of a value it does not own.
+
+Assert what Terraform actually owns, and assert liveness **across the pair**:
+
+| Claim | Owner | Assert? |
+|---|---|---|
+| the rule forwards to this group | Terraform | yes |
+| total forward weight is 100, with a live side | ECS, but invariant | yes |
+| *which* side carries the weight | ECS, flips per deploy | **no** |
+| each group's health check path | Terraform | yes |
+| container name and port registered | Terraform | yes |
+| *which* side holds healthy targets | ECS, flips per deploy | **no** |
+| at least one side of the pair is healthy | -- | yes |
+
+Dispatch on the **live** strategy, never on the manifest -- the manifest cannot
+see a strategy that changed after the last apply:
+
+```python
+def is_blue_green(service):
+    """True when ECS, not Terraform, owns this service's weights and live side."""
+    strategy = (service.get("deploymentConfiguration") or {}).get("strategy")
+    return strategy in {"BLUE_GREEN", "LINEAR", "CANARY"}
+```
+
+#### Listener hop on a blue/green pair
+
+The pair is the rule's own forward set, so this hop needs no ECS call. Assert
+membership and the weight *invariant*, never the split:
+
+```python
+    live = live_rule(elbv2, rule)
+    targets = dict(forward_targets(live))
+    assert group["arn"] in targets, (
+        f"Rule priority {live['Priority']} no longer forwards to "
+        f"{group['arn']}. Forward targets: {sorted(targets)}"
+    )
+    total = sum(weight or 0 for weight in targets.values())
+    assert total == 100, (
+        f"Forward weights across the pair sum to {total}, not 100: {targets}"
+    )
+    assert any(targets.values()), (
+        f"Every group in the pair carries weight 0, so the rule forwards "
+        f"nowhere: {targets}"
+    )
+```
+
+Which member carries the weight is deliberately unasserted. Say so in the
+docstring and name the weight the point recorded, so a reader can see what the
+manifest froze and why it is not being enforced.
+
+#### Target-group hop on a blue/green pair
+
+Keep the health check path and the registration assertions from §5a and §5d --
+both are Terraform's. Replace only the per-group healthy assertion with a
+pair-level one, so the check still proves something is serving:
+
+```python
+    this_side = target_states(elbv2, group["arn"])
+    other_side = target_states(elbv2, partner_arn)
+    assert this_side.count("healthy") + other_side.count("healthy") >= 1, (
+        f"Neither side of the blue/green pair has a healthy target. "
+        f"{group['arn']}: {this_side}; {partner_arn}: {other_side}. The "
+        f"service reports {service['runningCount']} running of "
+        f"{service['desiredCount']} desired, status {service['status']}."
+    )
+```
+
+The partner ARN comes from the service, not from a second `resolve`: the
+production side is `loadBalancers[].targetGroupArn` and the alternate is
+`loadBalancers[].advancedConfiguration.alternateTargetGroupArn`, so a single
+`describe_services` yields both halves whichever side the point covers.
+
+A `ROLLING` service keeps §5a exactly as written -- one group, one healthy
+assertion. Do not apply this section to it, and branch on `is_blue_green` rather
+than assuming, so the test stays correct if the strategy is changed later.
+
 ## 6. What a failure means
 
 Classify before reporting. This recipe produces three different kinds of red,
@@ -430,7 +519,10 @@ and only the first is ordinary drift.
    weaken the assertion to "the group exists" to get green.
 3. **Nothing registered at all** (`TargetHealthDescriptions == []` on a group
    the listener forwards to). The ALB is routing into a void and serving 503s.
-   Say exactly that.
+   Say exactly that. **Check the forward weight before you do.** On a blue/green
+   pair the drained side legitimately holds nothing while carrying weight 0 --
+   the listener is not sending traffic there at all, so it is not a void. It is
+   only case 3 when the group actually receives traffic; otherwise it is §5e.
 
 `LookupError` from `resolve` means the address is not in the current state —
 renamed, removed, or the wrong `terraform_dir`.
