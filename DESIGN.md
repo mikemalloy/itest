@@ -101,6 +101,40 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   the intended `internet → ALB:443 → web:80 → db:5432` chain rather than a
   cloud of edges to 0.0.0.0/0.
 
+## Presentation contract
+- **The render functions are the canonical output.**
+  `planner.render_changeset`, `verifier.render_human`,
+  `redact.render_findings` and `cli.render_verify_line` are the single source
+  of what ITest says. `itest/core/style.py` is a *colorizer over* that text —
+  line-pattern rules that add style spans — never a re-layout. There are no
+  Rich tables or panels: a table would decide the content's shape, and the
+  content is not styling's to decide.
+- **The invariant, enforced by test:** `strip_ansi(styled) == plain`, byte for
+  byte, on real output from the committed fixtures. Wrapping, padding or
+  truncating a line is a content change, so every print passes
+  `soft_wrap=True` — a Rich console attached to a non-terminal defaults to 80
+  columns, and a real plan's module-nested lines run past 180.
+- **Off by default for anything but a terminal.** When stdout is not a TTY, or
+  `NO_COLOR` is set (any value), or `--no-color` is passed, `style.decorate`
+  returns its argument and the CLI's `echo` helper is byte-for-byte the
+  `typer.echo` call it replaced. Terminal detection is Rich's own
+  (`Console.is_terminal`); nothing forces a terminal except the documented
+  `ITEST_FORCE_COLOR` escape hatch, which exists so a demo or an acceptance
+  run can capture colour through a pipe.
+- **Machine-read paths are never styled**: `--output json` and `--output
+  junit`, the JUnit note, the sanitized `redact` document, `--version`, and
+  the "Wrote sanitized copy" status note keep calling `typer.echo` directly.
+  Exit codes are untouched by presentation.
+- **`verify --redact` styles after redaction, never before**, so an account id
+  is gone before an escape is added.
+- Styling is deliberately restrained — this is a tool read next to `terraform
+  plan`, not a dashboard. Rollups carry weight, finding-class flags
+  (`[open]`, `BROAD`, `DENY`, `wildcard_action`, `wildcard_resource`) carry
+  colour, and `external` stays unstyled because a cross-stack reference is a
+  fact, not a finding. The pytest traceback block is excluded before the rules
+  run: it is already formatted, and it can contain the very words the flag
+  pass looks for.
+
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
   the manifest: recipes hold policy (what a good assertion for a point type
@@ -108,8 +142,9 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   never reimplements detection or sync logic.
 
 ## Stack
-- Python 3.11+, typer, pydantic v2 for schema, PyYAML, pytest + boto3 for
-  generated tests. No other runtime dependencies without asking.
+- Python 3.11+, typer, pydantic v2 for schema, PyYAML, rich for terminal
+  styling of human output, pytest + boto3 for generated tests. No other
+  runtime dependencies without asking.
 
 ## Development discipline (applies to every task in this repo)
 - No cowboy programming: no task, feature, or fix is complete until its test
@@ -157,6 +192,9 @@ Shipped:
 - `itest redact` — sanitizes plan/state JSON for safe sharing (sensitive_values,
   Lambda env allowlist, credential patterns, account pseudonymization, `--check`)
 - Ruff lint/format as part of Development discipline
+- Rich style layer over the canonical strings (`itest/core/style.py`), wired
+  into plan / sync / verify / redact, with `--no-color`, `NO_COLOR`, and the
+  `strip_ansi(styled) == plain` invariant under test
 - itest-implementer agent skill (interview, read-only default, and a recipe
   per detector: sg_edge, iam_edge, event_edge, route_edge, lb_edge, over one
   shared conftest; lb_edge is the first recipe asserting liveness — registered
