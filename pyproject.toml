@@ -12,6 +12,10 @@ dependencies = [
     "typer>=0.12",
     "pydantic>=2",
     "pyyaml>=6",
+    # Terminal styling for human output only. The style layer is a colorizer
+    # over the canonical strings and switches itself off when stdout is not a
+    # terminal, so nothing machine-readable depends on it.
+    "rich>=13",
     # Runtime, not dev: `itest verify` shells out to pytest to run the
     # generated suite, so the tool cannot function without it.
     "pytest>=8",

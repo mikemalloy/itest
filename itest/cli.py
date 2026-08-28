@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from itest import __version__
+from itest.core import style
 
 app = typer.Typer(
     help=(
@@ -23,6 +24,18 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def echo(message: str, err: bool = False) -> None:
+    """Print one canonical string, styled when the stream is a terminal.
+
+    The single styled output path. `style.decorate` returns its argument
+    unchanged whenever styling is off — no terminal, NO_COLOR, --no-color —
+    so this is byte-for-byte the `typer.echo` call it replaced. Paths whose
+    bytes are consumed by a machine (json payloads, the junit note, the
+    version) keep calling `typer.echo` directly.
+    """
+    typer.echo(style.decorate(message, err=err), err=err)
+
+
 @app.callback()
 def main(
     version: bool = typer.Option(
@@ -32,8 +45,16 @@ def main(
         callback=_version_callback,
         is_eager=True,
     ),
+    no_color: bool = typer.Option(
+        False,
+        "--no-color",
+        help="Disable colored output, as NO_COLOR in the environment does.",
+    ),
 ) -> None:
     """ITest command-line interface."""
+    # Once per invocation, so the switch and the environment are read now
+    # rather than frozen at import time.
+    style.configure(no_color=no_color)
 
 
 @app.command()
