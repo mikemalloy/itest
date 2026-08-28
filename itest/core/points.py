@@ -100,7 +100,47 @@ def summary(point: IntegrationPoint) -> str:
         if attrs.get("external"):
             flags.append("external")
         return tag + "".join(f" [{flag}]" for flag in flags)
+    if point.type == "lb_edge":
+        return _lb_summary(attrs, point)
     return point.type
+
+
+def _lb_port(attrs: dict) -> object:
+    """The port a target-group edge is served on.
+
+    ``container_port`` for an ECS feed, ``port`` for an attachment. Written
+    out rather than as a ``get`` default so a key present but null falls
+    through the same way a missing key does.
+    """
+    port = attrs.get("container_port")
+    return attrs.get("port") if port is None else port
+
+
+def _lb_summary(attrs: dict, point: IntegrationPoint) -> str:
+    """One line per hop of the load balancer chain.
+
+    Listener hop reads as the routing decision (`HTTPS:443 -> group [rule]`);
+    target-group hop reads as what serves it (`-> service :3000 [health /]`).
+    A group nothing feeds leads with `[empty]`, because that is the finding.
+    """
+    if attrs.get("hop") == "listener":
+        tag = f"{attrs.get('protocol')}:{attrs.get('port')} -> {_short(point.target)}"
+        tag += f" [{attrs.get('rule')}]"
+        if attrs.get("weight") is not None:
+            tag += f" [weight {attrs['weight']}]"
+        if attrs.get("external"):
+            tag += " [external]"
+        return tag
+    if attrs.get("via") == "none":
+        return f"[empty] nothing feeds {_short(point.source)}"
+    tag = f"-> {_short(point.target)} :{_lb_port(attrs)}"
+    if attrs.get("health_check_path"):
+        tag += f" [health {attrs['health_check_path']}]"
+    if attrs.get("deployment_role") == "alternate":
+        tag += " [alternate]"
+    if attrs.get("external"):
+        tag += " [external]"
+    return tag
 
 
 def diagram_label(point: IntegrationPoint) -> str:
@@ -125,6 +165,18 @@ def diagram_label(point: IntegrationPoint) -> str:
         # The route itself is the label; the integration type and the open
         # flag stay in the summary, where there is room for them.
         return f"{attrs.get('method')} {attrs.get('path')}"
+    if point.type == "lb_edge":
+        if attrs.get("hop") == "listener":
+            label = f"{attrs.get('protocol')}:{attrs.get('port')}"
+            rule = str(attrs.get("rule") or "")
+            # "priority 2 path=/*" -> "p2". Terse enough for an edge label;
+            # the conditions stay in the summary, where there is room.
+            if rule.startswith("priority "):
+                label += " p" + rule.split()[1]
+            return label
+        if attrs.get("via") == "none":
+            return "empty"
+        return f":{_lb_port(attrs)}"
     return point.type
 
 
@@ -147,4 +199,23 @@ def function_name(point: IntegrationPoint) -> str:
         method = slug(str(attrs.get("method", "")))
         path = slug(str(attrs.get("path", "")))
         return f"test_route_{source}_{method}_{path}_to_{target}"
+    if point.type == "lb_edge":
+        if attrs.get("hop") == "listener":
+            # The rule rides in the name: one listener forwards to one group
+            # from several rules, and those are distinct points.
+            parts = [
+                "test_lb",
+                source,
+                slug(str(attrs.get("protocol", ""))),
+                slug(str(attrs.get("port", ""))),
+                "to",
+                target,
+                slug(str(attrs.get("rule", ""))),
+            ]
+        else:
+            parts = ["test_lb", source, "to", target, slug(str(attrs.get("via", "")))]
+            port = _lb_port(attrs)
+            if port is not None:
+                parts.append(slug(str(port)))
+        return "_".join(part for part in parts if part)
     return f"test_{point.type}_{source}_to_{target}"
