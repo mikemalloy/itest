@@ -237,6 +237,22 @@ def apigatewayv2(aws_session: boto3.Session):
 
 
 @pytest.fixture(scope="session")
+def elbv2(aws_session: boto3.Session):
+    """Read-only ELBv2 client (listeners, rules, target groups, target health).
+
+    Every call the lb_edge recipe makes is a `describe_*`; the register /
+    deregister / set-health calls on this client mutate and are out of bounds.
+    """
+    return aws_session.client("elbv2")
+
+
+@pytest.fixture(scope="session")
+def ecs(aws_session: boto3.Session):
+    """Read-only ECS client (service desired/running counts and load balancers)."""
+    return aws_session.client("ecs")
+
+
+@pytest.fixture(scope="session")
 def resolve(tf_dir: str):
     """``resolve(hcl_address)`` -> live values, bound to the configured dir."""
 

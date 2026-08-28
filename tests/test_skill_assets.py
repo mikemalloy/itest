@@ -27,6 +27,7 @@ SG_RECIPE = RECIPE_DIR / "sg_edge.md"
 IAM_RECIPE = RECIPE_DIR / "iam_edge.md"
 EVENT_RECIPE = RECIPE_DIR / "event_edge.md"
 ROUTE_RECIPE = RECIPE_DIR / "route_edge.md"
+LB_RECIPE = RECIPE_DIR / "lb_edge.md"
 
 TEMPLATE_BEGIN = "<!-- BEGIN conftest.py -->"
 TEMPLATE_END = "<!-- END conftest.py -->"
@@ -78,7 +79,7 @@ def emitted_point_types() -> set[str]:
 def test_skill_files_exist() -> None:
     assert SKILL_MD.is_file(), f"missing {SKILL_MD}"
     assert CONFTEST_MD.is_file(), f"missing {CONFTEST_MD}"
-    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE):
+    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE, LB_RECIPE):
         assert recipe.is_file(), f"missing {recipe}"
 
 
@@ -117,6 +118,7 @@ def test_no_recipe_without_a_detector() -> None:
         (IAM_RECIPE, "iam_edge"),
         (EVENT_RECIPE, "event_edge"),
         (ROUTE_RECIPE, "route_edge"),
+        (LB_RECIPE, "lb_edge"),
     ],
 )
 def test_recipe_names_its_type_and_explains_failure(recipe: Path, heading: str) -> None:
@@ -129,13 +131,13 @@ def test_recipe_names_its_type_and_explains_failure(recipe: Path, heading: str) 
 
 @pytest.mark.parametrize("field", ["source", "target", "hcl_address"])
 def test_recipes_document_point_fields(field: str) -> None:
-    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE):
+    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE, LB_RECIPE):
         assert field in recipe.read_text(encoding="utf-8"), f"{recipe.name}"
 
 
 def test_recipes_point_at_the_shared_conftest() -> None:
     """One resolver, referenced everywhere, so the recipes cannot diverge."""
-    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE):
+    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE, LB_RECIPE):
         text = recipe.read_text(encoding="utf-8")
         assert "conftest.md" in text, f"{recipe.name} does not reference the template"
         assert TEMPLATE_BEGIN not in text, (
@@ -165,7 +167,18 @@ def test_conftest_template_reads_config_rather_than_hardcoding_it() -> None:
 
 @pytest.mark.parametrize(
     "fixture",
-    ["ec2", "iam", "lambda_", "sqs", "s3", "events", "apigateway", "apigatewayv2"],
+    [
+        "ec2",
+        "iam",
+        "lambda_",
+        "sqs",
+        "s3",
+        "events",
+        "apigateway",
+        "apigatewayv2",
+        "elbv2",
+        "ecs",
+    ],
 )
 def test_conftest_template_provides_clients_for_every_recipe(fixture: str) -> None:
     """Each recipe's assertions need its service client to exist."""
@@ -290,8 +303,71 @@ def test_route_recipe_forbids_calling_the_endpoint() -> None:
         assert forbidden not in code, forbidden
 
 
-def test_skill_inventory_names_four_recipes() -> None:
+def test_skill_inventory_names_five_recipes() -> None:
     """The inventory step tells the agent what it may implement."""
     text = SKILL_MD.read_text(encoding="utf-8")
-    assert "Four ship today" in text
+    assert "Five ship today" in text
     assert "route_edge" in text
+    assert "lb_edge" in text
+
+
+# --------------------------------------------------------------------------
+# The lb_edge recipe: two hops, and the first recipe that asserts liveness
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "describe_listeners",
+        "describe_rules",
+        "describe_target_groups",
+        "describe_target_health",
+        "describe_services",
+        "hop",  # the dispatch key
+        "ForwardConfig",  # the two spellings of a forward
+        "desiredCount",
+        "runningCount",
+    ],
+)
+def test_lb_recipe_covers_both_hops(marker: str) -> None:
+    assert marker in LB_RECIPE.read_text(encoding="utf-8")
+
+
+def test_lb_recipe_says_it_asserts_liveness() -> None:
+    """The one recipe whose red can be an incident, not drift: say so."""
+    text = LB_RECIPE.read_text(encoding="utf-8").lower()
+    assert "liveness" in text
+    # And what a zero-healthy result actually means, both readings.
+    assert "scaled to zero" in text
+    assert "healthy" in text
+
+
+def test_lb_recipe_forbids_calling_the_load_balancer() -> None:
+    """Requesting the DNS name runs whatever is behind it: active tier."""
+    text = LB_RECIPE.read_text(encoding="utf-8")
+    assert "active probe" in text.lower()
+
+    fence = re.compile(r"```python\n(.*?)```", re.DOTALL)
+    code = "\n".join(fence.findall(text))
+    for forbidden in (
+        "requests.get(",
+        "urlopen(",
+        "register_targets(",
+        "deregister_targets(",
+        "set_rule_priorities(",
+        "modify_",
+    ):
+        assert forbidden not in code, forbidden
+
+
+def test_lb_recipe_notes_the_api_constraints() -> None:
+    """The elbv2/ECS analogue of iam_edge's ARN-shape trap."""
+    text = LB_RECIPE.read_text(encoding="utf-8")
+    assert "iam_edge.md" in text, "no pointer to the precedent"
+    for constraint in (
+        "two spellings",  # ForwardConfig vs bare TargetGroupArn
+        "string",  # Priority comes back as a string
+        "camelCase",  # ECS vs elbv2 key casing
+    ):
+        assert constraint in text, constraint

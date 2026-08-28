@@ -50,20 +50,22 @@ Parse the manifest. List every test whose `status` is `stub`, grouped by the
 `IntegrationPoint`).
 
 For each group, check whether a recipe exists at
-`references/recipes/<type>.md`. Four ship today — `sg_edge`, `iam_edge`,
-`event_edge`, and `route_edge` — one per detector ITest has.
+`references/recipes/<type>.md`. Five ship today — `sg_edge`, `iam_edge`,
+`event_edge`, `route_edge`, and `lb_edge` — one per detector ITest has.
 
 If a type has **no** recipe, say so plainly:
 
 > N points of type `<type>` have no recipe in this skill, so I am skipping
-> them. Recipes exist for: sg_edge, iam_edge, event_edge, route_edge.
+> them. Recipes exist for: sg_edge, iam_edge, event_edge, route_edge, lb_edge.
 
 Then skip them. Never improvise a recipe for a type you have no instructions
 for — a guessed assertion that passes is worse than no test.
 
 Read the recipe for each type you are about to implement **before** generating
 anything. `event_edge` in particular dispatches on its `mechanism` attribute,
-and its five mechanisms take completely different assertions.
+and its five mechanisms take completely different assertions; `lb_edge`
+dispatches on `hop`, and is the one recipe whose checks assert liveness
+(registered and healthy targets) rather than wiring alone.
 
 ### 3. Interview
 
