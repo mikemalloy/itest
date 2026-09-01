@@ -22,8 +22,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The reference API under examples/reference-api/ is a FastAPI app used only to
+# exercise every branch of the http_probe recipe locally; it is not part of the
+# CLI. Its dependencies live here so a plain `pip install itest-cli` never pulls
+# a web framework it does not need.
+examples = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
 dev = [
     "ruff>=0.6",
+    # The reference-API tests (tests/test_reference_app.py,
+    # tests/test_reference_api.py) import the app and stand it up under uvicorn,
+    # so the suite cannot run without the examples group. Mirrored here so
+    # `pip install -e .[dev]` alone makes `pytest` green.
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    # Starlette's TestClient (used by test_reference_app.py) is built on httpx.
+    "httpx2>=2",
 ]
 
 [project.scripts]
