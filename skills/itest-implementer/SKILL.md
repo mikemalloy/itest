@@ -50,13 +50,21 @@ Parse the manifest. List every test whose `status` is `stub`, grouped by the
 `IntegrationPoint`).
 
 For each group, check whether a recipe exists at
-`references/recipes/<type>.md`. Five ship today — `sg_edge`, `iam_edge`,
-`event_edge`, `route_edge`, and `lb_edge` — one per detector ITest has.
+`references/recipes/<type>.md`. Six ship today. Five map one-to-one to a
+detector type — `sg_edge`, `iam_edge`, `event_edge`, `route_edge`, and
+`lb_edge` — and the sixth, `http_probe`, is an **active-tier** recipe layered on
+`route_edge` points rather than a type of its own: it drives per-endpoint HTTP
+probes from an OpenAPI document, and it is opt-in (step 3), never automatic.
 
 If a type has **no** recipe, say so plainly:
 
 > N points of type `<type>` have no recipe in this skill, so I am skipping
 > them. Recipes exist for: sg_edge, iam_edge, event_edge, route_edge, lb_edge.
+
+A `route_edge` point can be covered twice: by the read-only `route_edge` recipe
+(is the wiring still there?) and, when the active tier is approved and an
+OpenAPI document is available, additionally by `http_probe` (does the guard
+actually hold when I knock?).
 
 Then skip them. Never improvise a recipe for a type you have no instructions
 for — a guessed assertion that passes is worse than no test.
@@ -99,6 +107,21 @@ environment: dev
 
 Tell the user this file may contain environment details and belongs in their
 `.gitignore`.
+
+**For the `http_probe` recipe only** — when you will generate active endpoint
+probes on `route_edge` points, and only after (c) approved active probes — also
+ask, in the same batched message:
+
+| # | Question | Notes |
+|---|---|---|
+| e | Where is the OpenAPI document? | A deployed URL to fetch read-only (often `<base>/openapi.json`), or a path to a file in the repo. Prefer the file. |
+| f | Latency bound for public/health endpoints? | Milliseconds. **Default 2000.** |
+| g | A test credential for authenticated happy-path probes? | Optional. Absent is fine — the recipe then probes secured endpoints for refusal only and says the happy path is unverified. |
+
+Persist these alongside the rest (`openapi_source`, `latency_bound_ms`,
+`test_credential`). The API **base URL is never asked for**: it is resolved from
+Terraform state — the API Gateway endpoint the route detector already found — so
+a human never pastes it. See [`references/recipes/http_probe.md`](references/recipes/http_probe.md).
 
 **Before leaving this step, check that `boto3` imports.** The generated checks
 import it, and `itest verify` runs them with the same interpreter ITest itself
@@ -193,7 +216,9 @@ reflects reality is the tool working.
 
 ## Scope
 
-Four recipes ship today, one per detector ITest has:
+Six recipes ship today. Five are read-only, one per detector ITest has; the
+sixth, `http_probe`, is the active tier's first inhabitant and layers onto
+`route_edge`:
 
 | Recipe | Covers | Assertion rests on |
 |---|---|---|
@@ -201,9 +226,13 @@ Four recipes ship today, one per detector ITest has:
 | [`iam_edge`](references/recipes/iam_edge.md) | Role -> resource grants | `iam:SimulatePrincipalPolicy`, falling back to reading the policy |
 | [`event_edge`](references/recipes/event_edge.md) | ESM, DLQ redrive, Lambda permission, S3 notification, EventBridge target | `lambda:ListEventSourceMappings`, `sqs:GetQueueAttributes`, `lambda:GetPolicy`, `s3:GetBucketNotification`, `events:DescribeRule`, `events:ListTargetsByRule` |
 | [`route_edge`](references/recipes/route_edge.md) | API Gateway route -> integration | `apigateway:GET` on methods, integrations and stages; `apigatewayv2:GET` on routes, integrations and stages |
+| [`lb_edge`](references/recipes/lb_edge.md) | Load balancer / container spine, asserting liveness (registered and healthy targets) | `elbv2:Describe*` on listeners, rules, target groups and target health; `ecs:DescribeServices` |
+| [`http_probe`](references/recipes/http_probe.md) | **Active tier.** Per-endpoint auth and latency on a `route_edge` point, from its OpenAPI document | `itest.probes.http` against the live URL; base URL resolved read-only from state |
 
-All four share one `conftest.py`, from
-[`references/conftest.md`](references/conftest.md).
+The five read-only recipes share one `conftest.py`, from
+[`references/conftest.md`](references/conftest.md). `http_probe` adds two small
+fixtures of its own (its recipe shows them) and drives `itest.probes.http`
+rather than a boto3 client, since it talks to the endpoint, not the AWS API.
 
 DESIGN.md's Scope ledger is the authoritative list of what ITest detects. When
 it grows a detector, that detector gets a recipe file here; this skill's job is

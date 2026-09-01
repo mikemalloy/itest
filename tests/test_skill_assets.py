@@ -28,6 +28,13 @@ IAM_RECIPE = RECIPE_DIR / "iam_edge.md"
 EVENT_RECIPE = RECIPE_DIR / "event_edge.md"
 ROUTE_RECIPE = RECIPE_DIR / "route_edge.md"
 LB_RECIPE = RECIPE_DIR / "lb_edge.md"
+HTTP_PROBE_RECIPE = RECIPE_DIR / "http_probe.md"
+
+# Recipes that are not a detector point type of their own but layer an extra
+# tier of checks onto one that is. `http_probe` adds active-tier per-endpoint
+# probes to `route_edge` points; there is no detector for it because there is no
+# new edge to detect — the edge is the API route the route detector already found.
+LAYERED_RECIPES = {"http_probe": "route_edge"}
 
 TEMPLATE_BEGIN = "<!-- BEGIN conftest.py -->"
 TEMPLATE_END = "<!-- END conftest.py -->"
@@ -79,7 +86,14 @@ def emitted_point_types() -> set[str]:
 def test_skill_files_exist() -> None:
     assert SKILL_MD.is_file(), f"missing {SKILL_MD}"
     assert CONFTEST_MD.is_file(), f"missing {CONFTEST_MD}"
-    for recipe in (SG_RECIPE, IAM_RECIPE, EVENT_RECIPE, ROUTE_RECIPE, LB_RECIPE):
+    for recipe in (
+        SG_RECIPE,
+        IAM_RECIPE,
+        EVENT_RECIPE,
+        ROUTE_RECIPE,
+        LB_RECIPE,
+        HTTP_PROBE_RECIPE,
+    ):
         assert recipe.is_file(), f"missing {recipe}"
 
 
@@ -106,9 +120,19 @@ def test_every_emitted_point_type_has_a_recipe() -> None:
 
 
 def test_no_recipe_without_a_detector() -> None:
-    """The reverse drift: a recipe for a type nothing emits is dead weight."""
+    """The reverse drift: a recipe for a type nothing emits is dead weight.
+
+    Layered recipes (§LAYERED_RECIPES) are the one exception — they hang on an
+    existing type rather than emitting their own, so they are exempt from the
+    type match but must name a base type the detectors really produce.
+    """
     recipes = {p.stem for p in RECIPE_DIR.glob("*.md")}
-    assert recipes <= emitted_point_types()
+    emitted = emitted_point_types()
+    for recipe, base_type in LAYERED_RECIPES.items():
+        assert base_type in emitted, (
+            f"{recipe} layers on {base_type}, which no detector emits"
+        )
+    assert (recipes - set(LAYERED_RECIPES)) <= emitted
 
 
 @pytest.mark.parametrize(
@@ -119,6 +143,7 @@ def test_no_recipe_without_a_detector() -> None:
         (EVENT_RECIPE, "event_edge"),
         (ROUTE_RECIPE, "route_edge"),
         (LB_RECIPE, "lb_edge"),
+        (HTTP_PROBE_RECIPE, "http_probe"),
     ],
 )
 def test_recipe_names_its_type_and_explains_failure(recipe: Path, heading: str) -> None:
@@ -303,12 +328,58 @@ def test_route_recipe_forbids_calling_the_endpoint() -> None:
         assert forbidden not in code, forbidden
 
 
-def test_skill_inventory_names_five_recipes() -> None:
+def test_skill_inventory_names_six_recipes() -> None:
     """The inventory step tells the agent what it may implement."""
     text = SKILL_MD.read_text(encoding="utf-8")
-    assert "Five ship today" in text
-    assert "route_edge" in text
-    assert "lb_edge" in text
+    assert "Six ship today" in text
+    for recipe in ("sg_edge", "iam_edge", "event_edge", "route_edge", "lb_edge"):
+        assert recipe in text, recipe
+    # The active-tier probe recipe is the sixth, and its interview needs must
+    # be surfaced so the agent asks for the OpenAPI document and credential.
+    assert "http_probe" in text
+
+
+# --------------------------------------------------------------------------
+# The http_probe recipe: the active tier's first inhabitant
+# --------------------------------------------------------------------------
+
+
+def test_http_probe_recipe_opens_on_environment_gating() -> None:
+    """Gating is the recipe's opening paragraph, per its charter: these tests
+    run only where policy allows and prod refuses them by name."""
+    text = HTTP_PROBE_RECIPE.read_text(encoding="utf-8")
+    head = text[: text.index("## 1")] if "## 1" in text else text[:1500]
+    assert "active" in head.lower()
+    assert "prod" in head.lower()
+    # The owner's deliberate, code-reviewed act — stated, not implied.
+    assert "code-review" in head.lower() or "code review" in head.lower()
+
+
+def test_http_probe_recipe_uses_the_probe_and_add_never_reinvents_them() -> None:
+    text = HTTP_PROBE_RECIPE.read_text(encoding="utf-8")
+    # It drives the shipped probe and the shipped registration command.
+    assert "itest.probes.http" in text
+    assert "itest add" in text
+    assert "--tier active" in text
+    # And it must not hand-roll an HTTP client inside its python examples.
+    fence = re.compile(r"```python\n(.*?)```", re.DOTALL)
+    code = "\n".join(fence.findall(text))
+    for forbidden in ("requests.get(", "requests.post(", "urlopen(", "http.client"):
+        assert forbidden not in code, forbidden
+
+
+def test_http_probe_recipe_classifies_by_operation() -> None:
+    """401/403 for secured, 200-under-latency for public, and the CRITICAL
+    unauthenticated-unsafe-2xx stop-the-run case are all present."""
+    text = HTTP_PROBE_RECIPE.read_text(encoding="utf-8")
+    assert "401" in text and "403" in text
+    assert "2000" in text  # the default latency bound
+    assert "security: []" in text  # the explicit-public marker
+    assert "CRITICAL" in text
+    # Never launder the critical finding into an expectation.
+    assert "never" in text.lower() and "2xx" in text
+    # A missing credential is skipped by not generating, not by pytest.skip.
+    assert "pytest.skip" in text  # named in prose to rule it out
 
 
 # --------------------------------------------------------------------------
