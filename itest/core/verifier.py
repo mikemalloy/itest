@@ -17,8 +17,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core import planner, points, redact
-from itest.core.manifest import load_manifest, save_manifest
+from itest.core import environments, planner, points, redact
+from itest.core.manifest import Manifest, load_manifest, save_manifest
 
 JUNIT_NAME = "itest-results.xml"
 _REPORT_NAME = "_verify_report.json"
@@ -30,7 +30,7 @@ class VerifyConfigError(Exception):
 
 class TestResult(BaseModel):
     canonical: str
-    outcome: str  # passed | failed | skipped | error | missing
+    outcome: str  # passed | failed | skipped | error | missing | gated
     point_id: str | None = None
     detail: str = ""
 
@@ -40,7 +40,7 @@ class PointResult(BaseModel):
     source: str
     target: str
     attributes: dict = Field(default_factory=dict)
-    status: str  # passing | failing | error | stub
+    status: str  # passing | failing | error | stub | gated
     #: The same one-line tag `itest plan` prints, from itest.core.points.
     #: Carried here because a PointResult has no type, and rendering must not
     #: guess at attributes that only one point type has.
@@ -54,7 +54,14 @@ class VerifyReport(BaseModel):
     errored: int = 0
     stubs: int = 0
     orphaned_tests: int = 0
+    #: Points whose every live test sits in a tier this environment disallows.
+    gated: int = 0
     elapsed_seconds: float = 0.0
+    #: The resolved environment, or None on the safe floor. Carried so the
+    #: renderer can name it in the [GATED <env>] tag without a second lookup.
+    environment: str | None = None
+    #: True when a policy exists but nothing is bound — the announced floor.
+    on_safe_floor: bool = False
     points: list[PointResult] = Field(default_factory=list)
     tests: list[TestResult] = Field(default_factory=list)
     unregistered: list[str] = Field(default_factory=list)
@@ -101,8 +108,48 @@ def _collection_error_for(path: str, collection_errors: dict[str, dict]):
     return None
 
 
+def _gated_canonicals(
+    manifest: Manifest, resolution: environments.Resolution
+) -> set[str]:
+    """Canonical addresses of live tests the environment disallows by tier."""
+    return {
+        t.canonical
+        for t in manifest.tests
+        if t.status != "orphaned" and not t.disabled and not resolution.allows(t.tier)
+    }
+
+
+def _gating_args(manifest: Manifest, gated: set[str]) -> list[str]:
+    """pytest flags that keep gated tests out of collection.
+
+    A file whose every live test is gated is ``--ignore``-d, so it is never
+    imported — the strong guarantee for a dedicated active-tier suite. A gated
+    test sharing a file with allowed siblings can only be ``--deselect``-ed:
+    the module must import for the siblings, but the gated test never runs.
+    Both are collection-time, so neither is a runtime skip.
+    """
+    if not gated:
+        return []
+    live_by_file: dict[str, list[str]] = {}
+    for t in manifest.tests:
+        if t.status == "orphaned" or t.disabled:
+            continue
+        live_by_file.setdefault(t.path, []).append(t.canonical)
+
+    args: list[str] = []
+    for path, canonicals in sorted(live_by_file.items()):
+        gated_here = [c for c in canonicals if c in gated]
+        if not gated_here:
+            continue
+        if len(gated_here) == len(canonicals):
+            args.append(f"--ignore={path}")
+        else:
+            args += [f"--deselect={c}" for c in gated_here]
+    return args
+
+
 def _run_pytest(
-    base_dir: Path, junit_path: Path | None
+    base_dir: Path, junit_path: Path | None, gating_args: list[str] | None = None
 ) -> tuple[dict[str, dict], dict[str, dict]]:
     """Run pytest on itest_tests/ and return (test outcomes, collection errors)."""
     report_file = base_dir / planner.ITEST_DIR / _REPORT_NAME
@@ -130,6 +177,8 @@ def _run_pytest(
         # "itest_tests/..." paths, so every passing test looks unregistered.
         f"--rootdir={base_dir}",
     ]
+    # Gated tests are removed from collection here, before any import.
+    args += gating_args or []
     if junit_path is not None:
         args += ["--junitxml", str(junit_path)]
 
@@ -154,13 +203,20 @@ def _pseudonymize_report(report: VerifyReport, replace) -> VerifyReport:
 
 
 def run_verify(
-    base_dir: Path, output: str = "human", redact_accounts: bool = False
+    base_dir: Path,
+    output: str = "human",
+    redact_accounts: bool = False,
+    environment: str | None = None,
 ) -> VerifyReport:
     """Execute the suite and build the coverage report.
 
     ``redact_accounts`` pseudonymizes every AWS account id in the report and,
     for junit output, in the written XML — using the same mapping, so the two
     still correlate. Verify output gets pasted into tickets and CI logs.
+
+    ``environment`` overrides the local binding. The resolved environment's
+    tier policy decides which tests are collected at all; a bad policy raises
+    ``environments.EnvironmentConfigError`` here, before the suite runs.
     """
     manifest_file = planner.manifest_path(base_dir)
     if not manifest_file.exists():
@@ -168,21 +224,33 @@ def run_verify(
             "No manifest found. Run `itest plan && itest sync` first."
         )
     manifest = load_manifest(manifest_file)
+    # Resolve (and validate) the policy before requiring pytest or running
+    # anything: a policy that would loose a mutating test cannot slip past a
+    # green suite, because verify refuses to start.
+    resolution = environments.resolve(base_dir, override=environment)
     _require_pytest()
+
+    gated = _gated_canonicals(manifest, resolution)
 
     junit_path = base_dir / JUNIT_NAME if output == "junit" else None
     started = time.monotonic()
-    outcomes, collection_errors = _run_pytest(base_dir, junit_path)
+    outcomes, collection_errors = _run_pytest(
+        base_dir, junit_path, _gating_args(manifest, gated)
+    )
     elapsed = time.monotonic() - started
 
     by_canonical = {t.canonical: t for t in manifest.tests}
 
-    # Resolve every registered test once. A test in a module that failed to
-    # collect has no per-test outcome, so it inherits its module's error rather
-    # than looking merely absent.
+    # Resolve every registered test once. A gated test is neither run nor
+    # collected, so it carries its own "gated" outcome rather than looking
+    # merely absent. A test in a module that failed to collect inherits its
+    # module's error.
     resolved: dict[str, tuple[str, str]] = {}
     durations_recorded = False
     for test in manifest.tests:
+        if test.canonical in gated:
+            resolved[test.canonical] = ("gated", "")
+            continue
         raw = outcomes.get(test.canonical)
         if raw:
             resolved[test.canonical] = (raw["outcome"], raw["detail"])
@@ -205,16 +273,36 @@ def run_verify(
     ]
     unregistered = sorted(n for n in outcomes if n not in by_canonical)
 
-    # Point-level rollup.
-    point_results: list[PointResult] = []
-    passing = failing = errored = stubs = 0
+    # Point-level rollup. Gated points are collected apart and appended after
+    # the rest, so the Points listing shows them last (after stubs).
+    ranked_results: list[PointResult] = []
+    gated_results: list[PointResult] = []
+    passing = failing = errored = stubs = gated_points = 0
     for point in manifest.points:
         live = [
             t
             for t in manifest.tests_for_point(point.id)
             if t.status != "orphaned" and not t.disabled
         ]
-        live_outcomes = [resolved[t.canonical][0] for t in live]
+        allowed = [t for t in live if t.canonical not in gated]
+        # A point with live coverage, all of it gated, is itself gated: the
+        # environment refused every check it has, so it is neither known-good
+        # nor merely unimplemented.
+        if live and not allowed:
+            gated_results.append(
+                PointResult(
+                    id=point.id,
+                    source=point.source,
+                    target=point.target,
+                    attributes=point.attributes,
+                    status="gated",
+                    tag=points.summary(point),
+                )
+            )
+            gated_points += 1
+            continue
+
+        live_outcomes = [resolved[t.canonical][0] for t in allowed]
         # Precedence: fail > error > pass > stub. A single test that could not
         # run outranks a passing sibling — the point is not known-good, and
         # reporting it as covered is how a broken check goes unnoticed.
@@ -230,7 +318,7 @@ def run_verify(
         else:
             status = "stub"
             stubs += 1
-        point_results.append(
+        ranked_results.append(
             PointResult(
                 id=point.id,
                 source=point.source,
@@ -241,6 +329,7 @@ def run_verify(
             )
         )
 
+    point_results = ranked_results + gated_results
     orphaned_tests = sum(1 for t in manifest.tests if t.status == "orphaned")
 
     # Persist per-test durations (schema v2). This is verify's only write to
@@ -255,7 +344,10 @@ def run_verify(
         errored=errored,
         stubs=stubs,
         orphaned_tests=orphaned_tests,
+        gated=gated_points,
         elapsed_seconds=round(elapsed, 2),
+        environment=resolution.environment,
+        on_safe_floor=resolution.on_safe_floor,
         points=point_results,
         tests=test_results,
         unregistered=unregistered,
@@ -282,19 +374,42 @@ _STATUS_TAG = {
 }
 
 
+def _gated_tag(environment: str | None) -> str:
+    """The bracketed status a gated point carries. Bare on the safe floor."""
+    return f"GATED {environment}" if environment else "GATED"
+
+
 def render_human(report: VerifyReport, redacted: bool = False) -> str:
     out: list[str] = []
-    out.append(
+    # One line, only when a policy is committed but nothing is bound: name the
+    # floor the run fell back to, so a green suite is not mistaken for coverage
+    # of the active tier it silently withheld.
+    if report.on_safe_floor:
+        out.append(
+            "No environment bound: running the safe floor (static, readonly). "
+            "Bind one with --environment or .itest/environment."
+        )
+    rollup = (
         f"{report.total_points} integration points: "
         f"{report.passing} passing, {report.failing} failing, "
         f"{report.errored} errored, "
-        f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests."
+        f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests"
     )
-    out.append(f"Ran {len(report.tests)} tests in {report.elapsed_seconds:.2f}s")
+    # Append-only, like the resurrection clause in plan: the fragment appears
+    # only when something is gated, so the common line is byte-identical.
+    if report.gated:
+        rollup += f", {report.gated} gated"
+    out.append(rollup + ".")
+    ran = sum(1 for t in report.tests if t.outcome != "gated")
+    out.append(f"Ran {ran} tests in {report.elapsed_seconds:.2f}s")
     out.append("")
     out.append("Points:")
     for p in report.points:
-        status = _STATUS_TAG.get(p.status, "????")
+        status = (
+            _gated_tag(report.environment)
+            if p.status == "gated"
+            else _STATUS_TAG.get(p.status, "????")
+        )
         out.append(f"  [{status}] {p.source} -> {p.target} ({p.tag})")
 
     failures = [t for t in report.tests if t.outcome == "failed"]

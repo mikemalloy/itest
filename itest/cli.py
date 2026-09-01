@@ -157,14 +157,26 @@ def verify(
         "--redact",
         help="Pseudonymize AWS account IDs in the output, for safe sharing.",
     ),
+    environment: str | None = typer.Option(
+        None,
+        "--environment",
+        help="Environment to run as; overrides the .itest/environment binding.",
+    ),
 ) -> None:
     """Run the test suite and report point-level coverage."""
-    from itest.core import verifier
+    from itest.core import environments, verifier
 
     base_dir = Path.cwd()
     try:
-        report = verifier.run_verify(base_dir, output=output, redact_accounts=redact)
-    except verifier.VerifyConfigError as exc:
+        report = verifier.run_verify(
+            base_dir,
+            output=output,
+            redact_accounts=redact,
+            environment=environment,
+        )
+    except (verifier.VerifyConfigError, environments.EnvironmentConfigError) as exc:
+        # A bad policy or an undefined binding is a config problem, like a
+        # missing manifest: exit 2, and never run the suite.
         echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
 
@@ -255,11 +267,16 @@ def redact(
 
 
 def render_verify_line(report) -> str:
-    return (
+    line = (
         f"{report.total_points} integration points: "
         f"{report.passing} passing, {report.failing} failing, "
-        f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests."
+        f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests"
     )
+    # Same append-only fragment the human rollup uses, so the junit path
+    # reports gating too without perturbing the ungated line.
+    if report.gated:
+        line += f", {report.gated} gated"
+    return line + "."
 
 
 if __name__ == "__main__":

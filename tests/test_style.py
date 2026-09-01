@@ -454,3 +454,65 @@ def test_rollup_zero_passing_stubs_only_not_green() -> None:
         "12 stubs, 0 orphaned tests."
     )
     assert "bold green" not in _styles_over(style.render(line), "0 passing")
+
+
+# ==========================================================================
+# 8. Environment gating: [GATED] tags and the ", N gated" rollup fragment
+# ==========================================================================
+
+
+@pytest.mark.parametrize("tag", ["[GATED prod]", "[GATED]"])
+def test_gated_point_tag_is_dim_like_stub(tag: str) -> None:
+    line = f"  {tag} aws_security_group.web -> aws_security_group.db (tcp:5432 ingress)"
+    rendered = style.render(line)
+    assert "dim" in _styles_over(rendered, tag)
+    # Only the tag: the point itself is not repainted.
+    assert not _styles_over(rendered, "aws_security_group.web")
+
+
+def test_rollup_gated_fragment_is_yellow_when_nonzero() -> None:
+    line = (
+        "3 integration points: 0 passing, 0 failing, 0 errored, "
+        "2 stubs, 0 orphaned tests, 1 gated."
+    )
+    rendered = style.render(line)
+    assert "bold" in _styles_over(rendered, line)
+    assert "yellow" in _styles_over(rendered, "1 gated")
+
+
+def test_rollup_without_gated_fragment_is_unchanged() -> None:
+    """The optional fragment must not perturb the byte-identical common case."""
+    line = (
+        "3 integration points: 0 passing, 0 failing, 0 errored, "
+        "3 stubs, 0 orphaned tests."
+    )
+    rendered = style.render(line)
+    assert "bold" in _styles_over(rendered, line)
+    assert strip_ansi(style.render_ansi(line)) == line
+
+
+def test_gated_verify_output_round_trips(tmp_path, monkeypatch) -> None:
+    """Real gated verify output still strips back to its plain form."""
+    from itest.core.manifest import load_manifest, save_manifest
+
+    monkeypatch.chdir(tmp_path)
+    synced = runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(ALEX_S6)])
+    assert synced.exit_code == 0, synced.output
+
+    (tmp_path / ".itest" / "environments.yaml").write_text(
+        "version: 1\nenvironments:\n"
+        "  prod: { tiers: [static, readonly], production: true }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".itest" / "environment").write_text("prod\n", encoding="utf-8")
+    mpath = tmp_path / ".itest" / "manifest.yaml"
+    manifest = load_manifest(mpath)
+    manifest.tests[0].tier = "active"
+    save_manifest(manifest, mpath)
+
+    verified = runner.invoke(app, ["verify"])
+    assert verified.exit_code == 0, verified.output
+    plain = verified.output
+    assert "[GATED prod]" in plain
+    assert "gated." in plain
+    assert strip_ansi(style.render_ansi(plain)) == plain

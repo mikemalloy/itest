@@ -176,7 +176,9 @@ def _force_outcomes(monkeypatch, outcomes: dict, collection_errors: dict) -> Non
     from itest.core import verifier
 
     monkeypatch.setattr(
-        verifier, "_run_pytest", lambda base_dir, junit: (outcomes, collection_errors)
+        verifier,
+        "_run_pytest",
+        lambda base_dir, junit, gating=None: (outcomes, collection_errors),
     )
 
 

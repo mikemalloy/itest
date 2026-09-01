@@ -173,15 +173,19 @@ def _verify_rollup_refine(match: re.Match[str]) -> Iterable[tuple[str, str]]:
     Green is withheld while anything errored (the suite could not run, so
     "all passing" would be a claim the run did not earn) and when nothing
     passed at all — "0 passing" on a stubs-only run is clean, but green
-    would celebrate work not yet done.
+    would celebrate work not yet done. The gated fragment, present only when
+    nonzero, is yellow — a caution that coverage was withheld, not a failure.
     """
     failing = int(match.group("failing_n"))
     errored = int(match.group("errored_n") or 0)
     passing = int(match.group("passing_n"))
+    gated = int(match.group("gated_n") or 0)
     if failing:
         yield ("failing", "bold red")
     elif passing and not errored:
         yield ("passing", "bold green")
+    if gated:
+        yield ("gated", "yellow")
 
 
 _POINT_STATUS_STYLE = {
@@ -220,7 +224,9 @@ RULES: tuple[Rule, ...] = (
             r"(?P<passing>(?P<passing_n>\d+) passing), "
             r"(?P<failing>(?P<failing_n>\d+) failing), "
             r"(?:(?P<errored>(?P<errored_n>\d+) errored), )?"
-            r"\d+ stubs, \d+ orphaned tests\.$"
+            r"\d+ stubs, \d+ orphaned tests"
+            r"(?:, (?P<gated>(?P<gated_n>\d+) gated))?"
+            r"\.$"
         ),
         {LINE: "bold"},
         refine=_verify_rollup_refine,
@@ -241,6 +247,14 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule("plan_orphan", re.compile(r"^  ~ "), {LINE: "yellow"}),
     Rule("plan_resurrected", re.compile(r"^  \^ \[returning\] "), {LINE: "cyan"}),
+    # Before verify_point: a gated tag carries the environment name (a space
+    # and lowercase), which the status regex would not match, and bare
+    # `[GATED]` would match it but find no style. Dim, exactly like [STUB].
+    Rule(
+        "verify_gated",
+        re.compile(r"^  (?P<tag>\[GATED(?: [^\]]+)?\]) "),
+        {"tag": "dim"},
+    ),
     Rule(
         "verify_point",
         re.compile(r"^  (?P<tag>\[(?P<status>[A-Z?]{4,6})\]) "),
