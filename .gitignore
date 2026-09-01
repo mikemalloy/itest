@@ -23,6 +23,11 @@ itest-results.xml
 # it is machine-local configuration, not shared project state.
 .itest/skill-answers.yaml
 
+# The environment binding: which environment THIS checkout is pointed at.
+# Machine-local state like skill-answers.yaml above — the policy
+# (.itest/environments.yaml) is committed and code-reviewed, the binding is not.
+.itest/environment
+
 # Terraform working artifacts
 .terraform/
 *.tfstate
