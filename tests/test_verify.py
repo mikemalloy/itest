@@ -143,6 +143,50 @@ def test_verify_without_pytest_fails_fast(synced_project: Path, monkeypatch) -> 
 # --------------------------------------------------------------------------
 
 
+def test_many_real_tests_on_one_point_roll_up_by_precedence(
+    synced_project: Path,
+) -> None:
+    """End to end, no mocks: several real tests mapped to a single point roll
+    up fail > error > pass > stub. The OpenAPI recipe hangs many probe tests on
+    one route_edge point, so this is the property that keeps a single failing
+    endpoint from being masked by its passing siblings."""
+    from itest.core.manifest import TestEntry, load_manifest, save_manifest
+
+    # A real file with three real functions: two pass, one fails.
+    extra = synced_project / "itest_tests" / "test_extra_probes.py"
+    extra.write_text(
+        "def test_probe_a():\n    assert True\n\n\n"
+        "def test_probe_b():\n    assert True\n\n\n"
+        "def test_probe_c():\n    assert False, 'the guard did not hold'\n"
+    )
+
+    manifest_path = synced_project / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_path)
+    point_id = next(
+        t.point_id
+        for t in manifest.tests
+        if t.test_name == "test_sg_internet_to_alb_443"
+    )
+    for name in ("test_probe_a", "test_probe_b", "test_probe_c"):
+        manifest.tests.append(
+            TestEntry(
+                id=f"t-{name}",
+                point_id=point_id,
+                path="itest_tests/test_extra_probes.py",
+                test_name=name,
+                ownership_hash="0" * 64,
+                status="implemented",
+            )
+        )
+    save_manifest(manifest, manifest_path)
+
+    result = runner.invoke(app, ["verify"])
+    # One failing sibling makes the whole point fail, and the suite exits 1.
+    assert result.exit_code == 1, result.output
+    assert "[FAIL] 0.0.0.0/0 -> aws_security_group.alb" in result.output
+    assert "1 failing" in result.output
+
+
 def _register_second_test(base_dir: Path, path_rel: str, name: str) -> str:
     """Register a second test against the web->db point. Returns its canonical."""
     from itest.core.manifest import TestEntry, load_manifest, save_manifest
