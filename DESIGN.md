@@ -281,6 +281,19 @@ Shipped:
   (`itest/core/register.py`). Existing points only — it never declares a point;
   AST-validated; the entry is human-owned from birth and survives a sync
   round-trip untouched.
+- http_probe reference API (`examples/reference-api/`): a FastAPI app with one
+  route per branch of the http_probe recipe, and a harness
+  (`tests/test_reference_api.py`) that runs recipe-shaped probes against it under
+  uvicorn and asserts an expected-outcome table — including the two branches
+  proven by a RED result (the auth-ordering 404 and the deliberate
+  `/leaky/action` unauthenticated-unsafe-2xx classified CRITICAL). It is the
+  recipe's regression guard and the safe stage for the critical-catch demo,
+  because those branches cannot be shown on a real prod system. The harness also
+  drives the probes through the recipe's real base-URL resolution: a synthetic
+  `terraform show -json` state is walked by the detectors and the base URL
+  resolved from it, never pasted. fastapi + uvicorn are an `[examples]`
+  optional-dependency group (mirrored into dev deps so the suite runs); the CLI
+  itself pulls no web framework.
 
 Not yet built (do not build without explicit instruction):
 - DNS and endpoint-availability detectors

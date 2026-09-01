@@ -55,6 +55,16 @@ already found. Fetching the OpenAPI document from `<base>/openapi.json` uses tha
 same resolved base. A base URL a human pastes describes whatever they were
 looking at; the resolved one describes this deployment.
 
+**Field lesson (alex run): when the deployed app serves no schema, export it
+from code.** Many API-Gateway-fronted Lambdas answer their real routes but do
+*not* serve `<base>/openapi.json` — nothing there to fetch. When that happens,
+do not hand-transcribe the routes; import the application package locally and
+call its own schema generator (`app.openapi()` for a FastAPI app), or invoke the
+ASGI app through a local Mangum stub to render the same document offline. The
+schema then comes from the code that is deployed, not from a human's memory of
+it, and the sweep still dispatches on a `security` field the app itself
+declared.
+
 ## 3. The base URL comes from state
 
 Add this fixture to `itest_tests/conftest.py` (the one shared conftest — do not
@@ -271,3 +281,14 @@ Report every failure naming the method, the path, and the point id. Ask the user
 whether it is drift, a bad assumption about which operations are public, or a
 real exposure — and for the unauthenticated-unsafe-2xx case, escalate before
 anything else.
+
+## 9. Reference app
+
+A reference app under `examples/reference-api/` has one route per branch of this
+recipe and a harness (`tests/test_reference_api.py`) that asserts each branch's
+outcome — including the ones a real production system can never safely show: the
+CRITICAL unauthenticated-unsafe-2xx catch, the authenticated happy path, and a
+measurable public-latency trip. It is where a change to this recipe is
+regression-tested and where the critical-catch can be demonstrated safely,
+because that app is allowed to be broken on purpose. See its `README.md` for the
+route-to-branch table.

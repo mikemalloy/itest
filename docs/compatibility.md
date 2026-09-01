@@ -62,6 +62,20 @@ The subsequent failure drills confirmed the invariant still fails hard when
 the service is actually down (`0 running of 0 desired` reported in the
 failure message).
 
+## Active-probe recipe coverage
+
+The `http_probe` recipe (the active tier's first) is the one recipe whose
+branches cannot all be shown against a real deployment: you cannot ship a
+deliberately unguarded mutating endpoint to prod to prove the CRITICAL catch
+fires, nor bake a live credential into a repeatable happy-path test, nor make a
+production endpoint slow on demand for the latency floor. So a purpose-built
+reference API under `examples/reference-api/` carries one route per branch, and
+the harness `tests/test_reference_api.py` asserts each branch's outcome —
+including the two proven by a RED result (the auth-ordering 404 and the leaky
+`/leaky/action` unauthenticated-unsafe-2xx that classifies CRITICAL). That is
+the recipe's regression guard and the safe stage for demoing the critical-catch;
+see `examples/reference-api/README.md`.
+
 ## Resource types ITest does not analyze yet
 
 Seen across the projects above, most frequent first. Every one appears in
