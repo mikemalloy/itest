@@ -15,6 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from itest.cli import app
+from itest.core import verifier
 from itest.core.manifest import load_manifest, save_manifest
 
 runner = CliRunner()
@@ -266,3 +267,44 @@ def test_binding_an_undefined_environment_is_exit_2(synced: Path) -> None:
     result = runner.invoke(app, ["verify", "--environment", "ghost"])
     assert result.exit_code == 2, result.output
     assert "ghost" in result.output
+
+
+def _report_with(point_status: str) -> verifier.VerifyReport:
+    """One point, one gated test on it, point status as given."""
+    return verifier.VerifyReport(
+        total_points=1,
+        stubs=1 if point_status == "stub" else 0,
+        gated=1 if point_status == "gated" else 0,
+        environment="prod",
+        points=[
+            verifier.PointResult(
+                id="p1", source="a", target="b", status=point_status, tag="t"
+            )
+        ],
+        tests=[
+            verifier.TestResult(
+                canonical="itest_tests/t.py::test_x",
+                outcome="gated",
+                point_id="p1",
+                detail="",
+            )
+        ],
+    )
+
+
+def test_partially_gated_tests_are_announced() -> None:
+    """A gated test on a point that still reports other coverage must not
+    vanish silently: the point shows its remaining status, and one line
+    names how many tests the environment withheld."""
+    text = verifier.render_human(_report_with("stub"))
+    assert (
+        "1 gated test(s) withheld by this environment on points that still "
+        "report their remaining tests." in text
+    )
+
+
+def test_fully_gated_points_do_not_double_report() -> None:
+    """A fully-gated point already announces itself as [GATED]; its tests
+    must not also count toward the partial-withholding line."""
+    text = verifier.render_human(_report_with("gated"))
+    assert "withheld" not in text

@@ -402,6 +402,22 @@ def render_human(report: VerifyReport, redacted: bool = False) -> str:
     out.append(rollup + ".")
     ran = sum(1 for t in report.tests if t.outcome != "gated")
     out.append(f"Ran {ran} tests in {report.elapsed_seconds:.2f}s")
+    # A fully-gated point announces itself as [GATED]. A gated test on a
+    # point that still ran its other tests has no marker of its own — the
+    # point truthfully reports its remaining coverage — so without this line
+    # the withholding would be silent, and nothing may be silently skipped.
+    # Append-only: the line is absent whenever nothing is partially gated.
+    fully_gated_points = {p.id for p in report.points if p.status == "gated"}
+    partially_gated = sum(
+        1
+        for t in report.tests
+        if t.outcome == "gated" and t.point_id not in fully_gated_points
+    )
+    if partially_gated:
+        out.append(
+            f"{partially_gated} gated test(s) withheld by this environment on "
+            "points that still report their remaining tests."
+        )
     out.append("")
     out.append("Points:")
     for p in report.points:
