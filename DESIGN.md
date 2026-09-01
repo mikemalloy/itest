@@ -37,6 +37,16 @@ integration points, generates test stubs, and verifies deployed infrastructure.
     [STUB] aws_security_group.alb -> aws_security_group.web (tcp:80 ingress)
     [STUB] aws_security_group.web -> aws_security_group.db (tcp:5432 ingress)
   ```
+- `itest add`: registers an **existing** test function in the manifest against
+  an **existing** point (`--point`/`--file`/`--function`/`--tier`). It never
+  declares a new point — detection reads Terraform, not a filename — so an
+  unknown point id is refused, not created. The function must be defined in the
+  file (checked by AST, never by import), and a duplicate `(path, function)` is
+  rejected. `--tier` is required: the caller states what kind of test this is.
+  The entry is **human-owned from birth** (its ownership hash is the file's, its
+  status read from the body), so sync's append-only, never-relocate guarantees
+  keep a round-trip from rewriting, moving, or de-registering it. Registered
+  tests join verify — and tier gating — exactly like synced ones.
 
 ## Test addressing
 - Canonical form everywhere the tool prints: `path/to/file.py::TestClass::test_name`
@@ -169,6 +179,27 @@ a checkout points is not a project fact.
   test never runs. The strong never-import guarantee holds for a dedicated
   active-tier file, which is where a mutating probe belongs.
 
+## Probes
+
+Active-tier tests need code that touches a live endpoint, and it lives in its
+own `itest/probes/` package — deliberately apart from the detectors and the CLI.
+A detector reads Terraform and never touches the network; a probe touches the
+network and never reads Terraform. Keeping them in separate packages means the
+read-only analysis path has no accidental route to sending a request.
+
+- **The HTTP probe is bodyless by construction.** `probe()` has no `body`
+  parameter at all. An unauthenticated probe of an unsafe method carrying an
+  empty body is the least dangerous way to ask "does auth stop me?": a refusal
+  proves the guard, an acceptance is the finding, and nothing was sent to act
+  on. It also never follows a redirect (a 3xx is an answer — it records the
+  `Location` and returns the status), never retries, and adds no authorization
+  header of its own; a caller may pass headers explicitly, which is how an
+  authenticated happy-path test supplies a credential.
+- **A timeout is a distinct outcome.** Exceeding the caller's timeout raises a
+  typed `ProbeTimeout` carrying the elapsed time. A non-2xx status (401, 403,
+  404, a recorded 3xx) is a normal result, not an exception — a hang and a
+  refusal must never look alike to the caller.
+
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
   the manifest: recipes hold policy (what a good assertion for a point type
@@ -239,7 +270,17 @@ Shipped:
 - itest-implementer agent skill (interview, read-only default, and a recipe
   per detector: sg_edge, iam_edge, event_edge, route_edge, lb_edge, over one
   shared conftest; lb_edge is the first recipe asserting liveness — registered
-  and healthy targets — rather than wiring alone)
+  and healthy targets — rather than wiring alone). http_probe is the sixth
+  recipe and the active tier's first: an OpenAPI-driven per-endpoint 401/403
+  sweep with a latency floor, each operation registered with `itest add --tier
+  active` onto its route_edge point, gated out of production by policy.
+- Active probes (`itest/probes/http.py`): a bodyless, redirect-recording,
+  no-retry, timeout-typed single-shot HTTP probe for active-tier endpoint
+  checks. Lives in its own package, with no path from the read-only analysis.
+- `itest add`: register an existing test function onto an existing point
+  (`itest/core/register.py`). Existing points only — it never declares a point;
+  AST-validated; the entry is human-owned from birth and survives a sync
+  round-trip untouched.
 
 Not yet built (do not build without explicit instruction):
 - DNS and endpoint-availability detectors
@@ -250,7 +291,8 @@ Not yet built (do not build without explicit instruction):
 - Parallel / scheduled execution (xdist, resource_group serialization,
   duration packing, change-scoped verify)
 - Labels, filtering, and test groups
-- itest add, disable/enable, rm
+- itest disable/enable, rm (itest add now ships, in its existing-points-only
+  form; declaring new points from the CLI remains out of scope)
 - Saved-plan review flow (plan -out consumed by sync)
 - Shorthand address resolution beyond exact match
 - Cross-stack / multi-state analysis
