@@ -135,6 +135,40 @@ integration points, generates test stubs, and verifies deployed infrastructure.
   run: it is already formatted, and it can contain the very words the flag
   pass looks for.
 
+## Environment profiles
+
+The gate that lets an active (mutating) test tier exist safely is the AND of two
+artifacts: a committed **policy** (`.itest/environments.yaml`) saying which tiers
+each named environment may run, and a local **binding** (a `--environment` flag,
+else the `.itest/environment` file) saying where this checkout is pointed. A
+tier runs only when both allow it. The policy is code-reviewed shared state; the
+binding is machine-local and gitignored like `skill-answers.yaml`, because where
+a checkout points is not a project fact.
+
+- **Absence is never permission.** No policy, no binding, or a tier simply left
+  off an environment's list all resolve to the *safe floor* — static and
+  readonly only. A project with no policy file behaves exactly as before, output
+  byte-identical; an active tier never runs without both an explicit policy that
+  allows it and an explicit binding to an environment that allows it. This is
+  why the reporting is append-only: the `[GATED]` point lines and the `, N gated`
+  rollup clause appear only when something is actually gated (the same pattern as
+  the resurrection clause in plan), so the common line is unchanged to the byte.
+- **Refusal at load, not at run.** An unknown tier, an unsupported version, a
+  binding naming an undefined environment, and a `production: true` environment
+  that lists `active` are all hard errors raised when the policy is loaded —
+  verify refuses to start. A policy that would loose a mutating test in
+  production therefore cannot be committed quietly against a green suite.
+- **Production by name.** An environment named exactly `prod` or `production` is
+  treated as production even when the flag is absent; name it that and ITest
+  believes you, so the active-tier refusal fires whether or not someone
+  remembered to write `production: true`.
+- **Gated, not skipped.** A disallowed test is removed from collection, never
+  skipped at runtime. A file whose every live test is gated is `--ignore`-d and
+  never imported; a gated test sharing a file with allowed siblings is
+  `--deselect`-ed — the module still imports for the siblings, but the gated
+  test never runs. The strong never-import guarantee holds for a dedicated
+  active-tier file, which is where a mutating probe belongs.
+
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
   the manifest: recipes hold policy (what a good assertion for a point type
@@ -180,8 +214,15 @@ Shipped:
   group -> ECS service including the blue/green alternate group, target group
   attachments, and the empty-target-group finding)
 - Plan and state JSON roots both accepted by the plan entry point
-- Manifest schema v2 (tier, resource_group, last_duration_seconds — schema
-  and v1 migration only; nothing schedules on them yet)
+- Manifest schema v2 (tier, resource_group, last_duration_seconds). `tier` is
+  now consumed by verify's environment gating; resource_group and
+  last_duration_seconds remain schema-only until a runner uses them.
+- Environment profiles (`itest/core/environments.py`): a committed tier policy
+  (`.itest/environments.yaml`) and a local binding (`--environment` flag or
+  `.itest/environment` file). verify gates disallowed tiers out of collection
+  and reports `[GATED <env>]` plus a `, N gated` rollup clause. Absence resolves
+  to the safe floor (static, readonly); policy problems are refused at load;
+  an environment named prod/production is production by name.
 - plan / sync / verify with changeset, ownership hashes, orphan flagging,
   and orphan resurrection
 - Per-type stub files (`itest_tests/test_<type>s.py`, one per point type,

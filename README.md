@@ -247,6 +247,26 @@ and, on a mismatch, appends but never rewrites or deletes a function you have
 touched. **Orphans** — points that disappear from Terraform — are flagged in
 the manifest, never deleted; if the point returns, its test is re-linked.
 
+### Environments
+
+A committed **policy** (`.itest/environments.yaml`) names environments and which
+test tiers each may run; a local **binding** (`--environment`, else the
+`.itest/environment` file) says which one this checkout is pointed at:
+
+```yaml
+version: 1
+environments:
+  dev:    { tiers: [static, readonly, active] }
+  stage:  { tiers: [static, readonly, active] }
+  prod:   { tiers: [static, readonly], production: true }
+```
+
+A tier runs only when the policy allows it *and* the binding selects an
+environment that allows it. Any absence — no policy, no binding, a tier left off
+— falls to the **safe floor** (static and readonly), where a gated `active` test
+is never even collected. The policy is committed so a reviewer can veto a
+mutating tier before it exists; the binding stays local (gitignored).
+
 ## Design decisions
 
 **Local-first, manifest as code.** No server means one team can adopt it in
