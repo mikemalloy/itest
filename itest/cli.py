@@ -197,6 +197,44 @@ def verify(
 
 
 @app.command()
+def add(
+    # B008: typer's declarative API requires the Option() call in the default;
+    # `...` marks the option required — the caller states each one explicitly.
+    point: str = typer.Option(  # noqa: B008
+        ..., "--point", help="Existing integration point id to register onto."
+    ),
+    file: Path = typer.Option(  # noqa: B008
+        ..., "--file", help="Path to the test file (must already exist)."
+    ),
+    function: str = typer.Option(  # noqa: B008
+        ..., "--function", help="Name of the test function defined in that file."
+    ),
+    tier: str = typer.Option(  # noqa: B008
+        ...,
+        "--tier",
+        help="Tier this test runs as: static, readonly, or active. Required.",
+    ),
+) -> None:
+    """Register an existing test function onto an existing integration point."""
+    from itest.core import register
+
+    base_dir = Path.cwd()
+    try:
+        entry = register.add_test(
+            base_dir,
+            point_id=point,
+            file=file,
+            function=function,
+            tier=tier,
+        )
+    except register.AddError as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+
+    echo(f"Registered {entry.canonical} onto point {entry.point_id} (tier {tier}).")
+
+
+@app.command()
 def redact(
     # B008: see the note on `plan` above — typer requires the call here.
     input_path: Path | None = typer.Argument(  # noqa: B008
