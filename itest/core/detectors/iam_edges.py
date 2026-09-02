@@ -49,12 +49,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 
 from itest.core.manifest import IntegrationPoint
 
 UNRESOLVED = "<unresolved>"
 AWS_MANAGED_PREFIX = "arn:aws:iam::aws:policy/"
+
+#: An S3 object-space ARN: the bucket ARN, then a key path. A grant on
+#: ``arn:aws:s3:::bucket/*`` is over the bucket's objects, so it resolves to the
+#: bucket resource (tagged object-scope) rather than reading external.
+_S3_OBJECT_ARN = re.compile(r"^(arn:aws:s3:::[^/]+)/.+$")
 
 
 def _as_list(value) -> list:
@@ -71,6 +77,7 @@ def _point_id(
     actions: list[str],
     effect: str,
     via_policy: str | None = None,
+    object_scope: bool = False,
 ) -> str:
     parts = ["iam_edge", source, target, ",".join(actions), effect]
     # Appended only when present, so ids of edges that predate customer-managed
@@ -78,6 +85,11 @@ def _point_id(
     # is a different point from the same grant written inline.
     if via_policy:
         parts.append(via_policy)
+    # A grant on the bucket's objects (bucket/*) resolves to the same bucket
+    # address as a grant on the bucket itself, but it is a distinct grant.
+    # Appended only for the object-scope edge, so every other id is unchanged.
+    if object_scope:
+        parts.append("object_scope")
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
 
 
@@ -92,6 +104,7 @@ def _make_point(
             attributes["actions"],
             attributes["effect"],
             attributes.get("via_policy"),
+            attributes.get("object_scope", False),
         ),
         type="iam_edge",
         source=source,
@@ -320,6 +333,14 @@ class IamEdgeDetector:
             for resource_arn in _as_list(statement.get("Resource")):
                 resource_arn = str(resource_arn)
                 resolved = arn_to_address.get(resource_arn)
+                object_scope = False
+                if resolved is None:
+                    match = _S3_OBJECT_ARN.match(resource_arn)
+                    if match:
+                        bucket_address = arn_to_address.get(match.group(1))
+                        if bucket_address is not None:
+                            resolved = bucket_address
+                            object_scope = True
                 attributes = {
                     "actions": actions,
                     "effect": effect,
@@ -328,6 +349,10 @@ class IamEdgeDetector:
                     "external": resolved is None,
                     "managed": False,
                 }
+                # Appended only for a resolved object-space grant, so every other
+                # edge's attributes — and its id — are unchanged.
+                if object_scope:
+                    attributes["object_scope"] = True
                 if via_policy:
                     attributes["via_policy"] = via_policy
                 points.append(
