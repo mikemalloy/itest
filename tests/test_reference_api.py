@@ -37,7 +37,21 @@ import pytest
 import uvicorn
 
 from itest.core.detectors.base import detect_all, iter_resources
-from itest.probes.http import ProbeResult, probe
+from itest.probes.http import ProbeResult
+from itest.probes.http import probe as _probe
+
+
+def probe(url, **kwargs):
+    """The probe against the loopback reference app, opted in to reach it.
+
+    The reference app is a deliberate local target, so every probe here passes
+    allow_private_hosts=True — the SSRF guard (test_probe_http_guard.py) still
+    protects a probe driven from real Terraform state, which never points at
+    loopback.
+    """
+    kwargs.setdefault("allow_private_hosts", True)
+    return _probe(url, **kwargs)
+
 
 # --- load the reference app by path (its directory name is not importable) ---
 

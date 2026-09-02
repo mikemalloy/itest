@@ -18,7 +18,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from itest.probes.http import ProbeResult, ProbeTimeout, probe
+from itest.probes.http import ProbeResult, ProbeTimeout
+from itest.probes.http import probe as _probe
+
+
+def probe(url, **kwargs):
+    """The probe against this file's loopback server, opted in to reach it.
+
+    These tests exercise the probe's mechanics (bodyless, no-redirect, timeout)
+    against a deliberate local server, so they pass allow_private_hosts=True.
+    The host guard itself is covered in test_probe_http_guard.py.
+    """
+    kwargs.setdefault("allow_private_hosts", True)
+    return _probe(url, **kwargs)
 
 
 class _Handler(BaseHTTPRequestHandler):

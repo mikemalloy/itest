@@ -21,12 +21,22 @@ dangerous way available, and every rule here follows from that:
 - **Timeout is a caller's parameter**, and exceeding it raises a typed
   :class:`ProbeTimeout` carrying the elapsed time — a hang is a distinct outcome
   from a refusal, and the caller must be able to tell them apart.
+- **Only http/https, and no SSRF hosts.** The base URL is derived from
+  ``terraform show -json`` — untrusted input. A ``file://`` scheme would read a
+  local file, and a loopback / link-local / metadata host
+  (``169.254.169.254``, ``::1``, ``127.0.0.0/8``, ``169.254.0.0/16``) is the
+  classic SSRF target on a CI runner or cloud instance. Both are refused with a
+  typed :class:`ProbeBlocked` *before any request is made*. A deliberate local
+  target — the reference app under ``examples/``, or the probe's own acceptance
+  server — opts in with ``allow_private_hosts=True``.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
@@ -56,6 +66,55 @@ class ProbeTimeout(Exception):
         )
 
 
+class ProbeBlocked(Exception):
+    """Raised, before any request, for a URL the probe refuses to send.
+
+    Two reasons: a scheme other than http/https (a ``file://`` read is not a
+    probe), or a loopback / link-local / metadata host that a base URL from
+    untrusted state must not be able to steer the probe at. The latter is
+    overridable with ``allow_private_hosts=True`` for a deliberate local target.
+    """
+
+
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+
+
+def _check_url(url: str, allow_private_hosts: bool) -> None:
+    """Refuse a non-http(s) scheme or an SSRF host. Raises :class:`ProbeBlocked`.
+
+    Runs before the opener is built, so a refused URL results in no request.
+    """
+    parts = urllib.parse.urlsplit(url)
+    scheme = parts.scheme.lower()
+    if scheme not in _ALLOWED_SCHEMES:
+        raise ProbeBlocked(
+            f"probe refuses scheme {scheme or '(none)'!r} in {url!r}: only "
+            "http and https are allowed (a base URL comes from untrusted state)."
+        )
+    if allow_private_hosts:
+        return
+
+    host = (parts.hostname or "").strip()
+    if host.lower() == "localhost":
+        raise ProbeBlocked(
+            f"probe refuses loopback host in {url!r}. A base URL from state must "
+            "not steer the probe at localhost; pass allow_private_hosts=True for "
+            "a deliberate local target."
+        )
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return  # a normal DNS name — not an SSRF literal
+    # is_loopback covers 127.0.0.0/8 and ::1; is_link_local covers 169.254.0.0/16
+    # (including the 169.254.169.254 metadata endpoint) and fe80::/10.
+    if ip.is_loopback or ip.is_link_local:
+        raise ProbeBlocked(
+            f"probe refuses loopback/link-local/metadata host {host!r} in {url!r}. "
+            "This is the classic SSRF target; pass allow_private_hosts=True only "
+            "for a deliberate local target such as the reference app."
+        )
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     """A redirect handler that refuses to redirect.
 
@@ -73,6 +132,7 @@ def probe(
     method: str = "GET",
     headers: dict[str, str] | None = None,
     timeout: float = 5.0,
+    allow_private_hosts: bool = False,
 ) -> ProbeResult:
     """Send one request and report its status, latency, and any redirect.
 
@@ -80,7 +140,22 @@ def probe(
     authorization header of its own. A non-2xx status (a 401/403 refusal, a 3xx
     redirect, a 404) is a normal result, not an error — only a timeout raises,
     as :class:`ProbeTimeout`. See the module docstring for why.
+
+    Refuses a non-http(s) scheme or an SSRF host (loopback / link-local /
+    metadata) with :class:`ProbeBlocked` before any request is made. A
+    deliberate local target opts in with ``allow_private_hosts=True``.
     """
+    _check_url(url, allow_private_hosts)
+    return _send(url, method, headers, timeout)
+
+
+def _send(
+    url: str,
+    method: str,
+    headers: dict[str, str] | None,
+    timeout: float,
+) -> ProbeResult:
+    """The network step, reached only after :func:`_check_url` allows the URL."""
     request = urllib.request.Request(url, method=method, headers=dict(headers or {}))
     opener = urllib.request.build_opener(_NoRedirect)
 
