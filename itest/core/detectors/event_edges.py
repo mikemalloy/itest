@@ -147,6 +147,31 @@ class EventEdgeDetector:
             address = lookup.get(value) or lookup.get(f"arn:aws:s3:::{value}")
             return (address, False) if address else (value, True)
 
+        # Pre-scan lambda_permission grants for base-key collisions (F10): two
+        # grants sharing (source, target, qualifier) but differing by action
+        # (InvokeFunction vs InvokeFunctionUrl, no source_arn) would share one id
+        # and collapse. Only those get an action discriminator below, so every
+        # non-colliding permission id is unchanged.
+        perm_actions: dict[tuple[str, str, str], set[str]] = {}
+        for resource in resources:
+            if resource.get("type") != "aws_lambda_permission":
+                continue
+            values = resource.get("values") or {}
+            source_arn = values.get("source_arn")
+            source = (
+                resolve(source_arn)[0]
+                if source_arn
+                else (values.get("principal") or "")
+            )
+            target = resolve_function(values.get("function_name"))[0]
+            if not source or not target:
+                continue
+            key = (source, target, values.get("qualifier") or "")
+            perm_actions.setdefault(key, set()).add(values.get("action") or "")
+        colliding_perm_keys = {
+            k for k, actions in perm_actions.items() if len(actions) > 1
+        }
+
         points: list[IntegrationPoint] = []
         seen: set[str] = set()
 
@@ -212,6 +237,14 @@ class EventEdgeDetector:
                 target, tgt_ext = resolve_function(values.get("function_name"))
                 if not source or not target:
                     continue
+                key = (source, target, values.get("qualifier") or "")
+                # Append-only: the action rides the id only when a same-key
+                # sibling with a different action actually exists.
+                discriminator = (
+                    f"action={values.get('action') or ''}"
+                    if key in colliding_perm_keys
+                    else None
+                )
                 emit(
                     _make_point(
                         source,
@@ -224,6 +257,7 @@ class EventEdgeDetector:
                             "external": src_ext or tgt_ext,
                         },
                         address,
+                        discriminator=discriminator,
                     )
                 )
             elif rtype == "aws_s3_bucket_notification":
