@@ -144,7 +144,16 @@ def load_policy(path: str | Path) -> EnvironmentPolicy:
 
     environments: dict[str, Environment] = {}
     for name, spec in raw_envs.items():
-        spec = spec or {}
+        if spec is None:
+            spec = {}
+        if not isinstance(spec, dict):
+            # `dev: readonly` or `dev: [static]` — a scalar/list where a mapping
+            # is required. A config error at load, not an AttributeError at run.
+            raise EnvironmentConfigError(
+                f"Environment '{name}' must be a mapping, e.g. "
+                "`{tiers: [static, readonly]}`; got "
+                f"{type(spec).__name__} ({spec!r})."
+            )
         tiers = list(spec.get("tiers", []))
         production = bool(spec.get("production", False)) or name in PRODUCTION_NAMES
 
