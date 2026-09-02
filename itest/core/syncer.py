@@ -9,6 +9,7 @@ rewrites or deletes a function in it.
 
 from __future__ import annotations
 
+import ast
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -162,18 +163,39 @@ def _status_from_body(path: Path, test_name: str) -> Literal["stub", "implemente
     Read back from disk rather than trusted from the manifest: the whole point
     of a resurrection is that a human may have implemented the test in the
     meantime.
+
+    Resolved by AST (the same parse register.py uses), not string-matching, so
+    the definition classified is the one Python would bind: the *last*
+    module-level ``def``/``async def`` of that name shadows earlier ones, and a
+    same-named class method is only consulted when there is no module-level
+    definition at all. String-matching found the first textual ``def name(`` and
+    read to the next top-level ``def``, which misreads a nested method and picks
+    the wrong definition when a name is shadowed.
     """
     if not path.exists():
         return "stub"
     text = path.read_text(encoding="utf-8")
-    start = text.find(f"def {test_name}(")
-    if start == -1:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        # An unparseable file has no implemented body we can trust.
         return "stub"
-    # The function body runs to the next top-level def, or to end of file.
-    rest = text[start:]
-    next_def = rest.find("\ndef ", 1)
-    body = rest if next_def == -1 else rest[:next_def]
-    return "stub" if stubgen.STUB_SKIP_LINE in body else "implemented"
+
+    def named(nodes) -> list[ast.AST]:
+        return [
+            n
+            for n in nodes
+            if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+            and n.name == test_name
+        ]
+
+    # Module-level first (a top-level def is what sync generates and what a
+    # canonical `path::name` addresses); fall back to any nested definition.
+    matches = named(tree.body) or named(ast.walk(tree))
+    if not matches:
+        return "stub"
+    segment = ast.get_source_segment(text, matches[-1]) or ""
+    return "stub" if stubgen.STUB_SKIP_LINE in segment else "implemented"
 
 
 def _reclassify_statuses(manifest: Manifest, base_dir: Path) -> int:
