@@ -310,8 +310,11 @@ def render_verify_line(report) -> str:
         f"{report.passing} passing, {report.failing} failing, "
         f"{report.stubs} stubs, {report.orphaned_tests} orphaned tests"
     )
-    # Same append-only fragment the human rollup uses, so the junit path
-    # reports gating too without perturbing the ungated line.
+    # Append-only fragments, so the common (no-error, no-gated) line stays
+    # byte-identical: errored was silently dropped here, hiding a broken import
+    # behind an exit-2 that named no error.
+    if report.errored:
+        line += f", {report.errored} errored"
     if report.gated:
         line += f", {report.gated} gated"
     return line + "."
