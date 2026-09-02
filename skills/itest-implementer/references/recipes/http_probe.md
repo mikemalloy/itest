@@ -46,8 +46,18 @@ Ask, as part of the batched interview (SKILL.md step 3):
   (commonly `<base>/openapi.json`), or a path to a file in the repo. Prefer the
   file when the repo has one — it needs no network and no auth.
 - **Latency bound for public/health operations?** Default **2000 ms**.
-- **A test credential for authenticated happy-path probes?** Optional. Absent is
-  fine and common — see §6.
+- **The NAME of the env var that will hold the test credential?** Optional;
+  default `ITEST_API_TOKEN`. Record only the **name** in answers
+  (`test_credential_env`) — never the token. Tell the user to put the secret in
+  a gitignored `.itest/.env` as `NAME=<token>` (or export it in their shell),
+  and that it is read by name at run time and never stored by the tool. Absent
+  is fine and common — the recipe then probes secured endpoints for refusal only
+  and says the happy path is unverified (see §6).
+
+  **Guardrail:** if the user offers the raw token, do not accept or record it.
+  Record only the env-var name and remind them to place the secret in
+  `.itest/.env` themselves. The token must never reach the assistant, the
+  manifest, or `skill-answers.yaml`.
 
 The **API base URL is resolved from Terraform state**, never pasted and never
 typed by the user: it is the API Gateway endpoint the `route_edge` detector
@@ -210,24 +220,50 @@ def test_http_probe_DELETE_orders_unsafe_unauth(api_base_url):
     )
 ```
 
-## 6. Authenticated happy-path (only with a supplied credential)
+## 6. Authenticated happy-path (only with a configured credential)
 
-When the interview supplied a test credential, add one authenticated probe per
-secured operation asserting the happy path (a 2xx or a documented status). The
-credential is passed as a header the caller sets — the probe adds no auth of its
-own, so this is the one place a header is supplied explicitly:
+When the interview configured a credential **env-var name**, add one
+authenticated probe per secured operation asserting the happy path (a 2xx or a
+documented status). The credential is resolved by name from the shell
+environment or a gitignored `.itest/.env` — never stored by the tool — and
+passed as a header the caller sets, since the probe adds no auth of its own.
+
+The `test_credential` fixture lives in the shared `conftest.py`
+([`../conftest.md`](../conftest.md)); it reads the env-var **name** from
+`answers["test_credential_env"]` and returns `resolve_credential(name, ...)`, or
+`None`:
 
 ```python
+from pathlib import Path
+
+from itest.probes.credential import resolve_credential
+
+
 @pytest.fixture(scope="session")
 def test_credential(answers):
-    """A customer-supplied test credential, or None. Authenticated happy-path
-    probes are generated only when this is present."""
-    return answers.get("test_credential") or None
+    """The token named by answers['test_credential_env'], or None. The NAME is
+    recorded by the interview; the secret lives in the shell or a gitignored
+    .itest/.env and is read by name. None -> these probes are not generated."""
+    name = answers.get("test_credential_env")
+    if not name:
+        return None
+    return resolve_credential(name, Path.cwd())
 ```
+
+**Authenticated probes are READ-ONLY, and safe-method-only on production.** An
+authenticated probe asserts a guard *admits* a valid caller; it must not mutate.
+On a production binding, generate authenticated probes for **safe methods
+(GET/HEAD) only** — never an authenticated POST/PUT/DELETE. An authenticated
+mutation is an active write and belongs to a **non-production** environment that
+the committed environments policy allows; it must never be generated for a
+production binding.
 
 ```python
 def test_http_probe_GET_admin_authenticated(api_base_url, test_credential):
-    """Integration point 4f1c9a02be77 (authenticated happy path)."""
+    """Integration point 4f1c9a02be77 (authenticated happy path).
+
+    GET is a safe method, so this runs even on a production binding. The token
+    is resolved by name — never hardcoded, never pasted."""
     base = api_base_url("aws_apigatewayv2_api.main")
     result = probe(
         f"{base}/admin",
@@ -238,12 +274,12 @@ def test_http_probe_GET_admin_authenticated(api_base_url, test_credential):
     )
 ```
 
-**When no credential was supplied, do not generate these tests at all.** Skipped
-means not written — never a `pytest.skip("no credential")` sitting in the file.
-A skipped test reads as coverage in a listing while proving nothing; an absent
-one is honest about what was not checked. Say plainly which secured operations
-you probed for refusal only, and that the happy path is unverified pending a
-credential.
+**When no credential name was configured, or the var is unset, do not generate
+these tests at all.** Skipped means not written — never a
+`pytest.skip("no credential")` sitting in the file. A skipped test reads as
+coverage in a listing while proving nothing; an absent one is honest about what
+was not checked. Say plainly which secured operations you probed for refusal
+only, and that the happy path is unverified pending a credential.
 
 ## 7. Guardrails
 

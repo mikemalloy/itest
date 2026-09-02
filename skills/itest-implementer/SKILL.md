@@ -116,12 +116,18 @@ ask, in the same batched message:
 |---|---|---|
 | e | Where is the OpenAPI document? | A deployed URL to fetch read-only (often `<base>/openapi.json`), or a path to a file in the repo. Prefer the file. |
 | f | Latency bound for public/health endpoints? | Milliseconds. **Default 2000.** |
-| g | A test credential for authenticated happy-path probes? | Optional. Absent is fine — the recipe then probes secured endpoints for refusal only and says the happy path is unverified. |
+| g | The **NAME** of the env var that will hold the test credential? | Optional; default `ITEST_API_TOKEN`. Record only the **name**, never the token. Tell the user to put the secret in a gitignored `.itest/.env` as `NAME=<token>` (or export it); it is read by name at run time and never stored. Absent is fine — the recipe then probes secured endpoints for refusal only and says the happy path is unverified. |
 
 Persist these alongside the rest (`openapi_source`, `latency_bound_ms`,
-`test_credential`). The API **base URL is never asked for**: it is resolved from
-Terraform state — the API Gateway endpoint the route detector already found — so
-a human never pastes it. See [`references/recipes/http_probe.md`](references/recipes/http_probe.md).
+`test_credential_env` — the env-var **name**, never the token). The API **base
+URL is never asked for**: it is resolved from Terraform state — the API Gateway
+endpoint the route detector already found — so a human never pastes it. See
+[`references/recipes/http_probe.md`](references/recipes/http_probe.md).
+
+**Never accept or record the raw credential.** If the user offers the token,
+record only the env-var name and remind them to place the secret in
+`.itest/.env` themselves — it must never reach the assistant, the manifest, or
+`skill-answers.yaml`.
 
 **Before leaving this step, check that `boto3` imports.** The generated checks
 import it, and `itest verify` runs them with the same interpreter ITest itself

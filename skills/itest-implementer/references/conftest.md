@@ -16,9 +16,14 @@ Three things live here:
   rather than pasting the ARN into the test: pasted, the assertion pins what
   the recipe's author saw instead of what this manifest records.
 - **Read-only service clients**, one per service the recipes assert against.
+- **`test_credential`** (active tier only), which resolves the happy-path token
+  by the *name* of an env var recorded in answers — never a stored secret. The
+  token lives in the shell or a gitignored `.itest/.env`; `None` means the
+  authenticated probes are simply not generated.
 
 Everything is read from `.itest/skill-answers.yaml`, written by the interview
-step. **Never hardcode an account, profile, region, or directory here.**
+step. **Never hardcode an account, profile, region, or directory here** — and
+never the credential token: only the *name* of the env var that holds it.
 
 <!-- BEGIN conftest.py -->
 ```python
@@ -46,6 +51,8 @@ from typing import Any
 import boto3
 import pytest
 import yaml
+
+from itest.probes.credential import resolve_credential
 
 ANSWERS_PATH = Path(".itest/skill-answers.yaml")
 MANIFEST_PATH = Path(".itest/manifest.yaml")
@@ -278,6 +285,24 @@ def point():
             ) from None
 
     return _point
+
+
+@pytest.fixture(scope="session")
+def test_credential(answers: dict[str, Any]) -> str | None:
+    """The active-tier test credential, resolved by NAME, or ``None``.
+
+    ``answers["test_credential_env"]`` is the *name* of an env var (e.g.
+    ``ITEST_API_TOKEN``) recorded by the interview — never the secret itself.
+    The token lives in the shell environment or a gitignored ``.itest/.env``
+    (``NAME=<token>``) and is read by :func:`resolve_credential`; the tool never
+    stores it. ``None`` — no name configured, or the var unset — means the
+    authenticated happy-path probes are not generated at all (never a
+    ``pytest.skip`` placeholder).
+    """
+    name = answers.get("test_credential_env")
+    if not name:
+        return None
+    return resolve_credential(name, Path.cwd())
 ```
 <!-- END conftest.py -->
 
