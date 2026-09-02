@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import socket
 import threading
 import time
@@ -37,6 +38,7 @@ import pytest
 import uvicorn
 
 from itest.core.detectors.base import detect_all, iter_resources
+from itest.probes.credential import resolve_credential
 from itest.probes.http import ProbeResult
 from itest.probes.http import probe as _probe
 
@@ -421,3 +423,57 @@ def test_resolution_raises_when_address_absent(base_url: str) -> None:
     state = _synthetic_state(base_url)
     with pytest.raises(LookupError):
         resolve_base_url_from_state(state, "aws_apigatewayv2_api.nonexistent")
+
+
+# --- the credential path: env-file -> resolver -> authenticated probe --------
+
+#: A distinct env-var NAME for these tests, so the token is never a literal in
+#: the probe path — it is written to a temp .itest/.env and read back by name.
+CREDENTIAL_ENV = "ITEST_REFERENCE_APP_TOKEN"
+
+
+@pytest.fixture
+def restore_environ() -> Iterator[None]:
+    """resolve_credential seeds os.environ from .itest/.env; snapshot/restore."""
+    saved = dict(os.environ)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def test_env_file_credential_drives_an_authenticated_200(
+    base_url: str, tmp_path: Path, restore_environ: None
+) -> None:
+    """The whole path: the token is written to a gitignored-style .itest/.env,
+    read back by name via resolve_credential, and used to authenticate a probe
+    against the secured happy-path route — 200, with no token hardcoded in the
+    probe call."""
+    os.environ.pop(CREDENTIAL_ENV, None)
+    itest = tmp_path / ".itest"
+    itest.mkdir()
+    (itest / ".env").write_text(f"{CREDENTIAL_ENV}={TEST_TOKEN}\n", encoding="utf-8")
+
+    token = resolve_credential(CREDENTIAL_ENV, tmp_path)
+    assert token == TEST_TOKEN  # came from the env file, not a literal here
+
+    result = probe_authenticated(base_url, "/secured/me", token)
+    assert result.status == 200
+
+
+def test_absent_env_file_yields_none_and_no_probe_is_attempted(
+    base_url: str, tmp_path: Path, restore_environ: None
+) -> None:
+    """With no .itest/.env and the var unset, resolution is None — and the recipe
+    contract is that no authenticated probe is generated or attempted."""
+    os.environ.pop(CREDENTIAL_ENV, None)
+    token = resolve_credential(CREDENTIAL_ENV, tmp_path)
+    assert token is None
+
+    # None -> not generated. Model the contract: the probe is never called.
+    if token is None:
+        outcome = "not-generated"
+    else:  # pragma: no cover - the point is that this branch does not run
+        outcome = probe_authenticated(base_url, "/secured/me", token).status
+    assert outcome == "not-generated"
