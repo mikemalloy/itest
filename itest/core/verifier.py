@@ -213,14 +213,16 @@ def _run_pytest(
     return document.get("tests", {}), document.get("collection_errors", {})
 
 
-def _pseudonymize_report(report: VerifyReport, replace) -> VerifyReport:
-    """Return the report with every account id in every string replaced.
+def _scrub_report(report: VerifyReport, scrub) -> VerifyReport:
+    """Return the report with every string run through ``scrub``.
 
     Done over the serialized model rather than field by field: any string the
-    report carries now or later is covered, and a new field cannot quietly
-    reintroduce a leak.
+    report carries now or later is covered — the ARN targets, and equally the
+    ``detail`` of a failing test (its assertion message and traceback), which is
+    exactly where a leaked token or connection string lands. A new field cannot
+    quietly reintroduce a leak.
     """
-    text = replace(report.model_dump_json())
+    text = scrub(report.model_dump_json())
     return VerifyReport.model_validate_json(text)
 
 
@@ -232,9 +234,12 @@ def run_verify(
 ) -> VerifyReport:
     """Execute the suite and build the coverage report.
 
-    ``redact_accounts`` pseudonymizes every AWS account id in the report and,
-    for junit output, in the written XML — using the same mapping, so the two
-    still correlate. Verify output gets pasted into tickets and CI logs.
+    ``redact_accounts`` runs document-grade scrubbing over the report and, for
+    junit output, over the written XML — account ids and high-entropy tokens /
+    credential patterns in every string, including a failing test's detail —
+    using one shared mapping so the two still correlate. It does not strip
+    human-readable resource names. Verify output gets pasted into tickets and
+    CI logs.
 
     ``environment`` overrides the local binding. The resolved environment's
     tier policy decides which tests are collected at all; a bad policy raises
@@ -389,13 +394,16 @@ def run_verify(
     )
 
     if redact_accounts:
-        # One rewriter for the whole run, so the report and the junit file
-        # agree on which fake stands for which real account.
-        replace = redact.account_pseudonymizer()
-        report = _pseudonymize_report(report, replace)
+        # One scrubber for the whole run, so the report and the junit file agree
+        # on which stand-in maps to which real account or token. Document-grade:
+        # account ids AND high-entropy tokens / credential patterns in every
+        # string, including a failing test's detail. Resource names are left
+        # readable — the account-id + token scope `itest redact` documents.
+        scrub = redact.text_scrubber()
+        report = _scrub_report(report, scrub)
         if junit_path is not None and junit_path.exists():
             junit_path.write_text(
-                replace(junit_path.read_text(encoding="utf-8")), encoding="utf-8"
+                scrub(junit_path.read_text(encoding="utf-8")), encoding="utf-8"
             )
 
     return report
@@ -488,11 +496,14 @@ def render_human(report: VerifyReport, redacted: bool = False) -> str:
             out.append(f"  {n}")
 
     # Only worth saying when there is something to leak and it has not been
-    # scrubbed already: an ARN target carries an account id.
+    # scrubbed already: an ARN target carries an account id. State the scope
+    # honestly — --redact is not a blanket "safe to share".
     if not redacted and any(p.target.startswith("arn:") for p in report.points):
         out.append("")
         out.append(
-            "Tip: use --redact before sharing this output (targets include ARNs)."
+            "Tip: --redact before sharing pseudonymizes account ids and "
+            "high-entropy tokens (targets include ARNs); it does not strip "
+            "human-readable resource names, which are kept for readability."
         )
 
     return "\n".join(out)

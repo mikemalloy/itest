@@ -439,6 +439,30 @@ def account_pseudonymizer() -> Callable[[str], str]:
     return replace
 
 
+def text_scrubber() -> Callable[[str], str]:
+    """Return a document-grade string scrubber for free text.
+
+    Runs the same string-level passes ``redact_document`` applies to every
+    string leaf — the credential patterns, the opaque-token and identifier
+    pseudonymizers, and the account-id pseudonymizer — but over arbitrary text
+    such as ``itest verify`` assertion messages and tracebacks, which carry no
+    Terraform structure. State is shared across calls, so repeated occurrences
+    of one secret map to the same stand-in for the life of the returned
+    function.
+
+    It does **not** strip human-readable resource names (bucket, cluster, and
+    secret names): those are kept readable by design, the same account-id +
+    token scope ``itest redact`` documents. It is a strict superset of
+    :func:`account_pseudonymizer`, which it replaces in ``verify --redact``.
+    """
+    redactor = _Redactor()
+
+    def scrub(text: str) -> str:
+        return redactor._scrub_string(text, "detail")
+
+    return scrub
+
+
 def redact_document(document: dict) -> tuple[dict, list[Finding]]:
     """Return a sanitized copy of ``document`` plus what was redacted.
 

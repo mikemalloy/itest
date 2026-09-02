@@ -172,7 +172,10 @@ Replace one `pytest.skip(...)` with a real assertion and that point flips to
 On a real project, drop `--tf-json`: `itest plan` runs `terraform show -json`
 in the current directory and accepts either plan or state output. Add
 `--redact` to `verify` before sharing output — it pseudonymizes account IDs
-in every format. `itest redact` does the same for plan and state JSON.
+and high-entropy tokens (including in a failing test's assertion detail) in
+every format. It does **not** strip human-readable resource names — bucket,
+cluster, and secret names are kept readable on purpose. `itest redact` does the
+same for plan and state JSON.
 
 ## Five detectors, one graph
 

@@ -439,7 +439,10 @@ def test_verify_redact_junit_output(alex_project: Path) -> None:
 def test_verify_hints_at_redact_when_targets_are_arns(alex_project: Path) -> None:
     result = runner.invoke(app, ["verify"])
     assert result.exit_code == 0, result.output
-    assert "Tip: use --redact before sharing this output" in result.output
+    # The Tip states --redact's scope honestly (F1/C1): account ids and tokens,
+    # not resource names.
+    assert "Tip: --redact before sharing pseudonymizes account ids" in result.output
+    assert "does not strip human-readable resource names" in result.output
 
 
 def test_verify_does_not_hint_when_already_redacted(alex_project: Path) -> None:
