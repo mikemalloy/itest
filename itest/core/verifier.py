@@ -23,6 +23,11 @@ from itest.core.manifest import Manifest, load_manifest, save_manifest
 
 JUNIT_NAME = "itest-results.xml"
 
+#: A generous ceiling on the pytest subprocess (seconds). A real integration
+#: suite can be slow; this only catches a genuine hang, which would otherwise
+#: block the CLI forever.
+_PYTEST_TIMEOUT = 1800.0
+
 
 def _new_report_file(base_dir: Path) -> Path:
     """Create a unique, empty per-run report file under ``.itest/``.
@@ -236,7 +241,14 @@ def _run_pytest(
 
     env = dict(os.environ, ITEST_REPORT=str(report_file))
     try:
-        subprocess.run(args, cwd=str(base_dir), env=env, capture_output=True, text=True)
+        subprocess.run(
+            args,
+            cwd=str(base_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=_PYTEST_TIMEOUT,
+        )
         # mkstemp created the file empty; the plugin overwrites it. An empty file
         # means the plugin never ran (pytest failed to start), not a real result.
         raw = report_file.read_text(encoding="utf-8")
@@ -244,6 +256,12 @@ def _run_pytest(
             return {}, {}
         document = json.loads(raw)
         return document.get("tests", {}), document.get("collection_errors", {})
+    except subprocess.TimeoutExpired as exc:
+        raise VerifyConfigError(
+            f"pytest did not finish within {_PYTEST_TIMEOUT}s and was killed. "
+            "The suite is likely hanging — a probe without a timeout, or a "
+            "wedged fixture. Find the slow test, or split the run."
+        ) from exc
     finally:
         report_file.unlink(missing_ok=True)
 

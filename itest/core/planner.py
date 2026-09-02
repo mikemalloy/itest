@@ -24,6 +24,10 @@ MANIFEST_NAME = "manifest.yaml"
 PLAN_NAME = "plan.json"
 DIAGRAM_NAME = "diagram.mmd"
 
+#: Ceiling on `terraform show -json` (seconds). Reading state is normally quick;
+#: this only catches a wedged terraform so it cannot block the CLI forever.
+_TERRAFORM_TIMEOUT = 120.0
+
 
 class PlanInputError(Exception):
     """Raised when plan JSON cannot be obtained (bad file or terraform error)."""
@@ -105,12 +109,18 @@ def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
             cwd=str(base_dir),
             capture_output=True,
             text=True,
+            timeout=_TERRAFORM_TIMEOUT,
         )
     except FileNotFoundError:
         raise PlanInputError(
             "terraform not found on PATH. Pass --tf-json PATH pointing at the "
             "output of `terraform show -json` instead."
         ) from None
+    except subprocess.TimeoutExpired as exc:
+        raise PlanInputError(
+            f"`terraform show -json` did not finish within {_TERRAFORM_TIMEOUT}s "
+            "and was killed. Pass --tf-json PATH to supply the JSON directly."
+        ) from exc
     if proc.returncode != 0:
         raise PlanInputError(
             "`terraform show -json` failed:\n"
