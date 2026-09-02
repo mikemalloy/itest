@@ -1,0 +1,51 @@
+rules:
+  - id: subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: subprocess with shell=True can enable command injection.
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.$F(..., shell=True, ...)
+  - id: yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: yaml.load without SafeLoader can execute arbitrary objects. Use safe_load.
+    patterns:
+      - pattern-not: yaml.safe_load(...)
+      - pattern-either:
+          - pattern: yaml.load($X)
+          - pattern: yaml.load($X, Loader=yaml.Loader)
+          - pattern: yaml.load($X, Loader=yaml.FullLoader)
+  - id: eval-exec-use
+    languages: [python]
+    severity: ERROR
+    message: eval/exec on any non-constant input is dangerous.
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+  - id: requests-no-timeout
+    languages: [python]
+    severity: WARNING
+    message: HTTP call without an explicit timeout can hang forever.
+    patterns:
+      - pattern-either:
+          - pattern: requests.$M(...)
+          - pattern: urllib.request.urlopen($U)
+      - pattern-not: requests.$M(..., timeout=$T)
+  - id: tarfile-extractall
+    languages: [python]
+    severity: ERROR
+    message: tarfile.extractall without a member filter is a path-traversal risk.
+    patterns:
+      - pattern: $T.extractall(...)
+  - id: broad-except-pass
+    languages: [python]
+    severity: WARNING
+    message: A bare except that swallows the error silently can hide real failures.
+    patterns:
+      - pattern: |
+          try:
+            ...
+          except ...:
+            pass
