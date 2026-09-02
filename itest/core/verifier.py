@@ -1,7 +1,7 @@
 """The ``itest verify`` engine.
 
-Runs the pytest suite under ``itest_tests/``, maps each result back to the
-integration point it covers via the manifest, and rolls results up to
+Runs pytest over the file paths the manifest registers, maps each result back
+to the integration point it covers via the manifest, and rolls results up to
 point-level coverage. Output is available as a human table, JSON, or JUnit XML.
 """
 
@@ -119,17 +119,23 @@ def _gated_canonicals(
     }
 
 
-def _gating_args(manifest: Manifest, gated: set[str]) -> list[str]:
+def _gating_args(manifest: Manifest, gated: set[str]) -> tuple[list[str], set[str]]:
     """pytest flags that keep gated tests out of collection.
 
-    A file whose every live test is gated is ``--ignore``-d, so it is never
-    imported — the strong guarantee for a dedicated active-tier suite. A gated
-    test sharing a file with allowed siblings can only be ``--deselect``-ed:
-    the module must import for the siblings, but the gated test never runs.
-    Both are collection-time, so neither is a runtime skip.
+    Returns ``(args, ignored_files)``. A file whose every live test is gated is
+    ``--ignore``-d, so it is never imported — the strong guarantee for a
+    dedicated active-tier suite. A gated test sharing a file with allowed
+    siblings can only be ``--deselect``-ed: the module must import for the
+    siblings, but the gated test never runs. Both are collection-time, so
+    neither is a runtime skip.
+
+    ``ignored_files`` is returned so the caller can drop those paths from the
+    explicit pytest targets: an ``--ignore``-d path passed *positionally* would
+    still be collected (an explicit argument overrides ``--ignore``), which
+    would defeat the never-import guarantee.
     """
     if not gated:
-        return []
+        return [], set()
     live_by_file: dict[str, list[str]] = {}
     for t in manifest.tests:
         if t.status == "orphaned" or t.disabled:
@@ -137,21 +143,37 @@ def _gating_args(manifest: Manifest, gated: set[str]) -> list[str]:
         live_by_file.setdefault(t.path, []).append(t.canonical)
 
     args: list[str] = []
+    ignored_files: set[str] = set()
     for path, canonicals in sorted(live_by_file.items()):
         gated_here = [c for c in canonicals if c in gated]
         if not gated_here:
             continue
         if len(gated_here) == len(canonicals):
             args.append(f"--ignore={path}")
+            ignored_files.add(path)
         else:
             args += [f"--deselect={c}" for c in gated_here]
-    return args
+    return args, ignored_files
 
 
 def _run_pytest(
-    base_dir: Path, junit_path: Path | None, gating_args: list[str] | None = None
+    base_dir: Path,
+    junit_path: Path | None,
+    targets: list[str],
+    gating_args: list[str] | None = None,
 ) -> tuple[dict[str, dict], dict[str, dict]]:
-    """Run pytest on itest_tests/ and return (test outcomes, collection errors)."""
+    """Run pytest over ``targets`` and return (test outcomes, collection errors).
+
+    ``targets`` is the set of distinct file paths the manifest actually
+    registers, not a fixed directory: a test registered anywhere (``itest add``
+    onto an existing test under ``tests/`` say) must run, and passing a
+    directory would sweep up the customer's unrelated tests. With nothing
+    registered there is nothing to run, so pytest is not invoked at all — which
+    also avoids pytest defaulting to collecting the whole working tree.
+    """
+    if not targets:
+        return {}, {}
+
     report_file = base_dir / planner.ITEST_DIR / _REPORT_NAME
     report_file.parent.mkdir(parents=True, exist_ok=True)
     if report_file.exists():
@@ -161,7 +183,7 @@ def _run_pytest(
         sys.executable,
         "-m",
         "pytest",
-        "itest_tests",
+        *targets,
         "-q",
         "-p",
         "itest.core._pytest_report",
@@ -232,10 +254,23 @@ def run_verify(
 
     gated = _gated_canonicals(manifest, resolution)
 
+    gating_args, ignored_files = _gating_args(manifest, gated)
+    # The distinct file paths the manifest registers. Orphaned entries name a
+    # point that no longer exists, so their file is not a verification target;
+    # a fully-gated file is dropped here too, because an explicit positional
+    # path would override its --ignore and load the module anyway.
+    targets = sorted(
+        {
+            t.path
+            for t in manifest.tests
+            if t.status != "orphaned" and t.path not in ignored_files
+        }
+    )
+
     junit_path = base_dir / JUNIT_NAME if output == "junit" else None
     started = time.monotonic()
     outcomes, collection_errors = _run_pytest(
-        base_dir, junit_path, _gating_args(manifest, gated)
+        base_dir, junit_path, targets, gating_args
     )
     elapsed = time.monotonic() - started
 

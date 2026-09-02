@@ -222,7 +222,7 @@ def _force_outcomes(monkeypatch, outcomes: dict, collection_errors: dict) -> Non
     monkeypatch.setattr(
         verifier,
         "_run_pytest",
-        lambda base_dir, junit, gating=None: (outcomes, collection_errors),
+        lambda base_dir, junit, targets, gating=None: (outcomes, collection_errors),
     )
 
 
