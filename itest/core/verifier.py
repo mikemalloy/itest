@@ -119,40 +119,57 @@ def _gated_canonicals(
     }
 
 
-def _gating_args(manifest: Manifest, gated: set[str]) -> tuple[list[str], set[str]]:
-    """pytest flags that keep gated tests out of collection.
+def _disabled_canonicals(manifest: Manifest) -> set[str]:
+    """Canonical addresses of disabled (non-orphaned) tests.
 
-    Returns ``(args, ignored_files)``. A file whose every live test is gated is
-    ``--ignore``-d, so it is never imported — the strong guarantee for a
-    dedicated active-tier suite. A gated test sharing a file with allowed
-    siblings can only be ``--deselect``-ed: the module must import for the
-    siblings, but the gated test never runs. Both are collection-time, so
-    neither is a runtime skip.
+    A disabled test is excluded from collection exactly as a gated one is: it is
+    skipped in reporting, but skipping it in *reporting* alone still ran it. A
+    test disabled because it mutates must not execute.
+    """
+    return {
+        t.canonical for t in manifest.tests if t.disabled and t.status != "orphaned"
+    }
+
+
+def _gating_args(manifest: Manifest, excluded: set[str]) -> tuple[list[str], set[str]]:
+    """pytest flags that keep ``excluded`` tests out of collection.
+
+    ``excluded`` is the union of the tier-gated canonicals and the disabled
+    ones: both must never run, and both are removed at collection time rather
+    than skipped at runtime. Returns ``(args, ignored_files)``. A file whose
+    every non-orphaned test is excluded is ``--ignore``-d, so it is never
+    imported — the strong guarantee for a dedicated active-tier suite. An
+    excluded test sharing a file with runnable siblings can only be
+    ``--deselect``-ed: the module must import for the siblings, but the excluded
+    test never runs. Both are collection-time, so neither is a runtime skip.
 
     ``ignored_files`` is returned so the caller can drop those paths from the
     explicit pytest targets: an ``--ignore``-d path passed *positionally* would
     still be collected (an explicit argument overrides ``--ignore``), which
     would defeat the never-import guarantee.
     """
-    if not gated:
+    if not excluded:
         return [], set()
-    live_by_file: dict[str, list[str]] = {}
+    # The universe includes disabled tests, so a file of only disabled tests is
+    # a fully-excluded file (--ignore'd), and a disabled test beside a runnable
+    # sibling is --deselect'd rather than leaving the file collected.
+    by_file: dict[str, list[str]] = {}
     for t in manifest.tests:
-        if t.status == "orphaned" or t.disabled:
+        if t.status == "orphaned":
             continue
-        live_by_file.setdefault(t.path, []).append(t.canonical)
+        by_file.setdefault(t.path, []).append(t.canonical)
 
     args: list[str] = []
     ignored_files: set[str] = set()
-    for path, canonicals in sorted(live_by_file.items()):
-        gated_here = [c for c in canonicals if c in gated]
-        if not gated_here:
+    for path, canonicals in sorted(by_file.items()):
+        excluded_here = [c for c in canonicals if c in excluded]
+        if not excluded_here:
             continue
-        if len(gated_here) == len(canonicals):
+        if len(excluded_here) == len(canonicals):
             args.append(f"--ignore={path}")
             ignored_files.add(path)
         else:
-            args += [f"--deselect={c}" for c in gated_here]
+            args += [f"--deselect={c}" for c in excluded_here]
     return args, ignored_files
 
 
@@ -258,8 +275,12 @@ def run_verify(
     _require_pytest()
 
     gated = _gated_canonicals(manifest, resolution)
+    # Gated (tier-disallowed) and disabled tests are both kept out of collection.
+    # Gated is tracked separately below because a fully-gated point still
+    # reports [GATED]; a disabled test simply does not run.
+    excluded = gated | _disabled_canonicals(manifest)
 
-    gating_args, ignored_files = _gating_args(manifest, gated)
+    gating_args, ignored_files = _gating_args(manifest, excluded)
     # The distinct file paths the manifest registers. Orphaned entries name a
     # point that no longer exists, so their file is not a verification target;
     # a fully-gated file is dropped here too, because an explicit positional
