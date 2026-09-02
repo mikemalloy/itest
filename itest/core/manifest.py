@@ -8,6 +8,8 @@ in declaration order and no key sorting.
 
 from __future__ import annotations
 
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -158,9 +160,24 @@ def _migrate(manifest: Manifest, from_version: int) -> None:
 
 
 def save_manifest(manifest: Manifest, path: str | Path) -> None:
-    """Write ``manifest`` to ``path`` as diffable YAML (fields in order)."""
+    """Write ``manifest`` to ``path`` as diffable YAML (fields in order).
+
+    Atomic: the YAML is written to a temp file in the same directory and then
+    ``os.replace``-d into place, so a concurrent reader (or another `itest`
+    process) never sees a half-written manifest, and a crash mid-write leaves
+    the previous manifest intact rather than truncating it to empty.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = manifest.model_dump(mode="json")
-    with open(path, "w", encoding="utf-8") as fh:
-        yaml.safe_dump(data, fh, sort_keys=False, default_flow_style=False)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f"{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, sort_keys=False, default_flow_style=False)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise

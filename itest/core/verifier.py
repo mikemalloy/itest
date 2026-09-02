@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -21,7 +22,22 @@ from itest.core import environments, planner, points, redact
 from itest.core.manifest import Manifest, load_manifest, save_manifest
 
 JUNIT_NAME = "itest-results.xml"
-_REPORT_NAME = "_verify_report.json"
+
+
+def _new_report_file(base_dir: Path) -> Path:
+    """Create a unique, empty per-run report file under ``.itest/``.
+
+    A fixed name would let two concurrent ``itest verify`` runs read and write
+    the same file, so each run gets its own via ``mkstemp``. The file is deleted
+    by the caller once read.
+    """
+    report_dir = base_dir / planner.ITEST_DIR
+    report_dir.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(
+        prefix="_verify_report_", suffix=".json", dir=report_dir
+    )
+    os.close(fd)
+    return Path(name)
 
 
 class VerifyConfigError(Exception):
@@ -191,10 +207,7 @@ def _run_pytest(
     if not targets:
         return {}, {}
 
-    report_file = base_dir / planner.ITEST_DIR / _REPORT_NAME
-    report_file.parent.mkdir(parents=True, exist_ok=True)
-    if report_file.exists():
-        report_file.unlink()
+    report_file = _new_report_file(base_dir)
 
     args = [
         sys.executable,
@@ -222,12 +235,17 @@ def _run_pytest(
         args += ["--junitxml", str(junit_path)]
 
     env = dict(os.environ, ITEST_REPORT=str(report_file))
-    subprocess.run(args, cwd=str(base_dir), env=env, capture_output=True, text=True)
-
-    if not report_file.exists():
-        return {}, {}
-    document = json.loads(report_file.read_text(encoding="utf-8"))
-    return document.get("tests", {}), document.get("collection_errors", {})
+    try:
+        subprocess.run(args, cwd=str(base_dir), env=env, capture_output=True, text=True)
+        # mkstemp created the file empty; the plugin overwrites it. An empty file
+        # means the plugin never ran (pytest failed to start), not a real result.
+        raw = report_file.read_text(encoding="utf-8")
+        if not raw.strip():
+            return {}, {}
+        document = json.loads(raw)
+        return document.get("tests", {}), document.get("collection_errors", {})
+    finally:
+        report_file.unlink(missing_ok=True)
 
 
 def _scrub_report(report: VerifyReport, scrub) -> VerifyReport:
