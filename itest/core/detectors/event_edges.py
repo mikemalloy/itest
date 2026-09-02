@@ -62,6 +62,24 @@ def _point_id(
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
 
 
+def _input_signature(values: dict) -> str:
+    """A stable, content-based signature of an event target's input config.
+
+    Two targets that differ only by ``input`` / ``input_path`` /
+    ``input_transformer`` are distinct integrations. Deliberately not the
+    ``target_id`` (Terraform generates it, so it churns on re-apply while the
+    wiring does not).
+    """
+    return json.dumps(
+        {
+            "input": values.get("input"),
+            "input_path": values.get("input_path"),
+            "input_transformer": values.get("input_transformer"),
+        },
+        sort_keys=True,
+    )
+
+
 def _rule_enabled(values: dict) -> bool:
     """Whether a rule is live, across both provider spellings.
 
@@ -170,6 +188,28 @@ class EventEdgeDetector:
             perm_actions.setdefault(key, set()).add(values.get("action") or "")
         colliding_perm_keys = {
             k for k, actions in perm_actions.items() if len(actions) > 1
+        }
+
+        # Pre-scan eventbridge_target for input collisions (F11): two targets on
+        # one rule to one destination on one bus that differ only by input would
+        # share one id (bus= was the only discriminator). Only those get an input
+        # discriminator below, so every non-colliding target id is unchanged.
+        target_inputs: dict[tuple[str, str, str], set[str]] = {}
+        for resource in resources:
+            if resource.get("type") != "aws_cloudwatch_event_target":
+                continue
+            values = resource.get("values") or {}
+            bus = values.get("event_bus_name") or "default"
+            rule = rules.get((values.get("rule"), bus))
+            if rule is None:
+                continue
+            target = resolve(values.get("arn"))[0]
+            if not target:
+                continue
+            key = (rule["address"], target, bus)
+            target_inputs.setdefault(key, set()).add(_input_signature(values))
+        colliding_target_keys = {
+            k for k, sigs in target_inputs.items() if len(sigs) > 1
         }
 
         points: list[IntegrationPoint] = []
@@ -324,6 +364,16 @@ class EventEdgeDetector:
                 if not target:
                     continue
                 rule_values = rule["values"]
+                # Never the target_id: Terraform generates it, so it changes on
+                # re-apply while the wiring does not. Append-only: the input rides
+                # the id only when a same-key sibling with a different input
+                # actually exists.
+                discriminator = f"bus={bus}"
+                if (rule["address"], target, bus) in colliding_target_keys:
+                    digest = hashlib.sha256(
+                        _input_signature(values).encode("utf-8")
+                    ).hexdigest()[:8]
+                    discriminator += f"|input={digest}"
                 emit(
                     _make_point(
                         source=rule["address"],
@@ -340,9 +390,7 @@ class EventEdgeDetector:
                             "external": tgt_ext,
                         },
                         hcl=address,
-                        # Never the target_id: Terraform generates it, so it
-                        # changes on re-apply while the wiring does not.
-                        discriminator=f"bus={bus}",
+                        discriminator=discriminator,
                     )
                 )
 
