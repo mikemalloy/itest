@@ -134,6 +134,12 @@ class SecurityGroupEdgeDetector:
         address = resource["address"]
         rtype = values.get("type", "ingress")
         attached = values.get("security_group_id")
+        # In a `terraform plan -json` the id can be known-after-apply (null).
+        # Without the security group this rule attaches to there is no edge to
+        # anchor — skip it rather than joining None into the point id. Plan
+        # degrades; state, where the id is resolved, still emits the edge.
+        if not attached:
+            return []
         attached_addr = id_to_address.get(attached, attached)
         protocol = values.get("protocol", "")
         ports = _ports(values.get("from_port"), values.get("to_port"))
