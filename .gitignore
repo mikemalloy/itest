@@ -28,6 +28,12 @@ itest-results.xml
 # (.itest/environments.yaml) is committed and code-reviewed, the binding is not.
 .itest/environment
 
+# Active-tier test credentials. The token lives here as NAME=<token> and is read
+# only by name; it must never be committed. A raw secret would otherwise be one
+# `git add` away from the history.
+.env
+.itest/.env
+
 # Terraform working artifacts
 .terraform/
 *.tfstate
