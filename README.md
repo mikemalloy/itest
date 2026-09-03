@@ -1,30 +1,51 @@
 # ITest
 
-**Terraform tells you what you declared. ITest tells you what is actually connected — and when it stops being.**
+*Integration inventory, verification, and auth testing for Terraform-managed
+AWS infrastructure.*
 
-You are about to ship, or you just did, and you need to know that every
-component in the system is wired to the others and running — no hand-waving,
-no "it should be fine." Today that answer takes a war room, a checklist, and
-someone clicking through the console. With ITest it takes minutes: one command
-lists every integration your Terraform creates, one command verifies each of
-them against the live account, and the result is a single line — *14 of 14
-integrations passing* — that a release owner can act on. Run it before the
-release, after the release, and on every CI run in between, and the first
-sign of something coming unwired is a red line naming the integration, not a
-page at 3 a.m.
+**Every release ends with the same two questions — is it all actually wired up,
+and is anything open that shouldn't be? ITest answers both with numbers.**
 
-ITest reads the Terraform you already have, extracts the integration points it
+Terraform proves your resources exist. It cannot tell you that the queue still
+drives the function, that the role can still reach the database, or that
+anything healthy is sitting behind the load balancer. A green `terraform plan`
+reports "No changes" whether those are true or false, and the gap between the
+two is where release-day war rooms, console archaeology, and 3 a.m. pages live.
+
+ITest reads the Terraform you already have and pulls out every connection it
 creates — the security-group rule that says *A can reach B on 5432*, the IAM
 grant that says *this role may call that queue*, the event source mapping that
-says *this queue drives that function* — and turns them into a tracked,
-testable inventory. It follows Terraform's own rhythm: `itest plan` shows what
-it found, `itest sync` writes pytest stubs and a diffable manifest, and
-`itest verify` runs read-only checks against your live account and reports
-coverage **per integration point**, not per test function.
+says *this queue drives that function*, the listener that says *this URL reaches
+that container*. That is your integration inventory: content-hashed, diffable,
+reviewed like code. Then one command verifies every point in it against the live
+account, read-only, in seconds — and reports coverage **per integration point**,
+not per test function.
 
-It is local-first: no server, no database, nothing installed in your cloud
-account. The truth lives in your repo, in a file you can read, diff, and
-code-review.
+**14 of 14 integrations verified.** That is a sentence a release owner can act
+on. Run it before the release, after the release, and on every CI run in
+between, and the first sign of something coming unwired is a red line naming the
+integration, not a page at 3 a.m.
+
+**And the same run is a security check.** Every integration is also a
+permission — a role that may call a resource, a rule that opens a port, a route
+that reaches a handler — so the inventory is an attack-surface inventory, with
+wildcard actions, broad AWS-managed policies, cross-stack targets, and routes
+with no authorizer flagged wherever they appear. ITest then goes past flagging:
+it probes every operation a public API exposes, unauthenticated, and expects
+each one to be refused. On the last production run all fourteen were, including
+a billable POST. A scanner tells you what your configuration says; ITest tells
+you what an anonymous caller actually gets — and, running in CI, tells you the
+day that changes.
+
+It follows Terraform's own rhythm — `itest plan` shows what it found, `itest
+sync` writes a diffable manifest and pytest stubs, `itest verify` runs them
+against your account — and it is local-first: no server, no database, nothing
+installed in your cloud account. The inventory lives in your repo, in a file you
+can read, diff, and code-review.
+
+Verified live against a nine-Lambda production RAG system and five open-source
+reference stacks — [the record is
+below](#proof-it-works-on-infrastructure-you-did-not-write).
 
 ## What it sees
 
@@ -69,6 +90,38 @@ perfect deployment. Excerpted from that run (`--redact` applied):
 
 A service quietly scaled to zero is invisible to `terraform plan` and to
 every config scanner. Here it is one red line with the diagnosis attached.
+
+## Does the guard actually hold?
+
+Configuration checks prove the deployed wiring matches Terraform. The `active`
+tier knocks on the door.
+
+An API Gateway catch-all route is one integration point to Terraform and an
+entire application to everyone else. Given that point, the bundled skill reads
+the application's own OpenAPI document, enumerates every operation sitting
+behind the route, and registers one probe per operation. On a production stage
+that meant **14 unauthenticated probes — 6 reads and 8 unsafe methods, every
+one refused with 401 or 403 — alongside 4 authenticated reads returning 200**:
+12 integration points, 30 tests, per-endpoint evidence that the guard is on and
+that a legitimate caller still gets through.
+
+The probe is deliberately small. No request body, ever — an unauthenticated
+`DELETE` with nothing in it is the safest way to ask whether the guard holds,
+and if it is *accepted*, that is the finding and no data had to be sent to
+discover it. No redirects followed, no retries, no authorization header of its
+own, and `file://`, loopback, and metadata hosts refused before a request is
+made. An unauthenticated 2xx on an unsafe method stops the run as a critical
+finding rather than becoming a red line in a report. Two account-wide
+destructive operations were excluded from that sweep by name, by the repository
+owner, and the exclusion is in the record.
+
+The same run turned up something no config scanner would: `GET /health` was
+served by the application but had no route at the gateway, so anything watching
+it from outside had been getting a 404 from the edge.
+
+Active tests run only where a committed policy allows the tier and a local
+binding selects that environment, and an environment named or flagged
+production refuses them outright — see [Environments](#environments).
 
 ## Proof it works on infrastructure you did not write
 
@@ -303,13 +356,14 @@ Stated up front, because it is the first question anyone asks:
   bucket policies), CloudFront origins, the newer standalone
   `aws_vpc_security_group_*_rule` resources, and DNS are on the roadmap;
   today they appear in the not-analyzed list.
-- **Checks are configuration assertions, plus first liveness.** Most checks
-  prove the deployed wiring matches Terraform — the mapping exists and is
-  enabled, the grant evaluates to allow — not that a message actually flowed.
-  The lb_edge check goes one step further: it requires at least one healthy
-  target behind the traffic-bearing group, so a scaled-to-zero or crash-looping
-  service fails the run. Active probes that send a marked message and observe
-  delivery are designed and next.
+- **Most checks are configuration assertions.** They prove the deployed wiring
+  matches Terraform — the mapping exists and is enabled, the grant evaluates to
+  allow — not that a message actually flowed. Two exceptions ship today: the
+  lb_edge check requires at least one healthy target behind the traffic-bearing
+  group, so a scaled-to-zero or crash-looping service fails the run, and the
+  active tier sends real HTTP requests to a deployed API (above). Not yet
+  built: probes that push a marked message through a queue or event mapping and
+  observe it arrive, and database round-trips.
 - **State beats plan.** In plan JSON most ARNs are "known after apply," so
   IAM resolution is weaker; run ITest against applied infrastructure.
 
@@ -317,11 +371,12 @@ Stated up front, because it is the first question anyone asks:
 
 In order:
 
-1. An active-probe library — self-cleaning, edge-shaped, opt-in per
-   environment — starting with HTTP endpoints driven by the app's own
-   OpenAPI document.
-2. A release readiness page: one URL, one verdict, the graph, posture, and
+1. A release readiness page: one URL, one verdict, the graph, posture, and
    what changed since the last release.
+2. The rest of the probe library — a marked message pushed through a queue or
+   event mapping and observed arriving, a database round-trip — self-cleaning,
+   timeboxed, and serialized per resource group, on the same gate as the HTTP
+   probe.
 3. Resource-based policy detectors (queue and bucket policies — the other
    side of an IAM edge) and the newer standalone security-group rule
    resources.
