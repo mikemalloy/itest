@@ -39,3 +39,8 @@ itest-results.xml
 *.tfstate
 *.tfstate.*
 tfplan
+
+# Personal notes and scratch documents. The directory is tracked (via its
+# README) but everything you drop in it stays local — never uploaded.
+docs/scratch/*
+!docs/scratch/README.md
