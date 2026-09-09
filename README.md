@@ -1,5 +1,7 @@
 # ITest
 
+[![CI](https://github.com/mikemalloy/itest/actions/workflows/ci.yml/badge.svg)](https://github.com/mikemalloy/itest/actions/workflows/ci.yml)
+
 *Integration inventory, verification, and auth testing for Terraform-managed
 AWS infrastructure.*
 
