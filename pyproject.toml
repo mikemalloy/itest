@@ -31,7 +31,10 @@ examples = [
     "uvicorn>=0.29",
 ]
 dev = [
-    "ruff>=0.6",
+    # Floored at 0.16 (not pinned) because 0.16 formats Python inside Markdown
+    # fences: the recipes under skills/ are gated by `ruff format --check` only
+    # from this version on. Contributors on anything newer must still pass.
+    "ruff>=0.16",
     # The reference-API tests (tests/test_reference_app.py,
     # tests/test_reference_api.py) import the app and stand it up under uvicorn,
     # so the suite cannot run without the examples group. Mirrored here so

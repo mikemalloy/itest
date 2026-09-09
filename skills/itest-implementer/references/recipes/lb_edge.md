@@ -462,8 +462,7 @@ assert total == 100, (
     f"Forward weights across the pair sum to {total}, not 100: {targets}"
 )
 assert any(targets.values()), (
-    f"Every group in the pair carries weight 0, so the rule forwards "
-    f"nowhere: {targets}"
+    f"Every group in the pair carries weight 0, so the rule forwards nowhere: {targets}"
 )
 ```
 
