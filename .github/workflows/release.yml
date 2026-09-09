@@ -1,0 +1,81 @@
+name: Release
+
+# Tag-driven. Nothing publishes on a merge to main; pushing v0.2.0 is the
+# deliberate act that ships 0.2.0.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tooling
+        run: pip install build twine
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: twine check
+        run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    # The environment is where the trusted-publisher binding is scoped on
+    # PyPI's side, and where an approval gate can be added later.
+    environment: pypi
+    permissions:
+      # OIDC trusted publishing. There is no API token in this repository and
+      # no secret referenced anywhere in this workflow.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      # A release with auto-generated notes is a changelog, not a release
+      # note. If the written notes are missing, the tag was pushed too early:
+      # fail here rather than shipping a list of commit subjects.
+      - name: Require written release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing. Write the release notes and re-tag."
+            exit 1
+          fi
+          echo "Using $notes"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            --title "itest-cli $TAG" \
+            --notes-file "docs/releases/${TAG}.md" \
+            dist/*
