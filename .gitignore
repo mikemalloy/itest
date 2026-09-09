@@ -44,3 +44,7 @@ tfplan
 # README) but everything you drop in it stays local — never uploaded.
 docs/scratch/*
 !docs/scratch/README.md
+
+# CI scan output. The semgrep job writes this before uploading it to code
+# scanning; running the same command locally should not dirty the tree.
+semgrep.sarif

@@ -42,6 +42,11 @@ jobs:
   semgrep:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Overrides the workflow-level default: the SARIF upload writes to code
+    # scanning, which the read-only default cannot do.
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,5 +54,20 @@ jobs:
           python-version: "3.12"
       - name: Install semgrep
         run: pip install "semgrep==1.176.1"
-      - name: Semgrep (pinned ruleset)
+      # Two runs on purpose. This one records every finding as SARIF and
+      # exits 0, so the upload below always has a document to send.
+      - name: Semgrep (SARIF)
+        run: >-
+          semgrep --config .semgrep/itest.yml
+          --sarif --output semgrep.sarif --metrics=off .
+      # if: always() so findings reach the Security tab even when the gate
+      # below fails the job — a red build is exactly when the report matters.
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-itest
+      # The gate, unchanged: any finding is red.
+      - name: Semgrep (gate)
         run: semgrep --config .semgrep/itest.yml --error --metrics=off .
