@@ -107,10 +107,11 @@ declaration resources, which would be typed and validated by `terraform plan`
 but is a real artifact to publish and version. The thing such a declaration would
 carry is an agent tool: an MCP server's endpoint, the traits its tools claim,
 which of them mutate. That per-server declaration file — `.itest/tools/<server>.yaml`
-— is itself designed rather than built
-([#26](https://github.com/mikemalloy/itest/issues/26)), so the HCL shape is
-downstream of a shape that does not exist yet; the file comes first, and the
-question of whether it should have been HCL all along comes after.
+— is built ([#26](https://github.com/mikemalloy/itest/issues/26); see
+[declarations.md](declarations.md)), so the HCL shape now has a real format to
+mirror. Stating the same thing in the HCL itself is what remains designed and not
+built, and whether it should have been HCL all along is the question that comes
+after.
 
 ### `terraform test` as the harness
 
