@@ -159,6 +159,12 @@ cannot drift from the code.
 Everything below runs against a checked-in `terraform show -json` fixture.
 
 ```sh
+pipx install itest-cli
+```
+
+### From source
+
+```sh
 git clone https://github.com/mikemalloy/itest.git && cd itest
 python -m venv .venv && source .venv/bin/activate
 pip install -e .

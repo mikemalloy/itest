@@ -1,0 +1,24 @@
+version: 2
+
+updates:
+  # Python dependencies declared in pyproject.toml. Minor and patch bumps
+  # arrive as one PR a week rather than one PR per package; a major bump comes
+  # on its own, because that is the one worth reading line by line.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      python-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # The actions used by .github/workflows/. These are pinned to major tags, so
+  # this is what surfaces a v4 -> v5 move rather than silently following it.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

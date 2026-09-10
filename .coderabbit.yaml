@@ -1,0 +1,12 @@
+reviews:
+  profile: assertive
+  request_changes_workflow: false     # comment only; never blocks or approves
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!tests/fixtures/**"
+    - "!docs/demo/**"
+    - "!**/*.cast"
+chat:
+  auto_reply: false
