@@ -10,6 +10,25 @@ permissions:
   contents: read
 
 jobs:
+  # Runs before anything is published. A version on PyPI can never be uploaded
+  # again, so a missing release note has to stop the release here, while
+  # nothing has left the repository.
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A release with auto-generated notes is a changelog, not a release note.
+      - name: Require written release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing, so nothing was published. Add the release notes file, move the ${TAG} tag to the commit that contains it, and re-run the workflow (pushing the moved tag re-runs it)."
+            exit 1
+          fi
+          echo "Using $notes"
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +48,7 @@ jobs:
           path: dist/
 
   publish-pypi:
-    needs: build
+    needs: [preflight, build]
     runs-on: ubuntu-latest
     # The environment is where the trusted-publisher binding is scoped on
     # PyPI's side, and where an approval gate can be added later.
@@ -57,19 +76,7 @@ jobs:
         with:
           name: dist
           path: dist/
-      # A release with auto-generated notes is a changelog, not a release
-      # note. If the written notes are missing, the tag was pushed too early:
-      # fail here rather than shipping a list of commit subjects.
-      - name: Require written release notes
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          notes="docs/releases/${TAG}.md"
-          if [ ! -f "$notes" ]; then
-            echo "::error::$notes is missing. Write the release notes and re-tag."
-            exit 1
-          fi
-          echo "Using $notes"
+      # The notes file was required by `preflight`, before anything published.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
