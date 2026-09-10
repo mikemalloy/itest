@@ -19,20 +19,23 @@ dependencies = [
     # Runtime, not dev: `itest verify` shells out to pytest to run the
     # generated suite, so the tool cannot function without it.
     "pytest>=8",
+    # Runtime too: the MCP probe transport (itest/probes/mcp.py) speaks the
+    # protocol through the official SDK and never hand-rolls a frame. Floored at
+    # 2.2 because the probe uses the 2.x client surface (mcp.Client,
+    # streamable_http_client(url, http_client=...)); the 1.x line differs.
+    "mcp>=2.2",
 ]
 
 [project.optional-dependencies]
 # The reference API under examples/reference-api/ is a FastAPI app used only to
 # exercise every branch of the http_probe recipe locally; it is not part of the
 # CLI. Its dependencies live here so a plain `pip install itest-cli` never pulls
-# a web framework it does not need.
+# a web framework it does not need. (examples/reference-mcp/ needs nothing extra:
+# the MCP SDK is a runtime dependency of the probe, and brings starlette and
+# uvicorn with it.)
 examples = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
-    # The official Python MCP SDK. examples/reference-mcp/ is built on its
-    # MCPServer (the 2.x name for what 1.x called FastMCP), so the floor is a
-    # 2.x one: 1.x has no such class and the import would fail outright.
-    "mcp>=2.2",
 ]
 dev = [
     # Floored at 0.16 (not pinned) because 0.16 formats Python inside Markdown
@@ -45,7 +48,6 @@ dev = [
     # `pip install -e .[dev]` alone makes `pytest` green.
     "fastapi>=0.110",
     "uvicorn>=0.29",
-    "mcp>=2.2",
     # Starlette's TestClient (used by test_reference_app.py) is built on httpx.
     "httpx2>=2",
 ]
