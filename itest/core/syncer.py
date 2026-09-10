@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from pydantic import BaseModel
 
@@ -21,10 +21,24 @@ from itest.core.manifest import (
     IntegrationPoint,
     Manifest,
     TestEntry,
+    Tier,
     load_manifest,
     save_manifest,
 )
 from itest.core.planner import Changeset
+
+if TYPE_CHECKING:  # types only: sync imports no trait machinery up front
+    from itest.core.declarations.traits import Trait
+
+#: The declared point type. Spelled out rather than imported so that a
+#: terraform-only sync never loads the declarations package — and through it a
+#: probe transport. A test pins this against the real constant, so the two
+#: cannot drift apart.
+_TOOL_POINT_TYPE = "mcp_tool"
+
+#: What a stub generated for a detected point is registered as, unchanged from
+#: before declarations existed. A declared point's tier comes from the trait.
+_DEFAULT_TIER: Tier = "readonly"
 
 
 class SyncResult(BaseModel):
@@ -34,6 +48,10 @@ class SyncResult(BaseModel):
     flagged_orphans: int = 0
     resurrected_tests: int = 0
     reclassified_tests: int = 0
+    #: Points whose attributes drifted and were re-recorded. No stub is added and
+    #: nothing is orphaned, so without this clause the line would read as though
+    #: sync had done nothing while the manifest changed underneath it.
+    recorded_changes: int = 0
     human_modified_files: int = 0
 
     def summary(self) -> str:
@@ -47,11 +65,18 @@ class SyncResult(BaseModel):
             if self.reclassified_tests
             else ""
         )
+        # Append-only, like the clauses above it: absent unless something drifted.
+        recorded = (
+            f"recorded {self.recorded_changes} changed point(s), "
+            if self.recorded_changes
+            else ""
+        )
         return (
             f"Applied: added {self.added_stubs} stub(s), "
             f"flagged {self.flagged_orphans} orphan(s), "
             f"{resurrected}"
             f"{reclassified}"
+            f"{recorded}"
             f"{self.human_modified_files} human-modified file(s) preserved."
         )
 
@@ -82,11 +107,16 @@ def prepare(tf_json: Path | None, base_dir: Path) -> tuple[Changeset, str | None
 
 
 def is_noop(changeset: Changeset) -> bool:
-    """True when there is nothing to apply: no new points, resurrections, or
-    orphans."""
+    """True when there is nothing to apply.
+
+    A *changed* point counts as something to apply even though it adds no stub
+    and orphans nothing: the drifted attribute has to be recorded, or the next
+    run would report the same drift forever.
+    """
     return not (
         changeset.new_points
         or changeset.resurrected_points
+        or changeset.changed_points
         or changeset.orphan_candidates
     )
 
@@ -116,6 +146,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         flagged_orphans=flagged,
         resurrected_tests=resurrected,
         reclassified_tests=reclassified,
+        recorded_changes=len(changeset.changed_points),
         human_modified_files=human_modified_files,
     )
 
@@ -247,10 +278,105 @@ def _flag_orphans(manifest: Manifest, changeset: Changeset) -> int:
     return flagged
 
 
+class _PendingStub(NamedTuple):
+    """One stub to generate: a point, optionally a trait, and where it goes.
+
+    A detected point yields exactly one stub (``trait`` is ``None``). A declared
+    tool yields **one per applicable trait**, which is why this exists: routing
+    and naming can no longer be a function of the point alone.
+    """
+
+    point: IntegrationPoint
+    trait: Trait | None
+    file_rel: str
+    tier: Tier
+
+    def function_name(self) -> str:
+        if self.trait is None:
+            return stubgen.function_name_for(self.point)
+        return stubgen.tool_function_name(self.point, self.trait.id)
+
+    def entry_id(self) -> str:
+        if self.trait is None:
+            return f"t-{self.point.id}"
+        # One point now carries several tests, so the trait is part of the id.
+        return f"t-{self.point.id}-{self.trait.id.lower()}"
+
+    def render(self, func_name: str) -> str:
+        if self.trait is None:
+            return stubgen.render_stub(self.point, func_name)
+        return stubgen.render_tool_stub(self.point, func_name, self.trait)
+
+
+def _traits_for(point: IntegrationPoint, table) -> list[Trait]:
+    """Which checks one declared tool gets.
+
+    The table decides, unless the declaration hand-picked a list — and a tool
+    whose declaration withholds the active tier loses its active traits whichever
+    way they were chosen. Withholding removes the stub; it never leaves one
+    behind that must not run.
+    """
+    from itest.core.declarations.schema import NO_TRAITS
+    from itest.core.declarations.tools import trait_context
+    from itest.core.declarations.traits import TraitTableError, applicable
+
+    declared = point.attributes.get("traits")
+    if declared:
+        if NO_TRAITS in declared:
+            chosen = []
+        else:
+            chosen = []
+            for trait_id in declared:
+                trait = table.get(trait_id)
+                if trait is None:
+                    raise TraitTableError(
+                        f"{point.source}/{point.target} is declared with trait "
+                        f"{trait_id!r}, which the trait table does not define. "
+                        f"Known traits: {', '.join(table.ids)}."
+                    )
+                chosen.append(trait)
+    else:
+        chosen = applicable(table, trait_context(point))
+
+    if point.attributes.get("active") is False:
+        return [trait for trait in chosen if trait.tier != "active"]
+    return chosen
+
+
+def _plan_stubs(changeset: Changeset) -> list[_PendingStub]:
+    """Expand the changeset's new points into the stubs sync will write.
+
+    The trait table is loaded lazily and only when a declared point is present,
+    so a project with no declarations does not read it at all.
+    """
+    table = None
+    pending: list[_PendingStub] = []
+    for point in changeset.new_points:
+        if point.type != _TOOL_POINT_TYPE:
+            pending.append(
+                _PendingStub(point, None, stubgen.stub_file_for(point), _DEFAULT_TIER)
+            )
+            continue
+        if table is None:
+            from itest.core.declarations.traits import load_traits
+
+            table = load_traits()
+        for trait in _traits_for(point, table):
+            pending.append(
+                _PendingStub(
+                    point,
+                    trait,
+                    stubgen.tool_stub_file_for(point, trait.tier),
+                    trait.tier,
+                )
+            )
+    return pending
+
+
 def _generate_stubs(
     manifest: Manifest, changeset: Changeset, base_dir: Path
 ) -> tuple[int, int]:
-    """Append stubs, routing each point to the file for its type.
+    """Append stubs, routing each one to its file.
 
     Returns ``(added, human_modified_file_count)``. Every guarantee is *per
     file*: its own recorded hashes, its own human-modified verdict, and its own
@@ -260,9 +386,9 @@ def _generate_stubs(
     """
     point_targets = {p.id: p.target for p in changeset.new_points}
 
-    routed: dict[str, list[IntegrationPoint]] = {}
-    for point in changeset.new_points:
-        routed.setdefault(stubgen.stub_file_for(point), []).append(point)
+    routed: dict[str, list[_PendingStub]] = {}
+    for stub in _plan_stubs(changeset):
+        routed.setdefault(stub.file_rel, []).append(stub)
 
     # Every file the manifest already knows is checked for human edits, even
     # when this sync adds nothing to it — as the single-file version did.
@@ -283,35 +409,36 @@ def _generate_stubs(
         ):
             human_modified_files += 1
 
-        new_points = routed.get(file_rel)
-        if not new_points:
+        new_stubs = routed.get(file_rel)
+        if not new_stubs:
             continue
 
         used_names = {t.test_name for t in manifest.tests if t.path == file_rel}
         blocks: list[str] = []
-        pending: list[tuple[str, str]] = []  # (point_id, func_name)
-        for point in new_points:
-            name = stubgen.function_name_for(point)
+        pending: list[tuple[_PendingStub, str]] = []
+        for stub in new_stubs:
+            name = stub.function_name()
             if name in used_names:
-                name = f"{name}_{point.id[:6]}"
+                name = f"{name}_{stub.point.id[:6]}"
             used_names.add(name)
-            blocks.append(stubgen.render_stub(point, name))
-            pending.append((point.id, name))
+            blocks.append(stub.render(name))
+            pending.append((stub, name))
 
         # Append-only: existing functions (including human edits) are kept.
         stubgen.append_stubs(file_abs, blocks)
         final_hash = stubgen.file_hash(file_abs)
 
-        for point_id, name in pending:
+        for stub, name in pending:
             manifest.tests.append(
                 TestEntry(
-                    id=f"t-{point_id}",
-                    point_id=point_id,
+                    id=stub.entry_id(),
+                    point_id=stub.point.id,
                     path=file_rel,
                     test_name=name,
                     ownership_hash=final_hash,
                     status="stub",
-                    resource_group=point_targets.get(point_id),
+                    tier=stub.tier,
+                    resource_group=point_targets.get(stub.point.id),
                 )
             )
 

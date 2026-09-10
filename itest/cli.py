@@ -91,6 +91,12 @@ def plan(
     except planner.PlanInputError as exc:
         echo(str(exc), err=True)
         raise typer.Exit(code=1) from None
+    except _declaration_errors() as exc:
+        # A declaration ITest cannot act on: a mutation class the live server
+        # contradicts, a trait the table cannot place, a malformed file. Exit 2
+        # (a config problem, like a bad environment policy) and nothing written.
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
 
     if output == "json":
         typer.echo(changeset.model_dump_json(indent=2))
@@ -119,6 +125,9 @@ def sync(
     except planner.PlanInputError as exc:
         echo(str(exc), err=True)
         raise typer.Exit(code=1) from None
+    except _declaration_errors() as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
 
     if note:
         echo(note)
@@ -143,7 +152,11 @@ def sync(
             echo("Apply cancelled.")
             raise typer.Exit(code=1)
 
-    result = syncer.apply(changeset, base_dir)
+    try:
+        result = syncer.apply(changeset, base_dir)
+    except _declaration_errors() as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
     echo(result.summary())
 
 
@@ -285,7 +298,20 @@ def add(
     # B008: typer's declarative API requires the Option() call in the default;
     # `...` marks the option required — the caller states each one explicitly.
     point: str = typer.Option(  # noqa: B008
-        ..., "--point", help="Existing integration point id to register onto."
+        ...,
+        "--point",
+        help=(
+            "Existing integration point id to register onto, or the tool's name "
+            "when --server is given."
+        ),
+    ),
+    server: str | None = typer.Option(  # noqa: B008
+        None,
+        "--server",
+        help=(
+            "Declared MCP server. Reads --point as a tool name on that server "
+            "instead of a point id."
+        ),
     ),
     file: Path = typer.Option(  # noqa: B008
         ..., "--file", help="Path to the test file (must already exist)."
@@ -310,6 +336,7 @@ def add(
             file=file,
             function=function,
             tier=tier,
+            server=server,
         )
     except register.AddError as exc:
         echo(str(exc), err=True)
@@ -386,6 +413,19 @@ def redact(
             f"Wrote sanitized copy to {out} ({len(findings)} redaction(s)).",
             err=True,
         )
+
+
+def _declaration_errors() -> tuple[type[Exception], ...]:
+    """The declaration-side failures that map to exit code 2.
+
+    Imported on demand, and only from the commands that can raise one, so a
+    project with no declarations never loads the declarations package.
+    """
+    from itest.core.declarations import DeclarationError
+    from itest.core.declarations.tools import DeclaredTraitUnknown, MutationConflict
+    from itest.core.declarations.traits import TraitTableError
+
+    return (DeclarationError, MutationConflict, DeclaredTraitUnknown, TraitTableError)
 
 
 def render_verify_line(report) -> str:

@@ -34,6 +34,14 @@ somebody else wrote. Every rule below follows from that:
   it is an ``error`` naming the limit, never a hang and never confusable with a
   refusal: a server that will not answer and a server that says no are different
   findings.
+- **A private host is refused, not probed.** An ``http`` target's URL is
+  configuration — a declaration resolves it from an environment variable — so it
+  is checked against the HTTP probe's own SSRF rule (loopback, link-local, the
+  metadata endpoint, and anything but http/https) **before the transport is
+  built**. The check is *imported* from :mod:`itest.probes.http` rather than
+  copied: one host list, one place to fix. A deliberate local target — the
+  reference server on a loopback port — opts in with
+  ``McpTarget(allow_private_hosts=True)``.
 - **Redirects are not chased.** The SDK's streamable-HTTP transport follows a
   redirect only when it stays on the endpoint's origin and keeps the method, and
   it does not consult the HTTP client's ``follow_redirects``; we set that
@@ -65,6 +73,12 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp_types import REQUEST_TIMEOUT
 
 from itest.probes.credential import resolve_credential
+
+# The SSRF host rule is the HTTP probe's, imported rather than reimplemented: two
+# copies of a list of dangerous hosts is one copy that will be missed. The name is
+# private to that module because nothing outside the probes package should need
+# it; this *is* inside the probes package.
+from itest.probes.http import ProbeBlocked, _check_url
 
 #: Mutation classes that will not be called without an explicit opt-in.
 MUTATING_CLASSES = frozenset({"write", "destructive"})
@@ -135,6 +149,13 @@ class McpTarget:
 
     ``timeout_s`` bounds the whole operation — spawn or connect, handshake, and
     the call itself — not just one read.
+
+    ``allow_private_hosts`` is the opt-in for an ``http`` url on a loopback,
+    link-local or metadata host. It defaults to ``False`` because the url is
+    resolved from an environment variable at plan time, and configuration that
+    can point the probe at ``169.254.169.254`` must not do so by accident. It
+    loosens the *host* rule only: a scheme other than http/https is refused
+    either way.
     """
 
     kind: Literal["stdio", "http"]
@@ -142,6 +163,7 @@ class McpTarget:
     url: str | None = None
     credential_env: str | None = None
     timeout_s: float = 10.0
+    allow_private_hosts: bool = False
 
 
 @dataclass(frozen=True)
@@ -355,6 +377,13 @@ def _client(target: McpTarget, credential: str | None) -> tuple[Client, list[int
     if target.kind == "http":
         if not target.url:
             raise McpProbeError("an http target needs a url")
+        # Before the httpx client, before the transport, before any connection:
+        # a refused target must leave no trace, exactly as a refused mutating
+        # call does.
+        try:
+            _check_url(target.url, target.allow_private_hosts)
+        except ProbeBlocked as exc:
+            raise McpProbeError(str(exc)) from None
         headers = {}
         if credential:
             headers["Authorization"] = f"Bearer {credential}"

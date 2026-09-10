@@ -78,7 +78,12 @@ CREDENTIAL_ENV = "ITEST_MCP_PROBE_TOKEN"
 
 @pytest.fixture(scope="session")
 def reference() -> Iterator[Any]:
-    """The reference MCP server on a loopback port, guarded and open mounts."""
+    """The reference MCP server on a loopback port, guarded and open mounts.
+
+    Every target below it opts in with ``allow_private_hosts=True``: loopback is
+    a refused host by default (see ``tests/test_mcp_probe_guard.py``), and this
+    server is the deliberate local target the opt-in exists for.
+    """
     with reference_mcp.serve_in_thread(token=DISTINCTIVE_TOKEN) as running:
         yield running
 
@@ -129,7 +134,10 @@ def test_list_tools_over_http_returns_the_eight_tools(
     reference: Any, credential_dir: Path
 ) -> None:
     target = McpTarget(
-        kind="http", url=reference.guarded_url, credential_env=CREDENTIAL_ENV
+        kind="http",
+        url=reference.guarded_url,
+        credential_env=CREDENTIAL_ENV,
+        allow_private_hosts=True,
     )
     tools = list_tools(target, base_dir=credential_dir)
     assert {tool.name for tool in tools} == EXPECTED_TOOLS
@@ -227,7 +235,7 @@ def test_list_tools_on_the_guarded_mount_without_a_credential_fails(
     """No credential named at all -> the guarded mount refuses, and the probe
     says so rather than returning an empty tool list, which would read as a
     server with no tools."""
-    target = McpTarget(kind="http", url=reference.guarded_url)
+    target = McpTarget(kind="http", url=reference.guarded_url, allow_private_hosts=True)
     with pytest.raises(McpProbeError) as excinfo:
         list_tools(target)
     assert "refused" in str(excinfo.value).lower()
@@ -235,7 +243,7 @@ def test_list_tools_on_the_guarded_mount_without_a_credential_fails(
 
 def test_list_tools_on_the_open_mount_needs_no_credential(reference: Any) -> None:
     """THE INTENDED RED. Anyone can enumerate the open mount's tools."""
-    target = McpTarget(kind="http", url=reference.open_url)
+    target = McpTarget(kind="http", url=reference.open_url, allow_private_hosts=True)
     assert {tool.name for tool in list_tools(target)} == EXPECTED_TOOLS
 
 
@@ -419,7 +427,7 @@ def test_an_unknown_mutation_class_is_not_gated(
 
 
 def test_allow_mutating_opens_the_gate(reference: Any) -> None:
-    target = McpTarget(kind="http", url=reference.open_url)
+    target = McpTarget(kind="http", url=reference.open_url, allow_private_hosts=True)
     result = call_tool(
         target,
         "delete_record",
@@ -435,7 +443,7 @@ def test_allow_mutating_opens_the_gate(reference: Any) -> None:
 
 
 def test_unauthenticated_call_on_the_guarded_mount_is_refused(reference: Any) -> None:
-    target = McpTarget(kind="http", url=reference.guarded_url)
+    target = McpTarget(kind="http", url=reference.guarded_url, allow_private_hosts=True)
     result = call_tool(
         target,
         "fetch_record",
@@ -451,7 +459,7 @@ def test_unauthenticated_read_on_the_open_mount_is_ok(reference: Any) -> None:
     """An unauthenticated READ succeeding is a finding for a later recipe to
     weigh — it is not CRITICAL here, because nothing was mutated. The probe
     reports what happened; it does not editorialise."""
-    target = McpTarget(kind="http", url=reference.open_url)
+    target = McpTarget(kind="http", url=reference.open_url, allow_private_hosts=True)
     result = call_tool(
         target,
         "fetch_record",
@@ -470,7 +478,7 @@ def test_unauthenticated_destructive_call_on_the_open_mount_is_critical(
     """THE CRITICAL CATCH. An anonymous caller reached a destructive tool and the
     server answered with a successful result. The id is a sentinel, so nothing
     was destroyed to learn it — the finding is that the call was admitted."""
-    target = McpTarget(kind="http", url=reference.open_url)
+    target = McpTarget(kind="http", url=reference.open_url, allow_private_hosts=True)
     result = call_tool(
         target,
         "delete_record",
@@ -485,7 +493,7 @@ def test_unauthenticated_destructive_call_on_the_open_mount_is_critical(
 
 
 def test_unauthenticated_write_on_the_open_mount_is_critical(reference: Any) -> None:
-    target = McpTarget(kind="http", url=reference.open_url)
+    target = McpTarget(kind="http", url=reference.open_url, allow_private_hosts=True)
     result = call_tool(
         target,
         "create_record",
@@ -503,7 +511,10 @@ def test_an_authenticated_destructive_call_is_not_critical(
     """CRITICAL is about who got in, not about what the tool does. With a valid
     credential the same call is an ordinary result."""
     target = McpTarget(
-        kind="http", url=reference.guarded_url, credential_env=CREDENTIAL_ENV
+        kind="http",
+        url=reference.guarded_url,
+        credential_env=CREDENTIAL_ENV,
+        allow_private_hosts=True,
     )
     result = call_tool(
         target,
@@ -521,7 +532,10 @@ def test_authenticated_read_on_the_guarded_mount_is_ok(
     reference: Any, credential_dir: Path
 ) -> None:
     target = McpTarget(
-        kind="http", url=reference.guarded_url, credential_env=CREDENTIAL_ENV
+        kind="http",
+        url=reference.guarded_url,
+        credential_env=CREDENTIAL_ENV,
+        allow_private_hosts=True,
     )
     result = call_tool(
         target,
@@ -538,7 +552,7 @@ def test_authenticated_read_on_the_guarded_mount_is_ok(
 def test_a_tool_error_result_is_an_error_not_ok(reference: Any) -> None:
     """`fetch_record` on an unknown id answers `isError=true`. That is a failed
     call, not a successful one, and the probe must not report it as `ok`."""
-    target = McpTarget(kind="http", url=reference.open_url)
+    target = McpTarget(kind="http", url=reference.open_url, allow_private_hosts=True)
     result = call_tool(
         target,
         "fetch_record",
@@ -682,6 +696,8 @@ def test_the_credential_never_appears_in_a_raised_exception(
         url="http://127.0.0.1:9/mcp",
         credential_env=CREDENTIAL_ENV,
         timeout_s=5.0,
+        # Loopback by design: nothing is listening on port 9, which is the point.
+        allow_private_hosts=True,
     )
     with pytest.raises(McpProbeError) as excinfo:
         list_tools(target, base_dir=credential_dir)

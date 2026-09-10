@@ -23,10 +23,22 @@ Tier = Literal["static", "readonly", "active"]
 
 
 class IntegrationPoint(BaseModel):
-    """A single primitive integration point emitted by a detector."""
+    """A single primitive integration point.
+
+    Emitted by a detector reading Terraform, or — for ``mcp_tool`` — built from a
+    declaration plus the live tool listing it describes (``origin: declared``).
+    A declared point carries the declaration file in ``hcl_address``: it is the
+    document the point came from, which is what the field means either way.
+
+    Adding ``mcp_tool`` needs no schema bump: it is a new value of an existing
+    field, every attribute rides in the free-form ``attributes`` dict, and an
+    existing manifest therefore loads unchanged.
+    """
 
     id: str
-    type: Literal["sg_edge", "iam_edge", "event_edge", "route_edge", "lb_edge"]
+    type: Literal[
+        "sg_edge", "iam_edge", "event_edge", "route_edge", "lb_edge", "mcp_tool"
+    ]
     source: str
     target: str
     attributes: dict = Field(default_factory=dict)

@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from itest.core import points
 from itest.core.manifest import IntegrationPoint
+
+if TYPE_CHECKING:  # a type, not a dependency: stubgen imports no trait machinery
+    from itest.core.declarations.traits import Trait
 
 STUB_DIR_REL = "itest_tests"
 
@@ -37,6 +41,34 @@ def stub_file_for(point: IntegrationPoint) -> str:
     points automatically and nothing here needs changing.
     """
     return f"{STUB_DIR_REL}/test_{point.type}s.py"
+
+
+def _slug(text: str) -> str:
+    """A python-identifier fragment: ``reference-mcp`` -> ``reference_mcp``."""
+    return points.slug(text).lower()
+
+
+def tool_stub_file_for(point: IntegrationPoint, tier: str) -> str:
+    """Where one tool check goes: per server, and the active tier on its own.
+
+    Two files rather than one, and the split is by tier rather than by taste.
+    verify keeps a disallowed tier out of *collection*: it can ``--ignore`` a
+    file whose every test is gated — never importing it — but a gated test
+    sharing a file with runnable siblings can only be ``--deselect``-ed, which
+    imports the module. A mutating probe belongs behind the strong guarantee, so
+    it lives in a file that holds nothing else.
+    """
+    suffix = "_active" if tier == "active" else ""
+    return f"{STUB_DIR_REL}/test_tools_{_slug(point.source)}{suffix}.py"
+
+
+def tool_function_name(point: IntegrationPoint, trait_id: str) -> str:
+    """``test_b2_delete_record``: the trait, then the tool.
+
+    The trait leads because one tool yields one test per applicable trait, and
+    reading the file top to bottom should group by what is being asked.
+    """
+    return f"test_{trait_id.lower()}_{_slug(point.target)}"
 
 
 def stub_file_path(base_dir: Path, file_rel: str) -> Path:
@@ -75,6 +107,34 @@ def render_stub(point: IntegrationPoint, func_name: str) -> str:
         f"    {point.source} -> {point.target}\n"
         f"    type={point.type} {_attribute_line(point)}\n"
         f"    HCL: {point.hcl_address}\n"
+        f'    """\n'
+        f"    {STUB_SKIP_LINE}\n"
+    )
+
+
+def render_tool_stub(point: IntegrationPoint, func_name: str, trait: Trait) -> str:
+    """One stub for one (tool, trait) pair. The docstring is the address.
+
+    It carries BOTH halves: the point id (which tool — stable across a reworded
+    description) and the trait id (which check). P31's recipes and P32's ledger
+    both find a check by its trait id, so these lines are frozen: add to them,
+    never rename them.
+    """
+    attrs = point.attributes
+    egress = attrs.get("egress")
+    egress_line = f"egress={egress.get('to')}" if egress else "egress=none"
+    return (
+        f"\n\ndef {func_name}():\n"
+        f'    """Integration point {point.id} — trait {trait.id}.\n'
+        f"\n"
+        f"    {point.source} -> {point.target}\n"
+        f"    type={point.type} trait={trait.id} family={trait.family} "
+        f"tier={trait.tier}\n"
+        f"    mutation={attrs.get('mutation')} ({attrs.get('mutation_source')}) "
+        f"approval={attrs.get('approval')} {egress_line}\n"
+        f"    check: {trait.name}\n"
+        f"    recipe: {trait.recipe}\n"
+        f"    declared in: {point.hcl_address}\n"
         f'    """\n'
         f"    {STUB_SKIP_LINE}\n"
     )
