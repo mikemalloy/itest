@@ -1,0 +1,305 @@
+"""Tests for the readiness page: data model, renderer, and the CLI end to end.
+
+The page is engine-rendered, so the tests here are mostly about *provenance*:
+every number must come from a verify JSON field or the manifest, the template's
+example data must not survive into output, and an absent source must render as
+a named empty state rather than as plausible-looking sample data.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+from typer.testing import CliRunner
+
+from itest.cli import app
+from itest.core.manifest import Manifest, load_manifest
+from itest.report import model as report_model
+
+runner = CliRunner()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = REPO_ROOT / "tests" / "fixtures"
+ALEX_S6 = FIXTURES / "alex" / "alex-s6.json"
+ALEX_S7 = FIXTURES / "alex" / "alex-s7.json"
+TOOL_LEDGER = FIXTURES / "report" / "tool-ledger.json"
+
+GENERATED_AT = datetime(2026, 9, 10, 12, 0, 0, tzinfo=UTC)
+
+
+def synced(tmp_path: Path, monkeypatch, fixture: Path) -> Path:
+    """Sync ``fixture`` into ``tmp_path`` and return the project dir."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["sync", "--auto-approve", "--tf-json", str(fixture)])
+    assert result.exit_code == 0, result.output
+    return tmp_path
+
+
+def verify_json(project: Path) -> dict:
+    """Run `itest verify --output json` in ``project`` and parse it."""
+    result = runner.invoke(app, ["verify", "--output", "json"])
+    assert result.exit_code == 0, result.output
+    return json.loads(result.stdout)
+
+
+@pytest.fixture
+def alex_s7(tmp_path, monkeypatch) -> tuple[dict, Manifest]:
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    return verify_json(project), load_manifest(project / ".itest" / "manifest.yaml")
+
+
+# --------------------------------------------------------------------------
+# The tool-ledger contract with P31.
+# --------------------------------------------------------------------------
+
+
+def test_tool_ledger_fixture_loads_through_the_model() -> None:
+    """The committed fixture IS the contract; drift must fail a test.
+
+    The models forbid extra keys, so a renamed or added field in the fixture
+    fails here rather than silently rendering as nothing.
+    """
+    document = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))
+    ledger = report_model.ToolLedger.model_validate(document["tools"])
+
+    assert [s.server for s in ledger.servers] == ["reference-mcp"]
+    server = ledger.servers[0]
+    assert server.summary.declared == 6
+    assert server.summary.changed == 1
+    assert [f.id for f in server.families] == ["A", "B", "C", "D"]
+    assert [t.name for t in server.tools] == ["delete_record", "update_record"]
+    assert server.tools[0].checks[0].trait == "A1"
+    assert server.tools[1].checks[1].change.previous == "Update fields on a record."
+    assert server.exceptions[0].kind == "changed"
+
+
+def test_tool_ledger_vocabularies_match_the_model() -> None:
+    """The fixture's declared vocabularies are the model's accepted values."""
+    document = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))
+    assert set(document["status_vocabulary"]) == set(report_model.CHECK_STATUSES)
+    assert set(document["mutation_vocabulary"]) == set(report_model.MUTATIONS)
+    assert set(document["mutation_source_vocabulary"]) == set(
+        report_model.MUTATION_SOURCES
+    )
+
+
+def test_tool_ledger_rejects_an_unknown_field() -> None:
+    """A field added to the ledger without extending the model fails loudly."""
+    document = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))
+    document["tools"]["servers"][0]["surprise"] = 1
+    with pytest.raises(ValidationError):
+        report_model.ToolLedger.model_validate(document["tools"])
+
+
+# --------------------------------------------------------------------------
+# Verdict rules.
+# --------------------------------------------------------------------------
+
+
+def test_verdict_stub_only_run_is_at_risk(alex_s7) -> None:
+    """A run with no verified coverage never carries a green stamp."""
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    assert page.verdict.word == "AT RISK"
+    assert page.verdict.integrations_verified == 0
+    assert page.verdict.integrations_total == 12
+
+
+def test_verdict_blocked_when_a_point_fails(alex_s7) -> None:
+    verify, manifest = alex_s7
+    verify["points"][0]["status"] = "failing"
+    verify["failing"] = 1
+    verify["stubs"] = 11
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    assert page.verdict.word == "BLOCKED"
+
+
+def test_verdict_blocked_when_a_point_errors(alex_s7) -> None:
+    verify, manifest = alex_s7
+    verify["points"][0]["status"] = "error"
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    assert page.verdict.word == "BLOCKED"
+
+
+def test_verdict_verified_when_every_point_passes(alex_s7) -> None:
+    verify, manifest = alex_s7
+    for point in verify["points"]:
+        point["status"] = "passing"
+    verify["passing"] = len(verify["points"])
+    verify["stubs"] = 0
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    assert page.verdict.word == "VERIFIED"
+    assert page.verdict.integrations_verified == page.verdict.integrations_total
+
+
+def test_verdict_at_risk_when_an_implemented_test_is_stuck_at_stub(alex_s7) -> None:
+    """The manifest says implemented, the point reports stub: not verified."""
+    verify, manifest = alex_s7
+    for point in verify["points"]:
+        point["status"] = "passing"
+    verify["passing"] = len(verify["points"])
+    # One point drops back to stub while its manifest entry claims implemented.
+    stuck = verify["points"][0]["id"]
+    verify["points"][0]["status"] = "stub"
+    for entry in manifest.tests:
+        if entry.point_id == stuck:
+            entry.status = "implemented"
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    assert page.verdict.word == "AT RISK"
+
+
+def test_verdict_blocked_by_a_critical_tool_check(alex_s7) -> None:
+    verify, manifest = alex_s7
+    for point in verify["points"]:
+        point["status"] = "passing"
+    verify["passing"] = len(verify["points"])
+    ledger = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))["tools"]
+    ledger["servers"][0]["summary"]["critical"] = 1
+    verify["tools"] = ledger
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    assert page.verdict.word == "BLOCKED"
+
+
+def test_verdict_at_risk_when_a_tool_change_awaits_review(alex_s7) -> None:
+    verify, manifest = alex_s7
+    for point in verify["points"]:
+        point["status"] = "passing"
+    verify["passing"] = len(verify["points"])
+    verify["tools"] = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))["tools"]
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    assert page.verdict.word == "AT RISK"
+    assert page.verdict.tool_changes_to_review == 1
+    assert page.verdict.tools_verified == 5
+    assert page.verdict.tools_total == 6
+
+
+# --------------------------------------------------------------------------
+# Everything on the page traces to verify JSON or the manifest.
+# --------------------------------------------------------------------------
+
+
+def test_posture_counts_come_from_point_attributes(alex_s7) -> None:
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    expected_external = sum(
+        1 for p in verify["points"] if p["attributes"].get("external")
+    )
+    expected_wildcard = sum(
+        1 for p in verify["points"] if p["attributes"].get("wildcard_resource")
+    )
+    assert page.posture.cross_stack == expected_external
+    assert page.posture.wildcard == expected_wildcard
+    assert page.posture.broad_managed == 0
+    # Both alex route_edges are auth NONE.
+    assert page.posture.unauthenticated_routes == 2
+
+
+def test_api_sweep_rows_come_from_route_edge_points(alex_s7) -> None:
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    endpoints = [e for g in page.api.groups for e in g.endpoints]
+    assert {e.method for e in endpoints} == {"ANY", "OPTIONS"}
+    assert {e.path for e in endpoints} == {"/api/{proxy+}"}
+    # Stub-only run: the status token is what verify recorded, nothing more.
+    assert {e.status for e in endpoints} == {"STUB"}
+
+
+def test_api_sweep_collapses_to_one_status_column(alex_s7) -> None:
+    """Verify JSON does not record which probe was the anonymous one.
+
+    Until it carries a probe kind, the sweep shows ONE status column rather
+    than an Unauthenticated/Authenticated pair holding the same neutral value.
+    """
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    assert page.api.probe_kind_known is False
+    for group in page.api.groups:
+        for endpoint in group.endpoints:
+            assert endpoint.unauth is None
+            assert endpoint.auth is None
+    assert page.verdict.endpoints_refuse_anon is None
+    assert page.verdict.authenticated_200 is None
+    # What IS derivable: how many route_edge points verify verified.
+    assert page.verdict.endpoints_verified == 0
+    assert page.verdict.endpoints_total == 2
+
+
+def test_graph_points_and_chain_come_from_the_manifest(alex_s7) -> None:
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    iam_ids = {p.id for p in manifest.points if p.type == "iam_edge"}
+    event_ids = {p.id for p in manifest.points if p.type == "event_edge"}
+    assert {p.id for p in page.graph.points} == iam_ids
+    assert {c.id for c in page.graph.chain} == event_ids
+    external = next(p for p in page.graph.points if p.ext)
+    assert external.id in iam_ids
+
+
+def test_footer_reads_account_and_region_from_arns(alex_s7) -> None:
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    assert page.footer.account == "111111111111"
+    assert page.footer.region == "us-west-1"
+    assert page.footer.elapsed_s == verify["elapsed_seconds"]
+    assert page.footer.generated_at == "2026-09-10 12:00 UTC"
+
+
+def test_undderivable_sources_are_none_not_invented(alex_s7) -> None:
+    """Absent sources stay None; the renderer turns them into empty states."""
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    assert page.tools is None
+    assert page.not_analyzed is None
+    assert page.footer.commit is None
+    assert page.since is None
+
+
+# --------------------------------------------------------------------------
+# --since: the only thing that turns trends on.
+# --------------------------------------------------------------------------
+
+
+def test_since_is_off_by_default(alex_s7) -> None:
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+
+    assert page.since is None
+    assert page.new_points == []
+    assert page.removed_points == []
+    for tile in page.posture.tiles():
+        assert tile.trend is None
+
+
+def test_since_marks_new_points_and_posture_trends(tmp_path, monkeypatch) -> None:
+    """A prior manifest turns on new/removed marks and the posture deltas."""
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    verify = verify_json(project)
+    manifest = load_manifest(project / ".itest" / "manifest.yaml")
+
+    # A prior release that had one fewer IAM grant.
+    prior = manifest.model_copy(deep=True)
+    dropped = next(p for p in prior.points if p.type == "iam_edge")
+    prior.points = [p for p in prior.points if p.id != dropped.id]
+
+    page = report_model.build(verify, manifest, prior=prior, generated_at=GENERATED_AT)
+
+    assert page.since is not None
+    assert page.new_points == [dropped.id]
+    assert page.removed_points == []
+    trends = [t.trend for t in page.posture.tiles()]
+    assert any(t is not None for t in trends)
+    marked = next(p for p in page.graph.points if p.id == dropped.id)
+    assert marked.is_new is True
