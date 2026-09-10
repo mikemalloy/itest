@@ -325,6 +325,18 @@ environment that allows it. Any absence — no policy, no binding, a tier left o
 is never even collected. The policy is committed so a reviewer can veto a
 mutating tier before it exists; the binding stays local (gitignored).
 
+## Runs inside your Terraform pipeline
+
+The built shape is a CI step after `terraform apply`: capture state with
+`terraform show -json`, then `itest plan` / `itest verify` / `itest report
+--html`, and upload the readiness page as a job artifact. Three other shapes
+are named in the docs with their real status — an HCP Terraform / TFE
+post-apply run task and `itest:*` declarations in HCL are **designed, not
+built**, and `terraform test` as the harness is **possible, low priority**. See
+[docs/pipeline.md](docs/pipeline.md) and the copyable
+[example workflow](.github/workflows/pipeline-example.yml), whose steps are
+executed against a fixture by the test suite so it cannot drift.
+
 ## Design decisions
 
 **Local-first, manifest as code.** No server means one team can adopt it in
