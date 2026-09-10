@@ -200,6 +200,36 @@ read-only analysis path has no accidental route to sending a request.
   404, a recorded 3xx) is a normal result, not an exception — a hang and a
   refusal must never look alike to the caller.
 
+## Declarations (Ring 3)
+
+A detector reads Terraform and infers points. An MCP server is not in Terraform
+state, so nothing can infer it — the person who runs it has to say it exists, in
+`.itest/tools/<server>.yaml`. **Facts in, traits out**: the file states how to
+reach the server, which environment variables hold its url and tokens (never the
+values — a pasted URL or token is refused, and the refusal does not repeat it),
+what a non-existent id looks like, where a mutation is audited. ITest decides the
+rest. **The developer never declares the dangerous field.** The mutation class is
+*detected* from the live tool listing (the same classifier the MCP probe uses) and
+a declared class is only ever cross-checked: agreement is recorded as
+`confirmed`, a gap detection left as `declared`, `detect` as `detected`, and a
+**disagreement refuses the whole plan** — exit 2, the tool and both classes
+named, nothing written, because one of the two statements is wrong and ITest
+cannot know which. Identity is `(server, tool name)` and nothing else;
+`schema_hash` and `description_hash` are *attributes*, so a reworded description
+is a **changed** entry in the changeset rather than a new point — an id that
+moved would orphan the tests covering the tool and re-stub them empty, which is
+the one way this drift could go unnoticed. Which checks a tool gets is **data,
+not code**: `itest/traits/traits.yaml` holds one row per trait and an
+`applies_when` expression over the tool's own attributes, and an unknown
+attribute or unreadable clause there is an error rather than a quietly false
+clause — a typo must not delete a check. Its `tier` column is what routes each
+stub: active-tier checks go in a per-server file of their own, because verify can
+`--ignore` a fully-gated file (never importing it) but can only `--deselect` a
+gated test sitting beside runnable siblings. Planning a declared server is the
+one place `itest plan` reaches past the filesystem, so the probe is imported
+inside that step and a server it cannot reach is a line in the changeset, never
+an exception: one broken server must not blind the rest of the project.
+
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
   the manifest: recipes hold policy (what a good assertion for a point type
@@ -315,7 +345,41 @@ Shipped:
   the API sweep shows one Status column rather than an
   Unauthenticated/Authenticated pair holding the same neutral value.
 
+- Tool declarations (`itest/core/declarations/`, `docs/declarations.md`): the
+  schema and loader for `.itest/tools/<server>.yaml` (unknown keys refused at
+  every level, url and credentials by env-var NAME, `active_allowed_in` unable to
+  widen the committed environment policy), `mcp_tool` points built from a live
+  `tools/list` with the mutation-class cross-check and per-field provenance,
+  plan's **changed** / **orphaned tool override** / **unreachable server**
+  sections (all append-only, so a terraform-only plan is byte-identical), the
+  applies-when table (`itest/traits/traits.yaml`, eleven traits in four families)
+  driving one stub per (tool, trait) with the active tier in its own file, and
+  `itest add --server` to register a hand-written test onto a tool point by name.
+  No manifest schema bump: `mcp_tool` is a new value of an existing field.
+- MCP probe SSRF guard: `McpTarget` refuses a loopback / link-local / metadata
+  host and any non-http(s) scheme before the transport is built, reusing the HTTP
+  probe's own check, with `allow_private_hosts=True` for a deliberate local
+  target.
+
 Not yet built (do not build without explicit instruction):
+- The tool section of `verify --output json`
+  (`tests/fixtures/report/tool-ledger.json`) and the readiness page's tool
+  ledger. Deliberately **not** emitted yet, because most of that contract cannot
+  be filled truthfully from what verify knows: a per-check `detail` is a recipe's
+  assertion message, `status: changed` is plan's finding rather than verify's,
+  `change.previous` needs the previous description *text* (the manifest stores
+  only its hash), and `held_out` / `not_verifiable` / `critical` / `undeclared`
+  are judgments only a P31 recipe makes. Emitting zeros and nulls for them would
+  put illustrative data on a page whose whole rule is that nothing on it is
+  illustrative. P31 ships the recipes and the section together.
+- Tool recipes and the declaration interview (P31): the eleven `recipe:` files
+  the trait table names, and the skill flow that writes a declaration by asking.
+  The table ships in the minimal form P31 formalizes.
+- Behavioural mutation checks. A tool that lies *consistently* —
+  `lookalike_read` declares `readOnlyHint=true`, is named like a read, and
+  mutates — cannot be caught by any reading of `tools/list`, so the cross-check
+  correctly has nothing to flag. Catching it takes a call and a look at the store
+  afterwards, which is a recipe's job.
 - DNS and endpoint-availability detectors
 - EKS. Explicitly out of scope: a Kubernetes Service, Ingress, or Deployment
   is not in Terraform state, so there is nothing for a detector to read. The
