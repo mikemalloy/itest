@@ -123,3 +123,57 @@ def test_example_doc_validates() -> None:
     disabled = [t for t in manifest.tests if t.disabled]
     assert len(disabled) == 1
     assert disabled[0].disabled_reason
+
+
+def test_a_declared_tool_point_round_trips(tmp_path: Path) -> None:
+    """`mcp_tool` is a new value of an existing field, not a new shape.
+
+    Every tool attribute rides in the free-form `attributes` dict and the point
+    names its declaration in `hcl_address` — the document it came from, which is
+    what that field means for a detected point too. So the schema version does
+    not move, and an existing manifest loads unchanged.
+    """
+    ts = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
+    point = IntegrationPoint(
+        id="3f9a1c2b7d10",
+        type="mcp_tool",
+        source="reference-mcp",
+        target="delete_record",
+        attributes={
+            "mutation": "destructive",
+            "mutation_source": "detected",
+            "egress": None,
+            "approval": "confirm_param",
+            "active": True,
+            "schema_hash": "a1b2c3d4e5f6",
+            "description_hash": "0f1e2d3c4b5a",
+            "annotations": {"destructiveHint": True},
+            "has_free_form_input": True,
+            "second_tenant_env": "REFERENCE_MCP_TOKEN_TENANT_B",
+            "audit_sink": "stderr-json",
+            "traits": None,
+        },
+        hcl_address=".itest/tools/reference-mcp.yaml",
+        origin="declared",
+        first_seen=ts,
+        last_seen=ts,
+    )
+    entry = TestEntry(
+        id="t-3f9a1c2b7d10-b2",
+        point_id=point.id,
+        path="itest_tests/test_tools_reference_mcp_active.py",
+        test_name="test_b2_delete_record",
+        ownership_hash="f" * 64,
+        tier="active",
+        resource_group="delete_record",
+    )
+    manifest = Manifest(generated_at=ts, points=[point], tests=[entry])
+
+    path = tmp_path / "manifest.yaml"
+    save_manifest(manifest, path)
+    loaded = load_manifest(path)
+
+    assert loaded.schema_version == 2  # no bump: nothing about the shape moved
+    assert loaded == manifest
+    assert loaded.points[0].attributes["mutation_source"] == "detected"
+    assert loaded.coverage_summary().covered == 1
