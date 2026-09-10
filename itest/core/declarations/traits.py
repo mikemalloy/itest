@@ -99,6 +99,10 @@ def load_traits(path: Path | None = None) -> TraitTable:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except FileNotFoundError:
         raise TraitTableError(f"no trait table at {path}") from None
+    except OSError as exc:  # a directory, no read permission
+        raise TraitTableError(
+            f"trait table {path} could not be read: {exc.strerror}"
+        ) from exc
     except yaml.YAMLError as exc:
         raise TraitTableError(f"{path} is not valid YAML: {exc}") from exc
 

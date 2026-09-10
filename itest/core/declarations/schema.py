@@ -271,6 +271,12 @@ class ToolOverride(Strict):
                     f"traits entry {entry!r} is not a trait id (a family letter "
                     f"and a number, e.g. A1) or '{NO_TRAITS}'."
                 )
+        repeated = sorted({entry for entry in value if value.count(entry) > 1})
+        if repeated:
+            raise ValueError(
+                f"traits lists {', '.join(repeated)} more than once. Each trait "
+                "is one check; list it once."
+            )
         return value
 
     @model_validator(mode="after")

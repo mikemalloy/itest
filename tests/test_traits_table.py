@@ -13,6 +13,7 @@ Two properties matter more than the eleven rows that ship:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -163,6 +164,28 @@ def test_a_missing_table_names_the_path(tmp_path: Path) -> None:
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(tmp_path / "nope.yaml")
     assert "nope.yaml" in str(excinfo.value)
+
+
+def test_a_table_path_that_is_a_directory_is_a_table_error(tmp_path: Path) -> None:
+    with pytest.raises(TraitTableError) as excinfo:
+        load_traits(tmp_path)
+    assert str(tmp_path) in str(excinfo.value)
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0,
+    reason="root reads a mode-000 file anyway",
+)
+def test_an_unreadable_table_is_a_table_error(tmp_path: Path) -> None:
+    path = tmp_path / "traits.yaml"
+    path.write_text("version: 1\ntraits: []\n", encoding="utf-8")
+    path.chmod(0)
+    try:
+        with pytest.raises(TraitTableError) as excinfo:
+            load_traits(path)
+    finally:
+        path.chmod(0o600)
+    assert "traits.yaml" in str(excinfo.value)
 
 
 def test_a_table_at_another_version_is_refused(tmp_path: Path) -> None:
