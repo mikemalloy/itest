@@ -1,0 +1,318 @@
+{
+  "CHAIN": [
+    {
+      "from": "execute-api:v82dvgpqkh/*/*",
+      "id": "abe2a7356649",
+      "isNew": false,
+      "status": "STUB",
+      "tag": "lambda_permission lambda:InvokeFunction",
+      "to": "aws_lambda_function.api"
+    }
+  ],
+  "PAGE": {
+    "api": {
+      "attest": "<span class='b'>Access-control report.</span> Every row is a route ITest detected in Terraform, carrying the status verify recorded for it. Verify does not yet record which registered test was the anonymous probe, so this run shows one status column rather than an unauthenticated/authenticated pair holding the same value.",
+      "bars": [
+        {
+          "l": "routes detected",
+          "v": 2
+        },
+        {
+          "cls": "good",
+          "l": "verified",
+          "v": 0
+        }
+      ],
+      "columns": [
+        "Status"
+      ],
+      "emptyBody": "No API Gateway route was detected in the Terraform this run read, so there is no endpoint to sweep.",
+      "emptyTitle": "No API sweep in this run",
+      "exceptions": [],
+      "exceptionsHead": "Deliberately not swept \u2014 named, not hidden",
+      "eyebrow": "2 routes detected"
+    },
+    "footer": [
+      {
+        "k": "run",
+        "v": "verify"
+      },
+      {
+        "k": "account",
+        "v": "111111111111"
+      },
+      {
+        "k": "region",
+        "v": "us-west-1"
+      }
+    ],
+    "graph": {
+      "alt": "9 resources reached by api_lambda_role, and 1 downstream edge",
+      "chainCaption": "DOWNSTREAM",
+      "chainCount": "0 verified of 1",
+      "chainTitle": "Event flow \u2014 downstream chain",
+      "emptyBody": "No IAM or event edge was detected, so there is no reach diagram to draw.",
+      "emptyTitle": "No graphable integration in this run",
+      "eyebrow": "10 edges \u00b7 every edge carries the status verify recorded",
+      "pointsCaption": "RESOURCES REACHED",
+      "pointsCount": "0 verified of 9",
+      "pointsTitle": "Grant reach \u2014 role to resource",
+      "rootLabel": "api_lambda_role",
+      "rootSub": "aws_iam_role.api_lambda_role"
+    },
+    "nav": [
+      {
+        "count": null,
+        "id": "posture",
+        "label": "Security Posture",
+        "pill": "warn"
+      },
+      {
+        "count": null,
+        "id": "tools",
+        "label": "Agent tools",
+        "pill": "soon"
+      },
+      {
+        "count": 2,
+        "id": "api",
+        "label": "API access",
+        "pill": "warn"
+      },
+      {
+        "count": 12,
+        "id": "graph",
+        "label": "Integrations",
+        "pill": "warn"
+      },
+      {
+        "count": "soon",
+        "id": "database",
+        "label": "Database",
+        "pill": "soon"
+      },
+      {
+        "count": "soon",
+        "id": "queue",
+        "label": "Queue",
+        "pill": "soon"
+      },
+      {
+        "count": null,
+        "id": "notanalyzed",
+        "label": "Not analyzed",
+        "pill": "soon"
+      }
+    ],
+    "notAnalyzed": {
+      "body": "",
+      "chips": [],
+      "emptyBody": "The census of resources no detector models is produced by `itest plan`, not by verify, so this page cannot report it yet. It is named rather than dropped: an empty list and an unavailable one are different facts.",
+      "emptyTitle": "Not analyzed is not in this run",
+      "headline": "",
+      "present": false
+    },
+    "posture": {
+      "infraMeta": "12 points",
+      "since": "",
+      "toolsMeta": "not declared"
+    },
+    "toolBand": {
+      "cls": "empty",
+      "review": "",
+      "sub": "Declare an MCP server's tools and this band reports them against every property the declaration claims.",
+      "word": "No agent tools declared"
+    },
+    "tools": {
+      "attest": "",
+      "bars": [],
+      "emptyBody": "This run carried no tool ledger, so there is nothing to report here. The section is named rather than hidden: an absent sweep and a clean sweep must never look alike.",
+      "emptyTitle": "No agent tools declared",
+      "exceptions": [],
+      "exceptionsHead": "",
+      "eyebrow": "not declared in this run"
+    },
+    "verdict": {
+      "cls": "risk",
+      "glyph": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\" fill=\"none\"><path d=\"M12 3 2 20h20L12 3z\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linejoin=\"round\"/><path d=\"M12 10v4\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><circle cx=\"12\" cy=\"17\" r=\"1.2\" fill=\"currentColor\"/></svg>",
+      "note": "0 of 12 integration points verified against the live account, 12 awaiting an implemented test. 2 gateway routes detected; 0 verified. No agent tools declared.",
+      "nums": [
+        {
+          "label": "integrations verified",
+          "total": 12,
+          "value": 0
+        },
+        {
+          "label": "endpoints verified",
+          "sep": true,
+          "total": 2,
+          "value": 0
+        },
+        {
+          "label": "drift",
+          "sep": true,
+          "total": null,
+          "value": 0
+        }
+      ],
+      "since": null,
+      "sub": "<b>no environment bound</b> \u2014 12 integration points",
+      "word": "AT RISK"
+    }
+  },
+  "POINTS": [
+    {
+      "ext": true,
+      "hub": false,
+      "id": "f4b492f95f86",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "rds-data (5 actions) [external]",
+      "tgt": "rds:cluster:alex-aurora-cluster",
+      "wild": false
+    },
+    {
+      "ext": true,
+      "hub": false,
+      "id": "eebdea19fb78",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "secretsmanager:GetSecretValue [external]",
+      "tgt": "secretsmanager:secret:alex-aurora-credentials-7b1b5cc1-LvvYkh",
+      "wild": false
+    },
+    {
+      "ext": true,
+      "hub": false,
+      "id": "d1383b413cb1",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "lambda:InvokeFunction [external]",
+      "tgt": "lambda:function:alex-planner",
+      "wild": false
+    },
+    {
+      "ext": true,
+      "hub": false,
+      "id": "6dd22bec71db",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "lambda:InvokeFunction [external]",
+      "tgt": "lambda:function:alex-tagger",
+      "wild": false
+    },
+    {
+      "ext": true,
+      "hub": false,
+      "id": "7d1ff0aff19e",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "lambda:InvokeFunction [external]",
+      "tgt": "lambda:function:alex-reporter",
+      "wild": false
+    },
+    {
+      "ext": true,
+      "hub": false,
+      "id": "808af87f5161",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "lambda:InvokeFunction [external]",
+      "tgt": "lambda:function:alex-charter",
+      "wild": false
+    },
+    {
+      "ext": true,
+      "hub": false,
+      "id": "d22012bc6313",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "lambda:InvokeFunction [external]",
+      "tgt": "lambda:function:alex-retirement",
+      "wild": false
+    },
+    {
+      "ext": true,
+      "hub": false,
+      "id": "f7fc352950a4",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "sqs (2 actions) [external]",
+      "tgt": "sqs:alex-analysis-jobs",
+      "wild": false
+    },
+    {
+      "ext": false,
+      "hub": false,
+      "id": "c24551b52dd0",
+      "isNew": false,
+      "src": "aws_iam_role.api_lambda_role",
+      "status": "STUB",
+      "tag": "managed policy",
+      "tgt": "iam:policy/service-role/AWSLambdaBasicExecutionRole",
+      "wild": false
+    }
+  ],
+  "POSTURE": [
+    {
+      "lab": "cross-stack dependencies<br>resolved to other stacks",
+      "n": 9
+    },
+    {
+      "lab": "wildcard-resource grants<br>flagged for review",
+      "n": 0
+    },
+    {
+      "lab": "broad managed policies<br>(e.g. *FullAccess)",
+      "n": 0,
+      "zero": true
+    },
+    {
+      "lab": "unauthenticated routes<br>detected in the gateway",
+      "n": 2
+    }
+  ],
+  "SWEEP": [
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "ANY",
+          "p": "/api/{proxy+}"
+        },
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "OPTIONS",
+          "p": "/api/{proxy+}"
+        }
+      ],
+      "res": "/api",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    }
+  ],
+  "TOOLPOSTURE": [],
+  "TOOLS": []
+}

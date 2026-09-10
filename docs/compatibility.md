@@ -91,3 +91,28 @@ Seen across the projects above, most frequent first. Every one appears in
 Types with no integration semantics (log groups, S3 objects, versioning and
 encryption settings, packaging helpers such as `null_resource` and
 `local_file`) are reported and expected to stay unanalyzed.
+
+## MCP probe coverage
+
+The MCP probe (`itest/probes/mcp.py`) is a **client**: it connects to somebody
+else's MCP server, enumerates its tools, and calls one. Its catches have the
+same problem the `http_probe` recipe's do — they cannot be demonstrated against
+a server you do not control — so the same answer applies: a purpose-built
+reference server under `examples/reference-mcp/`, allowed to be broken on
+purpose.
+
+| Server | Source | Tools | Transports | Result |
+|---|---|---|---|---|
+| reference-mcp | `examples/reference-mcp/` (purpose-built) | 8 (1 informational, 4 read, 2 write, 1 destructive) | stdio + streamable HTTP | **`tools/list` and `tools/call` proven on both** (`tests/test_mcp_probe.py`, `tests/test_reference_mcp.py`); the unauthenticated `/open/mcp` mount is the **intended red** — an anonymous call reaching a destructive tool classifies CRITICAL |
+
+Two of that server's properties are deliberate defects, not gaps. The open mount
+serves the full tool list and admits an unauthenticated `tools/call`, which is
+how the CRITICAL catch is shown firing without shipping such a mount anywhere
+real. And `lookalike_read` declares `readOnlyHint=true` while mutating: its
+conflict is **behavioral**, so `classify_mutation` reports it as a plain read
+and is right to — no reading of `tools/list` can catch a tool whose annotation
+and name agree with each other and both lie. Catching that one needs a probe
+that calls it and watches what changed.
+
+No row here is a real third-party MCP server yet. When one is probed, it belongs
+in this table with its tool count and the transport it was reached over.

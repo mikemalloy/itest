@@ -102,7 +102,31 @@ def summary(point: IntegrationPoint) -> str:
         return tag + "".join(f" [{flag}]" for flag in flags)
     if point.type == "lb_edge":
         return _lb_summary(attrs, point)
+    if point.type == "mcp_tool":
+        return _tool_summary(attrs)
     return point.type
+
+
+def _tool_summary(attrs: dict) -> str:
+    """What calling this tool does, and who said so.
+
+    The provenance is in the tag rather than buried in the attributes because it
+    is the whole answer to "do you trust this?": ``detected`` is the server's own
+    listing, ``confirmed`` is a developer agreeing with it, and ``declared`` is a
+    developer filling a gap the server left. Flags carry the facts that change
+    the blast radius.
+    """
+    tag = f"{attrs.get('mutation')} ({attrs.get('mutation_source')})"
+    flags = []
+    approval = attrs.get("approval")
+    if approval and approval != "none":
+        flags.append(f"approval {approval}")
+    egress = attrs.get("egress")
+    if egress:
+        flags.append(f"egress {egress.get('to')}")
+    if attrs.get("active") is False:
+        flags.append("no active tier")
+    return tag + "".join(f" [{flag}]" for flag in flags)
 
 
 def _lb_port(attrs: dict) -> object:
@@ -177,6 +201,10 @@ def diagram_label(point: IntegrationPoint) -> str:
         if attrs.get("via") == "none":
             return "empty"
         return f":{_lb_port(attrs)}"
+    if point.type == "mcp_tool":
+        # The mutation class alone: it is what a reader of the diagram wants to
+        # know about a tool edge, and there is no room for more.
+        return str(attrs.get("mutation"))
     return point.type
 
 
@@ -218,4 +246,9 @@ def function_name(point: IntegrationPoint) -> str:
             if port is not None:
                 parts.append(slug(str(port)))
         return "_".join(part for part in parts if part)
+    if point.type == "mcp_tool":
+        # Only reached for a tool point with no trait; the trait-aware name
+        # (`test_a1_delete_record`) is stubgen's, because one tool yields one
+        # stub per applicable trait and the point name alone cannot be unique.
+        return f"test_tool_{source}_{target}"
     return f"test_{point.type}_{source}_to_{target}"

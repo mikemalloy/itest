@@ -69,14 +69,48 @@ def _function_defined(path: Path, function: str) -> bool:
     )
 
 
+def _resolve_tool_point(manifest, server: str, tool: str) -> str:
+    """The point id of ``tool`` on ``server``, or an :class:`AddError`.
+
+    Why this exists: a tool point's id is ``hash("mcp_tool", server, name)``, and
+    nobody should have to type a hash to register a test they wrote by hand. With
+    ``--server`` the ``--point`` value is read as the tool's name instead, and
+    resolved against the manifest — not computed and trusted, so a tool the
+    project has never planned is refused rather than invented.
+    """
+    from itest.core.declarations.tools import POINT_TYPE, tool_point_id
+
+    point_id = tool_point_id(server, tool)
+    if manifest.get_point(point_id) is not None:
+        return point_id
+    known = ", ".join(
+        sorted(
+            p.target
+            for p in manifest.points
+            if p.type == POINT_TYPE and p.source == server
+        )
+    )
+    raise AddError(
+        f"No tool '{tool}' on declared server '{server}' in the manifest. "
+        "`itest add --server` registers a test onto a tool the manifest already "
+        "knows; run `itest plan && itest sync` to pick up a new one. Known "
+        f"tools on '{server}': {known or '(none)'}."
+    )
+
+
 def add_test(
     base_dir: Path,
     point_id: str,
     file: Path,
     function: str,
     tier: str,
+    server: str | None = None,
 ) -> TestEntry:
     """Register ``function`` in ``file`` against ``point_id``. Return the entry.
+
+    With ``server``, ``point_id`` is the *tool name* on that declared server and
+    is resolved to the tool point's id. Everything else is unchanged, including
+    the AST validation and the human-owned-from-birth entry.
 
     Every failure is a hard :class:`AddError`: no manifest, an invalid tier, an
     unknown point, a missing file, a function not defined in it, or a duplicate
@@ -89,6 +123,9 @@ def add_test(
 
     if tier not in VALID_TIERS:
         raise AddError(f"Unknown tier '{tier}'. Valid tiers: {', '.join(VALID_TIERS)}.")
+
+    if server is not None:
+        point_id = _resolve_tool_point(manifest, server, point_id)
 
     if manifest.get_point(point_id) is None:
         # The out-of-scope refusal: add registers onto existing points; it does

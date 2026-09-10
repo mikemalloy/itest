@@ -1,0 +1,292 @@
+{
+  "CHAIN": [],
+  "PAGE": {
+    "api": {
+      "attest": "<span class='b'>Access-control report.</span> Every row is a route ITest detected in Terraform, carrying the status verify recorded for it. Verify does not yet record which registered test was the anonymous probe, so this run shows one status column rather than an unauthenticated/authenticated pair holding the same value.",
+      "bars": [
+        {
+          "l": "routes detected",
+          "v": 7
+        },
+        {
+          "cls": "good",
+          "l": "verified",
+          "v": 0
+        }
+      ],
+      "columns": [
+        "Status"
+      ],
+      "emptyBody": "No API Gateway route was detected in the Terraform this run read, so there is no endpoint to sweep.",
+      "emptyTitle": "No API sweep in this run",
+      "exceptions": [],
+      "exceptionsHead": "Deliberately not swept \u2014 named, not hidden",
+      "eyebrow": "7 routes detected"
+    },
+    "footer": [
+      {
+        "k": "run",
+        "v": "verify"
+      },
+      {
+        "k": "account",
+        "v": "222233334444"
+      },
+      {
+        "k": "region",
+        "v": "us-east-2"
+      }
+    ],
+    "graph": {
+      "alt": "0 resources reached by 0 sources",
+      "chainCaption": "DOWNSTREAM",
+      "chainCount": "0 verified of 0",
+      "chainTitle": "Event flow \u2014 downstream chain",
+      "emptyBody": "No IAM or event edge was detected, so there is no reach diagram to draw.",
+      "emptyTitle": "No graphable integration in this run",
+      "eyebrow": "0 edges \u00b7 every edge carries the status verify recorded",
+      "pointsCaption": "RESOURCES REACHED",
+      "pointsCount": "0 verified of 0",
+      "pointsTitle": "Grant reach \u2014 role to resource",
+      "rootLabel": "0 sources",
+      "rootSub": ""
+    },
+    "nav": [
+      {
+        "count": null,
+        "id": "posture",
+        "label": "Security Posture",
+        "pill": "warn"
+      },
+      {
+        "count": null,
+        "id": "tools",
+        "label": "Agent tools",
+        "pill": "soon"
+      },
+      {
+        "count": 7,
+        "id": "api",
+        "label": "API access",
+        "pill": "warn"
+      },
+      {
+        "count": 7,
+        "id": "graph",
+        "label": "Integrations",
+        "pill": "warn"
+      },
+      {
+        "count": "soon",
+        "id": "database",
+        "label": "Database",
+        "pill": "soon"
+      },
+      {
+        "count": "soon",
+        "id": "queue",
+        "label": "Queue",
+        "pill": "soon"
+      },
+      {
+        "count": null,
+        "id": "notanalyzed",
+        "label": "Not analyzed",
+        "pill": "soon"
+      }
+    ],
+    "notAnalyzed": {
+      "body": "",
+      "chips": [],
+      "emptyBody": "The census of resources no detector models is produced by `itest plan`, not by verify, so this page cannot report it yet. It is named rather than dropped: an empty list and an unavailable one are different facts.",
+      "emptyTitle": "Not analyzed is not in this run",
+      "headline": "",
+      "present": false
+    },
+    "posture": {
+      "infraMeta": "7 points",
+      "since": "",
+      "toolsMeta": "not declared"
+    },
+    "toolBand": {
+      "cls": "empty",
+      "review": "",
+      "sub": "Declare an MCP server's tools and this band reports them against every property the declaration claims.",
+      "word": "No agent tools declared"
+    },
+    "tools": {
+      "attest": "",
+      "bars": [],
+      "emptyBody": "This run carried no tool ledger, so there is nothing to report here. The section is named rather than hidden: an absent sweep and a clean sweep must never look alike.",
+      "emptyTitle": "No agent tools declared",
+      "exceptions": [],
+      "exceptionsHead": "",
+      "eyebrow": "not declared in this run"
+    },
+    "verdict": {
+      "cls": "risk",
+      "glyph": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\" fill=\"none\"><path d=\"M12 3 2 20h20L12 3z\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linejoin=\"round\"/><path d=\"M12 10v4\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><circle cx=\"12\" cy=\"17\" r=\"1.2\" fill=\"currentColor\"/></svg>",
+      "note": "0 of 7 integration points verified against the live account, 7 awaiting an implemented test. 7 gateway routes detected; 0 verified. No agent tools declared.",
+      "nums": [
+        {
+          "label": "integrations verified",
+          "total": 7,
+          "value": 0
+        },
+        {
+          "label": "endpoints verified",
+          "sep": true,
+          "total": 7,
+          "value": 0
+        },
+        {
+          "label": "drift",
+          "sep": true,
+          "total": null,
+          "value": 0
+        }
+      ],
+      "since": null,
+      "sub": "<b>no environment bound</b> \u2014 7 integration points",
+      "word": "AT RISK"
+    }
+  },
+  "POINTS": [],
+  "POSTURE": [
+    {
+      "lab": "cross-stack dependencies<br>resolved to other stacks",
+      "n": 7
+    },
+    {
+      "lab": "wildcard-resource grants<br>flagged for review",
+      "n": 0
+    },
+    {
+      "lab": "broad managed policies<br>(e.g. *FullAccess)",
+      "n": 0,
+      "zero": true
+    },
+    {
+      "lab": "unauthenticated routes<br>detected in the gateway",
+      "n": 3
+    }
+  ],
+  "SWEEP": [
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/health"
+        }
+      ],
+      "res": "/health",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    },
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "POST",
+          "p": "/leaky/action"
+        }
+      ],
+      "res": "/leaky",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    },
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/public/info"
+        }
+      ],
+      "res": "/public",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    },
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/secured/item"
+        },
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "POST",
+          "p": "/secured/item"
+        },
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/secured/lookup/{item_id}"
+        },
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/secured/me"
+        }
+      ],
+      "res": "/secured",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    }
+  ],
+  "TOOLPOSTURE": [],
+  "TOOLS": []
+}

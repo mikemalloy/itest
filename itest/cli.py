@@ -91,6 +91,12 @@ def plan(
     except planner.PlanInputError as exc:
         echo(str(exc), err=True)
         raise typer.Exit(code=1) from None
+    except _declaration_errors() as exc:
+        # A declaration ITest cannot act on: a mutation class the live server
+        # contradicts, a trait the table cannot place, a malformed file. Exit 2
+        # (a config problem, like a bad environment policy) and nothing written.
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
 
     if output == "json":
         typer.echo(changeset.model_dump_json(indent=2))
@@ -119,6 +125,9 @@ def sync(
     except planner.PlanInputError as exc:
         echo(str(exc), err=True)
         raise typer.Exit(code=1) from None
+    except _declaration_errors() as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
 
     if note:
         echo(note)
@@ -143,7 +152,11 @@ def sync(
             echo("Apply cancelled.")
             raise typer.Exit(code=1)
 
-    result = syncer.apply(changeset, base_dir)
+    try:
+        result = syncer.apply(changeset, base_dir)
+    except _declaration_errors() as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
     echo(result.summary())
 
 
@@ -197,11 +210,108 @@ def verify(
 
 
 @app.command()
+def report(
+    html: bool = typer.Option(
+        True, "--html", help="Render the HTML readiness page (the only format today)."
+    ),
+    # B008: see the note on `plan` above — typer requires the call here.
+    out: Path = typer.Option(  # noqa: B008
+        Path("readiness.html"), "--out", help="Where to write the page."
+    ),
+    from_json: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--from",
+        help="A `verify --output json` document to render. Runs verify if omitted.",
+    ),
+    manifest: Path | None = typer.Option(  # noqa: B008
+        None, "--manifest", help="Manifest to read. Defaults to .itest/manifest.yaml."
+    ),
+    since: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--since",
+        help="A prior manifest. Only this turns on trends and the since-line.",
+    ),
+    redact: bool = typer.Option(
+        False, "--redact", help="Pseudonymize AWS account IDs, for safe sharing."
+    ),
+) -> None:
+    """Render the release readiness page from verify's results."""
+    from itest.core import environments, planner, verifier
+    from itest.core import manifest as manifest_module
+    from itest.core import redact as redact_engine
+    from itest.report import model as report_model
+    from itest.report import render as report_render
+
+    base_dir = Path.cwd()
+    manifest_file = manifest or planner.manifest_path(base_dir)
+    if not manifest_file.exists():
+        echo(f"No manifest found at {manifest_file}.", err=True)
+        raise typer.Exit(code=2)
+
+    try:
+        if from_json is None:
+            # The same in-process path `verify --output json` prints, so the
+            # page and that command can never disagree about a run.
+            document = json.loads(
+                verifier.run_verify(
+                    base_dir, output="json", redact_accounts=redact
+                ).model_dump_json()
+            )
+        else:
+            if not from_json.exists():
+                echo(f"No verify JSON found at {from_json}.", err=True)
+                raise typer.Exit(code=2)
+            raw = from_json.read_text(encoding="utf-8")
+            if redact:
+                # Verify's own scrubber, over the whole document: no second
+                # redaction implementation can drift from the first.
+                raw = redact_engine.text_scrubber()(raw)
+            document = json.loads(raw)
+    except (verifier.VerifyConfigError, environments.EnvironmentConfigError) as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    except json.JSONDecodeError as exc:
+        echo(f"{from_json} is not valid JSON: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
+    prior = manifest_module.load_manifest(since) if since else None
+    page = report_model.build(
+        document,
+        manifest_module.load_manifest(manifest_file),
+        prior=prior,
+        redacted=redact,
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report_render.render(page), encoding="utf-8")
+
+    # A status note about a file, like the one `redact` writes: unstyled, and
+    # it never carries the verdict into the exit code — that is verify's job.
+    typer.echo(f"Wrote {out} ({out.stat().st_size} bytes).")
+    typer.echo(
+        f"Verdict: {page.verdict.word} — {page.verdict.integrations_verified} of "
+        f"{page.verdict.integrations_total} integration points verified."
+    )
+
+
+@app.command()
 def add(
     # B008: typer's declarative API requires the Option() call in the default;
     # `...` marks the option required — the caller states each one explicitly.
     point: str = typer.Option(  # noqa: B008
-        ..., "--point", help="Existing integration point id to register onto."
+        ...,
+        "--point",
+        help=(
+            "Existing integration point id to register onto, or the tool's name "
+            "when --server is given."
+        ),
+    ),
+    server: str | None = typer.Option(  # noqa: B008
+        None,
+        "--server",
+        help=(
+            "Declared MCP server. Reads --point as a tool name on that server "
+            "instead of a point id."
+        ),
     ),
     file: Path = typer.Option(  # noqa: B008
         ..., "--file", help="Path to the test file (must already exist)."
@@ -226,6 +336,7 @@ def add(
             file=file,
             function=function,
             tier=tier,
+            server=server,
         )
     except register.AddError as exc:
         echo(str(exc), err=True)
@@ -302,6 +413,19 @@ def redact(
             f"Wrote sanitized copy to {out} ({len(findings)} redaction(s)).",
             err=True,
         )
+
+
+def _declaration_errors() -> tuple[type[Exception], ...]:
+    """The declaration-side failures that map to exit code 2.
+
+    Imported on demand, and only from the commands that can raise one, so a
+    project with no declarations never loads the declarations package.
+    """
+    from itest.core.declarations import DeclarationError
+    from itest.core.declarations.tools import DeclaredTraitUnknown, MutationConflict
+    from itest.core.declarations.traits import TraitTableError
+
+    return (DeclarationError, MutationConflict, DeclaredTraitUnknown, TraitTableError)
 
 
 def render_verify_line(report) -> str:
