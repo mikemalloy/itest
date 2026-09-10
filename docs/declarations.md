@@ -97,9 +97,18 @@ space) is a validation error, and **the error does not repeat the value**: a
 declaration is committed to the repository and its errors get pasted into
 issues. An internal hostname is not something to leak by complaining about it.
 
-When the variable is unset, plan reports the server as
-`unreachable: REFERENCE_MCP_URL not set` and carries on with the rest of the
-project. It never crashes, and it never silently skips the server.
+When the variable is unset — or the server cannot be launched or reached at
+all — plan reports the server as unreachable (`unreachable: REFERENCE_MCP_URL
+not set`) and carries on with the rest of the project. It never crashes.
+
+No evidence is not evidence of absence. A server ITest could not ask has not
+lost its tools, so the points the manifest already records for it are **held**:
+carried forward exactly as last recorded (`last_seen` included), and the tests
+covering them are never orphan candidates. The plan says how many points it is
+holding under the server's name. `itest sync` then refuses to write anything —
+it names the server and exits 1 — unless you pass `--allow-unreachable`, which
+applies the rest of the changeset and leaves the held points and their tests as
+they were.
 
 ### You do not declare the dangerous field
 

@@ -174,7 +174,11 @@ def reconcile(base_dir: Path) -> int:
 def _refresh_point_registry(
     manifest: Manifest, changeset: Changeset, now: datetime
 ) -> None:
-    """Replace the point registry with what was detected, preserving first_seen."""
+    """Replace the point registry with what was detected, preserving first_seen.
+
+    Held points (an unreachable server's) are kept exactly as the manifest has
+    them, ``last_seen`` included: nothing saw them this run.
+    """
     existing = {p.id: p for p in manifest.points}
     registry = []
     for point in changeset.detected_points:
@@ -185,6 +189,7 @@ def _refresh_point_registry(
         registry.append(
             point.model_copy(update={"first_seen": first_seen, "last_seen": now})
         )
+    registry.extend(existing.get(p.id, p) for p in changeset.held_points)
     manifest.points = registry
 
 

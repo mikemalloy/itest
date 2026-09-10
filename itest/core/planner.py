@@ -82,6 +82,12 @@ class Changeset(BaseModel):
     orphaned_tool_overrides: list[OrphanedOverride] = Field(default_factory=list)
     #: Declared servers that could not be asked, by server name.
     unreachable_servers: dict[str, str] = Field(default_factory=dict)
+    #: The manifest's points for an unreachable server, carried forward exactly
+    #: as last recorded. No evidence is not evidence of absence: a server ITest
+    #: could not ask has not lost its tools, so neither its points nor the tests
+    #: covering them may be dropped or orphaned. Not in ``detected_points`` —
+    #: nothing saw them this run.
+    held_points: list[IntegrationPoint] = Field(default_factory=list)
     #: For each changed point, which attributes moved. The values themselves are
     #: hashes and mean nothing to a reader; *which* one moved is the finding —
     #: a tool that rewrote what it says it does without changing what it accepts
@@ -217,14 +223,18 @@ def compute_changeset(
     existing_point_ids: set[str],
     existing_tests: list[TestEntry],
     existing_points: list[IntegrationPoint] | None = None,
+    held_points: list[IntegrationPoint] | None = None,
 ) -> Changeset:
     """Diff detected points against what the manifest already knows.
 
     ``existing_points`` is optional only so the Terraform-only callers that
     predate declarations keep working unchanged: without it, nothing can drift,
     which is exactly right for a point type that carries no drift attributes.
+    ``held_points`` belong to servers that could not be asked; the tests
+    covering them are not orphan candidates, because nothing was observed.
     """
-    detected_ids = {p.id for p in points}
+    held = held_points or []
+    detected_ids = {p.id for p in points} | {p.id for p in held}
     stored = {p.id: p for p in existing_points or []}
     # A detected point whose id matches an orphaned test's point_id is
     # returning, not new: sync drops vanished points from the registry, so the
@@ -260,6 +270,7 @@ def compute_changeset(
         orphan_candidates=orphan_candidates,
         unanalyzed=unanalyzed,
         changed_attributes={pid: names for pid, names in drifted.items() if names},
+        held_points=held,
     )
 
 
@@ -342,8 +353,19 @@ def run_plan(tf_json: Path | None, base_dir: Path) -> Changeset:
         existing_tests = []
         existing_points = []
 
+    held: list[IntegrationPoint] = []
+    if unreachable:
+        # Only reached when declarations exist, so the package is already loaded.
+        from itest.core.declarations.tools import POINT_TYPE
+
+        # A declared point's source is its server name.
+        held = [
+            p
+            for p in existing_points
+            if p.type == POINT_TYPE and p.source in unreachable
+        ]
     changeset = compute_changeset(
-        points, unanalyzed, existing_ids, existing_tests, existing_points
+        points, unanalyzed, existing_ids, existing_tests, existing_points, held
     )
     changeset.orphaned_tool_overrides = orphaned_overrides
     changeset.unreachable_servers = unreachable
@@ -438,6 +460,9 @@ def render_changeset(changeset: Changeset) -> str:
         for server in sorted(changeset.unreachable_servers):
             out.append(f"  ? {server}")
             out.append(f"      {changeset.unreachable_servers[server]}")
+            held = sum(1 for p in changeset.held_points if p.source == server)
+            if held:
+                out.append(f"      {held} recorded point(s) held as last recorded")
         out.append("")
 
     total_unanalyzed = sum(changeset.unanalyzed.values())
