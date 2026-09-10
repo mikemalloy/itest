@@ -303,3 +303,212 @@ def test_since_marks_new_points_and_posture_trends(tmp_path, monkeypatch) -> Non
     assert any(t is not None for t in trends)
     marked = next(p for p in page.graph.points if p.id == dropped.id)
     assert marked.is_new is True
+
+
+# --------------------------------------------------------------------------
+# The renderer: data blocks into the committed template.
+# --------------------------------------------------------------------------
+
+# Strings that exist ONLY in the design artifact's example constants. Values
+# that also occur in a real fixture (alex's own resource names) are deliberately
+# not sentinels here: they would pass for the wrong reason.
+EXAMPLE_DATA = [
+    "delete_contact",
+    "delete_company",
+    "update_deal",
+    "enrich_person",
+    "get_platform_how_to_guide",
+    "search_contacts",
+    "aggregate_fundraising",
+    "/api/accounts",
+    "/api/instruments",
+    "carta-crm",
+    "v1.4.0",
+    "683d29c",
+    "Designed · awaiting your data",
+    "ISOLATED",
+    "GATED · AUDITED",
+    "FILTER CONTAINED",
+    "one role, twelve grants",
+    "stages 6–7",
+]
+
+
+def blocks(html: str) -> dict:
+    """Extract the emitted JS data blocks back out of a rendered page.
+
+    Structure is pinned on these, not on the HTML: a CSS or markup change must
+    not break a data test, and a data change must not pass one.
+    """
+    from itest.report import render as render_module
+
+    return render_module.extract_blocks(html)
+
+
+@pytest.fixture
+def rendered_s7(alex_s7) -> str:
+    from itest.report import render as render_module
+
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    return render_module.render(page)
+
+
+def test_render_produces_a_self_contained_page(rendered_s7: str) -> None:
+    assert rendered_s7.lstrip().startswith("<title>")
+    # No marker survives: every injection point was filled.
+    assert "itest:data:" not in rendered_s7
+    assert "<script" in rendered_s7 and "</script>" in rendered_s7
+
+
+def test_no_example_data_survives_rendering(rendered_s7: str) -> None:
+    """The template's design-artifact sample data never reaches output."""
+    for sample in EXAMPLE_DATA:
+        assert sample not in rendered_s7, sample
+
+
+def test_every_data_block_is_emitted(rendered_s7: str) -> None:
+    data = blocks(rendered_s7)
+    assert set(data) == {
+        "PAGE",
+        "TOOLS",
+        "TOOLPOSTURE",
+        "SWEEP",
+        "POSTURE",
+        "POINTS",
+        "CHAIN",
+    }
+
+
+def test_rendered_numbers_trace_to_verify_json(alex_s7) -> None:
+    """Every headline number is the verify JSON field it claims to be."""
+    from itest.report import render as render_module
+
+    verify, manifest = alex_s7
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    data = blocks(render_module.render(page))
+
+    nums = {n["label"]: n for n in data["PAGE"]["verdict"]["nums"]}
+    assert nums["integrations verified"]["value"] == verify["passing"]
+    assert nums["integrations verified"]["total"] == verify["total_points"]
+    assert nums["drift"]["value"] == verify["orphaned_tests"] + len(
+        verify["unregistered"]
+    )
+    assert data["PAGE"]["verdict"]["word"] == "AT RISK"
+    assert len(data["POINTS"]) == sum(
+        1 for p in manifest.points if p.type == "iam_edge"
+    )
+    assert len(data["CHAIN"]) == sum(
+        1 for p in manifest.points if p.type == "event_edge"
+    )
+
+
+def test_sweep_has_one_status_column_when_probe_kind_is_unknown(
+    rendered_s7: str,
+) -> None:
+    data = blocks(rendered_s7)
+    assert data["PAGE"]["api"]["columns"] == ["Status"]
+    for group in data["SWEEP"]:
+        for endpoint in group["eps"]:
+            assert len(endpoint["cells"]) == 1
+            assert endpoint["cells"][0]["txt"] == "STUB"
+
+
+def test_absent_tools_render_a_named_empty_state(rendered_s7: str) -> None:
+    data = blocks(rendered_s7)
+    assert data["TOOLS"] == []
+    assert data["TOOLPOSTURE"] == []
+    assert "No agent tools declared" in data["PAGE"]["toolBand"]["word"] or (
+        "No agent tools declared" in data["PAGE"]["tools"]["emptyTitle"]
+    )
+    # Named, not invented: nothing claims a tool was verified.
+    assert data["PAGE"]["verdict"]["nums"][0]["label"] != "agent tools verified"
+
+
+def test_absent_not_analyzed_renders_a_named_empty_state(rendered_s7: str) -> None:
+    data = blocks(rendered_s7)
+    assert data["PAGE"]["notAnalyzed"]["present"] is False
+    assert data["PAGE"]["notAnalyzed"]["emptyTitle"]
+
+
+def test_tool_ledger_renders_groups_rows_and_exceptions(alex_s7) -> None:
+    from itest.report import render as render_module
+
+    verify, manifest = alex_s7
+    verify["tools"] = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))["tools"]
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    data = blocks(render_module.render(page))
+
+    groups = {g["g"]: g for g in data["TOOLS"]}
+    assert set(groups) == {"Destructive", "Writes"}
+    assert [r["n"] for r in groups["Destructive"]["rows"]] == ["delete_record"]
+    # Columns are the traits actually checked, not a fixed set.
+    assert groups["Destructive"]["headers"] == ["A1", "B1", "D2", "D3"]
+    assert groups["Writes"]["headers"] == ["A1", "D3"]
+    changed = groups["Writes"]["rows"][0]
+    assert changed["flag"] is True
+    assert {c["txt"] for c in changed["cells"]} == {"PASS", "CHANGED"}
+    # The exception is carried through with its diff, never summarized away.
+    exception = data["PAGE"]["tools"]["exceptions"][0]
+    assert exception["tag"] == "changed"
+    assert "update_record" in exception["title"]
+    assert data["PAGE"]["toolBand"]["word"] == "TOOLS AT RISK"
+    assert len(data["TOOLPOSTURE"]) == 4
+
+
+def test_since_toggles_trend_markup(tmp_path, monkeypatch) -> None:
+    from itest.report import render as render_module
+
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    verify = verify_json(project)
+    manifest = load_manifest(project / ".itest" / "manifest.yaml")
+    prior = manifest.model_copy(deep=True)
+    dropped = next(p for p in prior.points if p.type == "iam_edge")
+    prior.points = [p for p in prior.points if p.id != dropped.id]
+
+    without = blocks(
+        render_module.render(
+            report_model.build(verify, manifest, generated_at=GENERATED_AT)
+        )
+    )
+    with_since = blocks(
+        render_module.render(
+            report_model.build(verify, manifest, prior=prior, generated_at=GENERATED_AT)
+        )
+    )
+
+    # Off by default: no trend key at all, and no since-line.
+    assert all(tile.get("trend") is None for tile in without["POSTURE"])
+    assert without["PAGE"]["verdict"]["since"] is None
+    assert without["PAGE"]["posture"]["since"] == ""
+    # On with --since.
+    assert any(tile.get("trend") for tile in with_since["POSTURE"])
+    assert with_since["PAGE"]["verdict"]["since"]["added"] == 1
+    assert sum(1 for p in with_since["POINTS"] if p["isNew"]) == 1
+
+
+def test_graph_survives_a_single_point_and_no_chain(alex_s7) -> None:
+    """The diagram's geometry must not divide by zero on thin data."""
+    from itest.report import render as render_module
+
+    verify, manifest = alex_s7
+    keep = next(p for p in manifest.points if p.type == "iam_edge")
+    verify["points"] = [p for p in verify["points"] if p["id"] == keep.id]
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    data = blocks(render_module.render(page))
+
+    assert len(data["POINTS"]) == 1
+    assert data["CHAIN"] == []
+
+
+def test_rendered_page_escapes_data_into_the_script_block(alex_s7) -> None:
+    """A resource name cannot close the script tag or inject markup."""
+    from itest.report import render as render_module
+
+    verify, manifest = alex_s7
+    verify["points"][0]["target"] = "</script><img src=x onerror=alert(1)>"
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    html = render_module.render(page)
+
+    assert "</script><img" not in html
+    assert html.count("</script>") == 1

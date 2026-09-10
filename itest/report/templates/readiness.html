@@ -262,6 +262,26 @@
   .foot{margin-top:30px;padding-top:16px;border-top:1px solid var(--hair);display:flex;gap:18px;flex-wrap:wrap;
     font-family:"IBM Plex Mono";font-size:11.5px;color:var(--faint)}
   .foot b{color:var(--muted);font-weight:500} .foot .sep{color:var(--hair)}
+
+  /* --- added for engine-rendered data: a failing cell, a non-green verdict,
+     and a sweep table whose column count comes from the data --- */
+  .res.bad{color:var(--bad)} .res.bad .dot{background:var(--bad)}
+  .verdict.risk .band{background:var(--warn)}
+  .verdict.risk .stamp .glyph{background:var(--warn-soft)}
+  .verdict.risk .stamp .word{color:var(--warn)}
+  .verdict.blocked .band{background:var(--bad)}
+  .verdict.blocked .stamp .glyph{background:var(--bad-soft)}
+  .verdict.blocked .stamp .word{color:var(--bad)}
+  .hn.tools .v.risk{color:var(--warn)} .hn.tools .v.blocked{color:var(--bad)}
+  .toolband.risk{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+  .toolband.risk .glyph{background:var(--warn-soft)} .toolband.risk .word{color:var(--warn)}
+  .toolband.blocked{border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+  .toolband.blocked .glyph{background:var(--bad-soft)} .toolband.blocked .word{color:var(--bad)}
+  .toolband.empty{border-color:var(--hair)}
+  .toolband.empty .glyph{background:var(--surface-2)} .toolband.empty .word{color:var(--muted)}
+  .empty{background:var(--surface);border:1px dashed var(--hair);border-radius:12px;
+    padding:16px 18px;color:var(--muted);font-size:13px}
+  .empty b{color:var(--ink);font-weight:600;display:block;margin-bottom:3px}
 </style>
 
 <div class="wrap">
@@ -270,124 +290,41 @@
     <div class="right"><span class="preview">Release readiness</span><button class="toggle" id="tog">Theme</button></div>
   </div>
 
-  <div class="verdict">
-    <div class="band"></div>
-    <div class="body">
-      <div class="stamp">
-        <div class="glyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none"><path d="M20 6.5 9.4 17 4 11.6" stroke="var(--ok)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div><div class="word">VERIFIED</div><div class="sub">alex · <b>production</b> — agents, frontend<br>&amp; agent tools &nbsp;·&nbsp; read-only</div></div>
-      </div>
-      <div class="hnums">
-        <div class="hn tools"><span class="v tnum">40<small> / 40</small></span><span class="l">agent tools verified</span></div>
-        <div class="hn sep"><span class="v tnum">26<small> / 26</small></span><span class="l">integrations verified</span></div>
-        <div class="hn sep"><span class="v tnum">14<small> / 14</small></span><span class="l">endpoints refuse anon</span></div>
-        <div class="hn sep"><span class="v tnum">4<small> / 4</small></span><span class="l">authenticated 200</span></div>
-        <div class="hn sep"><span class="v tnum">0</span><span class="l">drift</span></div>
-      </div>
-    </div>
-    <div class="meta-row">
-      <span>Every agent tool was verified against every property its team declared, every integration was verified against the live account, and every public endpoint refused an unauthenticated request. One tool's description changed since the last release and is waiting for a reviewer.</span>
-      <span class="mono" style="white-space:nowrap"><span class="k">since v1.4.0:</span> &nbsp;<b>+2 new</b>, 0 removed, 0 unverified &nbsp;·&nbsp; <span class="w">1 tool change to review</span></span>
-    </div>
-  </div>
+  <div class="verdict" id="verdict"></div>
 
-  <nav class="jump" aria-label="Report sections">
-    <ul>
-      <li><a href="#posture"><span class="pill ok"></span>Security Posture</a></li>
-      <li><a href="#tools"><span class="pill warn"></span>Agent tools <span class="c">40 · 1</span></a></li>
-      <li><a href="#api"><span class="pill ok"></span>API access <span class="c">14+4</span></a></li>
-      <li><a href="#graph"><span class="pill ok"></span>Integrations <span class="c">26</span></a></li>
-      <li><a href="#database"><span class="pill soon"></span>Database <span class="c">soon</span></a></li>
-      <li><a href="#queue"><span class="pill soon"></span>Queue <span class="c">soon</span></a></li>
-      <li><a href="#notanalyzed"><span class="pill soon"></span>Not analyzed</a></li>
-    </ul>
-  </nav>
+  <nav class="jump" aria-label="Report sections"><ul id="navList"></ul></nav>
 
   <section id="posture">
-    <div class="eyebrow">Security Posture <span class="n">since v1.4.0</span></div>
-
-    <div class="sub-eyebrow first">Agent tools <span class="mono">carta-crm · 40 tools · 4 trait families</span></div>
-    <div class="toolband">
-      <div class="glyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M12 3l7 3v5c0 4.2-2.8 7.4-7 9-4.2-1.6-7-4.8-7-9V6l7-3z" stroke="var(--ok)" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="var(--ok)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div>
-        <div class="word">TOOLS VERIFIED</div>
-        <div class="sub"><b>40 of 40</b> tools verified against every declared property</div>
-      </div>
-      <a class="right review" href="#tools"><span class="dot"></span>1 change to review</a>
-    </div>
-    <div class="posture" id="toolPosture"></div>
-
-    <div class="sub-eyebrow">Infrastructure <span class="mono">alex · stages 6–7</span></div>
+    <div class="eyebrow">Security Posture <span class="n" id="postureSince"></span></div>
+    <div class="sub-eyebrow first">Agent tools <span class="mono" id="toolsMeta"></span></div>
+    <div id="toolBand"></div>
+    <div class="posture" id="toolPostureGrid"></div>
+    <div class="sub-eyebrow">Infrastructure <span class="mono" id="infraMeta"></span></div>
     <div class="posture" id="postureGrid"></div>
   </section>
 
   <section id="tools">
-    <div class="eyebrow">Agent tool sweep <span class="n">carta-crm · staging active · production read-only</span></div>
-    <div class="attest">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l7 3v5c0 4.2-2.8 7.4-7 9-4.2-1.6-7-4.8-7-9V6l7-3z" stroke="var(--ok)" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="var(--ok)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <p><span class="b">Tool-boundary attestation.</span> Every tool <b>refused an unauthenticated caller</b> and <b>refused a credential from another tenant</b>; every mutating tool <b>demanded approval and wrote an audit record</b>; the deployed tool list <b>matches the declaration exactly</b>. Active probes ran on staging against a second-tenant credential; production was checked read-only.</p>
-    </div>
-    <div class="sweepbar">
-      <span class="m good"><b>40</b> refuse anonymous</span>
-      <span class="m good"><b>30</b> tenant-isolated</span>
-      <span class="m good"><b>13</b> gated &amp; audited</span>
-      <span class="m good"><b>40 = 40</b> declared = live</span>
-      <span class="m attn"><b>1</b> changed</span>
-      <span class="m"><b>1</b> held out</span>
-      <button class="exp" id="expandTools" aria-expanded="false">Expand all</button>
-    </div>
-    <div id="toolGroups"></div>
-    <div class="exc">
-      <div class="ehead"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg> Needs a human — named, not hidden</div>
-      <div class="erow"><span class="tag">changed</span><div><b><span class="mono">update_deal</span> — description changed since v1.4.0; schema unchanged.</b> A tool's description is the text that steers an agent to call it, so a change is treated as a behavior change until a reviewer confirms it.
-        <div class="diff"><span class="del">− Update fields on an existing deal.</span><br><span class="add">+ Update fields on an existing deal and refresh the associated company's last-touched date.</span></div>
-        <div class="acts"><a href="#tools">view full diff</a><a href="#tools">mark reviewed</a><a href="#tools">open declaration</a></div></div></div>
-      <div class="erow"><span class="tag">held out</span><div><b><span class="mono">delete_company</span> was excluded from active probes on staging</b> by the owning team — it cascades to that company's deals and contacts. Its approval gate was verified by reading the policy, not by exercising it. Every other destructive tool was exercised and refused without approval.</div></div>
-    </div>
+    <div class="eyebrow">Agent tool sweep <span class="n" id="toolsEyebrow"></span></div>
+    <div id="toolsBody"></div>
   </section>
 
   <section id="api">
-    <div class="eyebrow">API access sweep <span class="n">alex frontend · stage 7 · env live</span></div>
-    <div class="attest">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l7 3v5c0 4.2-2.8 7.4-7 9-4.2-1.6-7-4.8-7-9V6l7-3z" stroke="var(--ok)" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="var(--ok)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <p><span class="b">Access-control attestation.</span> Every routed endpoint <b>refused an unauthenticated caller</b>, and a <b>valid test credential was admitted</b> on every read-only endpoint probed for it — the door is locked, and the key works. Per-endpoint evidence that the Clerk guard holds, not a policy on paper.</p>
-    </div>
-    <div class="sweepbar">
-      <span class="m good"><b>14</b> refused unauthenticated</span>
-      <span class="m good"><b>4</b> authenticated 200</span>
-      <span class="m"><b>2</b> held out</span>
-      <span class="m"><b>1</b> not routed</span>
-      <button class="exp" id="expandAll" aria-expanded="false">Expand all</button>
-    </div>
-    <div id="sweepGroups"></div>
-    <div class="exc">
-      <div class="ehead"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg> Deliberately not swept — named, not hidden</div>
-      <div class="erow"><span class="tag">held out</span><div><b>Two account-wide destructive endpoints</b> — <span class="mono">POST /api/populate-test-data</span>, <span class="mono">DELETE /api/reset-accounts</span> — were excluded from the live production sweep by policy. A bodiless unauthenticated probe is safe on every endpoint above, but not on these; their guards are verified separately in staging, never against production data.</div></div>
-      <div class="erow"><span class="tag">not routed</span><div><b><span class="mono">GET /health</span> is not fronted by a gateway route</b> (only <span class="mono">/api/{proxy+}</span> is), so it 404s at the edge before reaching the app — worth confirming nothing monitors it expecting a 200.</div></div>
-    </div>
+    <div class="eyebrow">API access sweep <span class="n" id="apiEyebrow"></span></div>
+    <div id="apiBody"></div>
   </section>
 
   <section id="graph">
-    <div class="eyebrow">Integration graph <span class="n">alex agents · stage 6 · every edge colored by live status</span></div>
-    <div class="graphcard">
-      <svg id="graphSvg" viewBox="0 0 900 470" role="img" aria-label="The agents role reaches twelve resources, all verified; the analysis queue drives the planner function and a dead-letter queue."></svg>
-      <div class="glegend">
-        <span><i class="swatch"></i> verified edge</span>
-        <span><i class="swatch dash"></i> cross-stack (external ARN)</span>
-        <span><i class="swatch ring"></i> wildcard resource</span>
-        <span><i class="swatch node"></i> in-state resource</span>
-      </div>
-    </div>
-    <div class="cov" id="cov"></div>
+    <div class="eyebrow">Integration graph <span class="n" id="graphEyebrow"></span></div>
+    <div id="graphBody"></div>
   </section>
 
   <section id="database">
     <div class="eyebrow">Database probes</div>
     <div class="tier">
       <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" stroke-width="1.6"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" stroke="currentColor" stroke-width="1.6"/></svg></div>
-      <div><h3>Aurora — read/write round-trip</h3>
-        <p class="q">Designed on the same probe framework as the API sweep. The cluster ARN, the Data-API grant, and the credentials secret are <b>already detected</b> as integration points (see graph). Comes online once you answer one question: <b>which CRUD operations may a probe perform, and against which table?</b></p></div>
-      <span class="state">Designed · awaiting your data</span>
+      <div><h3>Database — read/write round-trip</h3>
+        <p class="q">Designed on the same probe framework as the API sweep, and gated by the same environments policy. Comes online once a project answers one question: <b>which CRUD operations may a probe perform, and against which table?</b></p></div>
+      <span class="state">Designed · not yet built</span>
     </div>
   </section>
 
@@ -395,266 +332,300 @@
     <div class="eyebrow">Queue delivery probes</div>
     <div class="tier">
       <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="17" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/></svg></div>
-      <div><h3>SQS → Lambda — marked-message delivery</h3>
-        <p class="q">The queue, its event-source mapping, and its dead-letter redrive are <b>already verified as wiring</b> (see graph). The active probe sends a <b>marked, self-cleaning message</b> and observes it reach the function — proving delivery, not just configuration. Opt-in per environment; refuses prod without an explicit yes.</p></div>
-      <span class="state">Designed · awaiting your data</span>
+      <div><h3>Queue → function — marked-message delivery</h3>
+        <p class="q">Event-source mappings and dead-letter redrives are verified as <b>wiring</b> today (see the integration graph). The active probe would send a <b>marked, self-cleaning message</b> and observe it arrive — proving delivery, not just configuration. Opt-in per environment; refuses production.</p></div>
+      <span class="state">Designed · not yet built</span>
     </div>
   </section>
 
   <section id="notanalyzed">
     <div class="eyebrow">Not analyzed <span class="n">named, never silently skipped</span></div>
-    <div class="blind">
-      <span class="i" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.4" r="1.1" fill="currentColor"/></svg></span>
-      <div><p><b>16 resources carry no integration semantics ITest models yet</b> — log groups, the packaged Lambda code objects, the vector bucket's own object storage. These are endpoints, not edges: nothing here is an unverified connection.</p>
-        <div class="chips"><code>aws_cloudwatch_log_group ×5</code><code>aws_lambda_function ×5</code><code>aws_s3_object ×5</code><code>aws_s3_bucket ×1</code></div></div>
-    </div>
+    <div id="notAnalyzed"></div>
   </section>
 
-  <div class="foot">
-    <span><b>commit</b> 683d29c</span><span class="sep">/</span>
-    <span><b>run</b> ci · verify --env staging · verify --env production · --redact</span><span class="sep">/</span>
-    <span><b>account</b> 1111·1111·1111</span><span class="sep">/</span>
-    <span><b>region</b> us-west-1</span><span class="sep">/</span>
-    <span><b>elapsed</b> 41.2s</span><span class="sep">/</span>
-    <span><b>generated</b> 2026-09-23 06:04 UTC</span>
-  </div>
+  <div class="foot" id="foot"></div>
 </div>
 
 <script>
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const chev = `<svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-/* ---- Agent tools: DATA BLOCK — the renderer replaces TOOLS with verify JSON (see tests/fixtures/report/tool-ledger.json) ---- */
-const TOOLS = [
-  {g:"Destructive", cls:"del", clsLabel:"destructive", tools:[
-    {n:"delete_contact"}, {n:"delete_company", held:1}, {n:"delete_deal"}, {n:"delete_note"}]},
-  {g:"Writes", cls:"write", clsLabel:"write", tools:[
-    {n:"create_contact"}, {n:"update_contact"}, {n:"create_company"}, {n:"update_company"},
-    {n:"create_deal"}, {n:"update_deal", changed:1}, {n:"create_note"}, {n:"update_note"},
-    {n:"link_note"}, {n:"unlink_note"}]},
-  {g:"Reads", cls:"read", clsLabel:"read", tools:[
-    {n:"search_contacts", ff:1}, {n:"fetch_contact_by_id"}, {n:"search_companies", ff:1},
-    {n:"fetch_company_by_domain"}, {n:"fetch_company_by_id"}, {n:"search_deals", ff:1},
-    {n:"fetch_deal_by_deal_id"}, {n:"fetch_note_by_id"}, {n:"aggregate_deals", ff:1},
-    {n:"aggregate_companies", ff:1}, {n:"aggregate_investors", ff:1}, {n:"aggregate_fundraising", ff:1},
-    {n:"fetch_contact_interactions_by_emails"}, {n:"list_interactions_by_domain"}, {n:"get_deal_stage_history"}]},
-  {g:"External data", cls:"egress", clsLabel:"read + egress", tools:[
-    {n:"enrich_person", egress:1}]},
-  {g:"Informational", cls:"info", clsLabel:"informational", tools:[
-    {n:"get_platform_how_to_guide"}, {n:"product_support_hotline"}, {n:"get_contact_fields"},
-    {n:"get_company_fields"}, {n:"get_deal_fields"}, {n:"get_contact_custom_fields"},
-    {n:"get_company_custom_fields"}, {n:"get_deal_custom_fields"}, {n:"get_deal_pipelines_with_stages"},
-    {n:"get_fundraising_stages"}]},
-];
-const cell = (k, t) => `<span class="res ${k}"><span class="dot"></span>${t}</span>`;
-const none = t => `<span class="res none">${t}</span>`;
-function tenantCell(g){ return g.cls==="info" ? none("n/a — no tenant data") : cell("ok","ISOLATED"); }
-function gateCell(g,t){
-  if(g.cls==="del") return t.held ? cell("warn","HELD OUT") : cell("ok","GATED · AUDITED");
-  if(g.cls==="write") return cell("ok","AUDITED");
-  if(g.cls==="egress") return cell("acc","EGRESS DECLARED");
-  return none("— read-only");
-}
-function containCell(g,t){
-  if(g.cls==="info") return none("n/a");
-  return t.ff ? cell("ok","FILTER CONTAINED") : cell("ok","IN SCOPE");
-}
-function changeCell(t){ return t.changed ? cell("warn","CHANGED") : none("unchanged"); }
-function groupTags(g){
-  const tags = [`<span class="rtag locked"><span class="dot"></span>anonymous refused</span>`];
-  if(g.cls!=="info") tags.push(`<span class="rtag locked"><span class="dot"></span>isolated</span>`);
-  if(g.cls==="del"){ const held=g.tools.filter(t=>t.held).length; tags.push(`<span class="rtag locked"><span class="dot"></span>${g.tools.length-held} gated</span>`); tags.push(`<span class="rtag locked"><span class="dot"></span>audited</span>`); if(held) tags.push(`<span class="rtag warn"><span class="dot"></span>${held} held out</span>`); }
-  if(g.cls==="write"){ tags.push(`<span class="rtag locked"><span class="dot"></span>audited</span>`); const ch=g.tools.filter(t=>t.changed).length; if(ch) tags.push(`<span class="rtag warn"><span class="dot"></span>${ch} changed</span>`); }
-  if(g.cls==="read"){ const ff=g.tools.filter(t=>t.ff).length; tags.push(`<span class="rtag authed"><span class="dot"></span>${ff} filters contained</span>`); }
-  if(g.cls==="egress") tags.push(`<span class="rtag authed"><span class="dot"></span>egress declared</span>`);
-  if(g.cls==="info") tags.push(`<span class="rtag mute">no tenant data</span>`);
-  return tags.join("");
-}
-document.getElementById("toolGroups").innerHTML = TOOLS.map(g=>{
-  const rows = g.tools.map(t=>`
-    <div class="trow${t.changed||t.held?' flag':''}">
-      <span class="path">${t.n}</span>
-      <span class="cls c-${g.cls}">${g.clsLabel}</span>
-      ${cell("refused","REFUSED")}
-      ${tenantCell(g)}
-      ${gateCell(g,t)}
-      ${changeCell(t)}
+/* ---- DATA BLOCKS — every one emitted by itest/report/render.py from verify
+   JSON and the manifest. There is no sample data in this file. ---- */
+<!-- itest:data:PAGE -->
+<!-- itest:data:TOOLS -->
+<!-- itest:data:TOOLPOSTURE -->
+<!-- itest:data:SWEEP -->
+<!-- itest:data:POSTURE -->
+<!-- itest:data:POINTS -->
+<!-- itest:data:CHAIN -->
+
+/* Text from data is escaped; the only markup the model may carry is the <br>
+   inside a fixed tile label, which is why labels are inserted raw and every
+   other value goes through esc(). */
+const esc = s => String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const cell = c => c ? `<span class="res ${c.cls}"><span class="dot"></span>${esc(c.txt)}</span>`
+                    : `<span class="res none">—</span>`;
+const plain = t => `<span class="res none">${esc(t)}</span>`;
+const el = id => document.getElementById(id);
+const emptyState = (title, body) => `<div class="empty"><b>${esc(title)}</b>${esc(body)}</div>`;
+
+/* ---- verdict banner ---- */
+(function(){
+  const v = PAGE.verdict;
+  const nums = v.nums.map(n => `
+    <div class="hn${n.sep ? " sep" : ""}${n.cls ? " " + n.cls : ""}">
+      <span class="v tnum${n.word ? " " + n.word : ""}">${esc(n.value)}${
+        n.total == null ? "" : `<small> / ${esc(n.total)}</small>`}</span>
+      <span class="l">${esc(n.label)}</span>
     </div>`).join("");
-  return `<details class="grp">
-    <summary>${chev}
-      <span class="rname plain">${g.g}</span>
-      <span class="rcount">${g.tools.length} tool${g.tools.length>1?"s":""}</span>
-      <span class="rtags">${groupTags(g)}</span>
-    </summary>
-    <div class="tooltable">
-      <div class="thead"><span>Tool</span><span>Reads as</span><span>Anonymous</span><span>Other tenant</span><span>Mutation &amp; audit</span><span>Since v1.4.0</span></div>
-      ${rows}
+  const since = v.since
+    ? `<span class="mono" style="white-space:nowrap"><span class="k">since ${esc(v.since.label)}:</span>
+        &nbsp;<b>${esc(v.since.added)} new</b>, ${esc(v.since.removed)} removed${
+        v.since.review ? ` &nbsp;·&nbsp; <span class="w">${esc(v.since.review)}</span>` : ""}</span>`
+    : "";
+  el("verdict").className = "verdict" + (v.cls ? " " + v.cls : "");
+  el("verdict").innerHTML = `
+    <div class="band"></div>
+    <div class="body">
+      <div class="stamp">
+        <div class="glyph" aria-hidden="true">${v.glyph}</div>
+        <div><div class="word">${esc(v.word)}</div><div class="sub">${v.sub}</div></div>
+      </div>
+      <div class="hnums">${nums}</div>
     </div>
-  </details>`;
-}).join("");
-const expTools = document.getElementById("expandTools");
-expTools.addEventListener("click", ()=>{
-  const groups = [...document.querySelectorAll("#toolGroups .grp")];
-  const open = expTools.getAttribute("aria-expanded")==="true";
-  groups.forEach(d=> d.open = !open);
-  expTools.setAttribute("aria-expanded", String(!open));
-  expTools.textContent = open ? "Expand all" : "Collapse all";
-});
+    <div class="meta-row"><span>${esc(v.note)}</span>${since}</div>`;
+})();
 
-/* tool posture tiles — one per trait family */
-const toolPosture = [
-  {n:40, dir:"flat", sym:"→", trend:"steady", lab:"tools refuse anonymous callers<br>30 of 30 data tools stay in-tenant"},
-  {n:14, dir:"flat", sym:"→", trend:"steady", lab:"mutating tools audited &amp; gated<br>1 held out · 1 egress declared"},
-  {n:40, dir:"flat", sym:"→", trend:"steady", lab:"tools stayed in declared scope<br>7 free-form filters contained"},
-  {n:1,  dir:"up",   sym:"↑", trend:"+1",     lab:"tool changed since last release<br>0 undeclared · 0 orphaned", attn:1},
-];
-document.getElementById("toolPosture").innerHTML = toolPosture.map(p=>`
-  <div class="pcard${p.attn?' attn':''}">
-    <div class="top"><span class="n tnum">${p.n}</span><span class="trend ${p.dir}">${p.sym} ${p.trend}</span></div>
+/* ---- jump nav ---- */
+el("navList").innerHTML = PAGE.nav.map(n => `
+  <li><a href="#${esc(n.id)}"><span class="pill ${esc(n.pill)}"></span>${esc(n.label)}${
+    n.count == null ? "" : ` <span class="c">${esc(n.count)}</span>`}</a></li>`).join("");
+
+/* ---- posture tiles ---- */
+const tileHtml = p => `
+  <div class="pcard${p.attn ? " attn" : ""}${p.zero ? " zero" : ""}">
+    <div class="top"><span class="n tnum">${esc(p.n)}</span>${
+      p.trend ? `<span class="trend ${esc(p.dir)}">${esc(p.sym)} ${esc(p.trend)}</span>` : ""}</div>
     <span class="lab">${p.lab}</span>
-  </div>`).join("");
+  </div>`;
+el("postureGrid").innerHTML = posture.map(tileHtml).join("");
+el("infraMeta").textContent = PAGE.posture.infraMeta;
+el("postureSince").textContent = PAGE.posture.since || "";
+el("toolsMeta").textContent = PAGE.posture.toolsMeta;
 
-/* ---- API sweep: real stage-7 data, grouped by resource ---- */
-const R = "REFUSED", OK = "200";
-const SWEEP = [
-  {res:"/api/accounts", eps:[
-    {m:"GET",   p:"/api/accounts",                 unauth:R, auth:OK},
-    {m:"GET",   p:"/api/accounts/{id}/positions",  unauth:R, auth:null},
-    {m:"POST",  p:"/api/accounts",                 unauth:R, auth:null},
-    {m:"PUT",   p:"/api/accounts/{id}",            unauth:R, auth:null},
-    {m:"DELETE",p:"/api/accounts/{id}",            unauth:R, auth:null},
-  ]},
-  {res:"/api/user", eps:[
-    {m:"GET",   p:"/api/user",                     unauth:R, auth:OK},
-    {m:"PUT",   p:"/api/user",                     unauth:R, auth:null},
-  ]},
-  {res:"/api/jobs", eps:[
-    {m:"GET",   p:"/api/jobs",                     unauth:R, auth:OK},
-    {m:"GET",   p:"/api/jobs/{id}",                unauth:R, auth:null},
-  ]},
-  {res:"/api/instruments", eps:[
-    {m:"GET",   p:"/api/instruments",              unauth:R, auth:OK},
-  ]},
-  {res:"/api/positions", eps:[
-    {m:"POST",  p:"/api/positions",                unauth:R, auth:null},
-    {m:"PUT",   p:"/api/positions/{id}",           unauth:R, auth:null},
-    {m:"DELETE",p:"/api/positions/{id}",           unauth:R, auth:null},
-  ]},
-  {res:"/api/analyze", eps:[
-    {m:"POST",  p:"/api/analyze",                  unauth:R, auth:null},
-  ]},
-];
-const mcls = m => ({GET:"m-get",POST:"m-post",PUT:"m-put",DELETE:"m-del"}[m]);
-function authCell(v){
-  if(v===OK) return `<span class="res ok"><span class="dot"></span>200</span>`;
-  return `<span class="res none">— read-only sweep</span>`;
-}
-document.getElementById("sweepGroups").innerHTML = SWEEP.map(g=>{
-  const authed = g.eps.filter(e=>e.auth===OK).length;
-  const rows = g.eps.map(e=>`
-    <div class="eprow">
-      <span class="meth ${mcls(e.m)}">${e.m}</span>
-      <span class="path">${e.p}</span>
-      <span class="res refused"><span class="dot"></span>REFUSED</span>
-      ${authCell(e.auth)}
-    </div>`).join("");
-  return `<details class="grp">
-    <summary>${chev}
-      <span class="rname">${g.res}</span>
-      <span class="rcount">${g.eps.length} endpoint${g.eps.length>1?"s":""}</span>
-      <span class="rtags">
-        <span class="rtag locked"><span class="dot"></span>anonymous refused</span>
-        ${authed?`<span class="rtag authed"><span class="dot"></span>${authed} authenticated</span>`:""}
-      </span>
-    </summary>
-    <div class="eptable">
-      <div class="ephead"><span>Method</span><span>Endpoint</span><span>Unauthenticated</span><span>Authenticated</span></div>
-      ${rows}
+/* ---- agent tools: band, tiles, groups, exceptions ---- */
+(function(){
+  const band = PAGE.toolBand;
+  const shield = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M12 3l7 3v5c0 4.2-2.8 7.4-7 9-4.2-1.6-7-4.8-7-9V6l7-3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  el("toolBand").innerHTML = `
+    <div class="toolband ${esc(band.cls)}">
+      <div class="glyph" aria-hidden="true">${shield}</div>
+      <div><div class="word">${esc(band.word)}</div><div class="sub">${band.sub}</div></div>
+      ${band.review ? `<a class="right review" href="#tools"><span class="dot"></span>${esc(band.review)}</a>` : ""}
+    </div>`;
+  el("toolPostureGrid").innerHTML = toolPosture.map(tileHtml).join("");
+
+  if(!TOOLS.length){
+    el("toolsBody").innerHTML = emptyState(PAGE.tools.emptyTitle, PAGE.tools.emptyBody);
+    el("toolsEyebrow").textContent = PAGE.tools.eyebrow;
+    return;
+  }
+  el("toolsEyebrow").textContent = PAGE.tools.eyebrow;
+  const bars = PAGE.tools.bars.map(b =>
+    `<span class="m${b.cls ? " " + b.cls : ""}"><b>${esc(b.v)}</b> ${esc(b.l)}</span>`).join("");
+  const groups = TOOLS.map(g => {
+    const cols = `minmax(200px,1.4fr) 104px repeat(${g.headers.length}, 104px)`;
+    const head = `<div class="thead" style="grid-template-columns:${cols}"><span>Tool</span><span>Reads as</span>${
+      g.headers.map(h => `<span>${esc(h)}</span>`).join("")}</div>`;
+    const rows = g.rows.map(r => `
+      <div class="trow${r.flag ? " flag" : ""}" style="grid-template-columns:${cols}">
+        <span class="path">${esc(r.n)}</span>
+        <span class="cls c-${esc(g.cls)}">${esc(g.clsLabel)}</span>
+        ${r.cells.map(cell).join("")}
+      </div>`).join("");
+    return `<details class="grp">
+      <summary>${chev}
+        <span class="rname plain">${esc(g.g)}</span>
+        <span class="rcount">${esc(g.count)} tool${g.count === 1 ? "" : "s"}</span>
+        <span class="rtags">${g.tags.map(t =>
+          `<span class="rtag ${esc(t.cls)}">${t.cls === "mute" ? "" : '<span class="dot"></span>'}${esc(t.txt)}</span>`).join("")}</span>
+      </summary>
+      <div class="tooltable">${head}${rows}</div>
+    </details>`;
+  }).join("");
+  el("toolsBody").innerHTML = `
+    <div class="attest">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">${shield}</svg>
+      <p>${PAGE.tools.attest}</p>
     </div>
-  </details>`;
-}).join("");
-const expBtn = document.getElementById("expandAll");
-expBtn.addEventListener("click", ()=>{
-  const groups = [...document.querySelectorAll("#sweepGroups .grp")];
-  const open = expBtn.getAttribute("aria-expanded")==="true";
-  groups.forEach(d=> d.open = !open);
-  expBtn.setAttribute("aria-expanded", String(!open));
-  expBtn.textContent = open ? "Expand all" : "Collapse all";
-});
+    <div class="sweepbar">${bars}<button class="exp" id="expandTools" aria-expanded="false">Expand all</button></div>
+    <div id="toolGroups">${groups}</div>
+    ${excBox(PAGE.tools.exceptionsHead, PAGE.tools.exceptions)}`;
+  wireExpand("expandTools", "#toolGroups .grp");
+})();
 
-/* ---- infrastructure posture (real) ---- */
-const posture = [
-  {n:10, dir:"flat", sym:"→", trend:"steady", lab:"cross-stack dependencies<br>resolved to other stacks"},
-  {n:6,  dir:"down", sym:"↓", trend:"−1",     lab:"wildcard-resource grants<br>flagged for review"},
-  {n:0,  dir:"flat", sym:"→", trend:"steady", lab:"broad managed policies<br>(e.g. *FullAccess)", zero:1},
-  {n:0,  dir:"down", sym:"↓", trend:"−2",     lab:"unauthenticated routes<br>every route now attested"},
-];
-document.getElementById("postureGrid").innerHTML = posture.map(p=>`
-  <div class="pcard${p.zero?' zero':''}">
-    <div class="top"><span class="n tnum">${p.n}</span><span class="trend ${p.dir}">${p.sym} ${p.trend}</span></div>
-    <span class="lab">${p.lab}</span>
-  </div>`).join("");
-
-/* ---- coverage (real stage-6 points), collapsible groups ---- */
-const POINTS = [
-  {tgt:"logs:*", tag:"logs · 3 actions", wild:1, ext:1, id:"7efac0ef2e97"},
-  {tgt:"aws_sqs_queue.analysis_jobs", tag:"sqs · 3 actions", wild:0, ext:0, id:"a1cdcd6f1d1d", hub:1},
-  {tgt:"lambda:alex-*", tag:"InvokeFunction", wild:1, ext:1, id:"2297b815283d"},
-  {tgt:"rds:cluster/alex-aurora", tag:"rds-data · 5 actions", wild:0, ext:1, id:"5e8e502d62b7"},
-  {tgt:"secret:alex-aurora-creds", tag:"GetSecretValue", wild:0, ext:1, id:"558c220961b2"},
-  {tgt:"s3:::alex-vectors", tag:"s3 · 2 actions", wild:0, ext:1, id:"2267a67e8981"},
-  {tgt:"s3:::alex-vectors/*", tag:"s3 · 2 actions", wild:1, ext:1, id:"000eee7bfa64"},
-  {tgt:"s3vectors:index/*", tag:"s3vectors · 2 actions", wild:1, ext:1, id:"8c53a22c4c7a"},
-  {tgt:"sagemaker:endpoint/embed", tag:"InvokeEndpoint", wild:0, ext:1, id:"ef585ce57133"},
-  {tgt:"bedrock:foundation-model/*", tag:"bedrock · 2 actions", wild:1, ext:1, id:"a570d6de7ea4"},
-  {tgt:"bedrock:inference-profile/*", tag:"bedrock · 2 actions", wild:1, ext:1, id:"39cb2a5298c2", isNew:1},
-  {tgt:"AWSLambdaBasicExecutionRole", tag:"managed policy", wild:0, ext:0, id:"a54b0e0e3663"},
-];
-const CHAIN=[
-  {from:"sqs:analysis_jobs", to:"λ:planner", tag:"event_source_mapping · batch=1", id:"d22d32578df2"},
-  {from:"sqs:analysis_jobs", to:"sqs:…_dlq", tag:"dlq_redrive · max_receive=3", id:"6a2d3c7315e6", isNew:1},
-];
-function crow(main, tags, id){
-  return `<div class="row"><div class="st"><span class="dotst"></span></div>
-    <div><div class="edge">${main}</div><div class="tags">${tags}</div></div>
-    <div class="ev"><a href="#" title="jump to the check that verified this">${id}</a></div></div>`;
+/* ---- exceptions box: named, never hidden ---- */
+function excBox(head, rows){
+  if(!rows || !rows.length) return "";
+  const warn = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
+  return `<div class="exc"><div class="ehead">${warn} ${esc(head)}</div>${
+    rows.map(r => `<div class="erow"><span class="tag">${esc(r.tag)}</span><div><b>${esc(r.title)}</b> ${esc(r.body)}${
+      r.diff ? `<div class="diff"><span class="del">− ${esc(r.diff.previous)}</span><br><span class="add">+ ${esc(r.diff.current)}</span></div>` : ""
+    }</div></div>`).join("")}</div>`;
 }
-document.getElementById("cov").innerHTML =
-  `<details class="covgrp" open><summary>${chev} IAM reach — one role, twelve grants <span class="c">12 verified</span></summary>` +
-  POINTS.map(p=>crow(
-    `<span class="mono" style="color:var(--faint)">role</span><span class="arrow">→</span><span class="tgt">${p.tgt}</span>`,
-    `<span class="tag mech">${p.tag}</span>${p.wild?'<span class="tag wild">wildcard</span>':''}${p.ext?'<span class="tag ext">external</span>':''}${p.isNew?'<span class="tag" style="color:var(--accent);border-color:var(--accent)">new</span>':''}`,
-    p.id)).join("") + `</details>` +
-  `<details class="covgrp"><summary>${chev} Event flow — the queue's downstream chain <span class="c">2 verified</span></summary>` +
-  CHAIN.map(c=>crow(
-    `<span class="tgt">${c.from}</span><span class="arrow">→</span><span class="tgt">${c.to}</span>`,
-    `<span class="tag mech">${c.tag}</span>${c.isNew?'<span class="tag" style="color:var(--accent);border-color:var(--accent)">new</span>':''}`,
-    c.id)).join("") + `</details>`;
 
-/* ---- graph ---- */
+function wireExpand(id, selector){
+  const btn = el(id);
+  if(!btn) return;
+  btn.addEventListener("click", () => {
+    const open = btn.getAttribute("aria-expanded") === "true";
+    [...document.querySelectorAll(selector)].forEach(d => d.open = !open);
+    btn.setAttribute("aria-expanded", String(!open));
+    btn.textContent = open ? "Expand all" : "Collapse all";
+  });
+}
+
+/* ---- API access sweep ---- */
+(function(){
+  el("apiEyebrow").textContent = PAGE.api.eyebrow;
+  if(!SWEEP.length){
+    el("apiBody").innerHTML = emptyState(PAGE.api.emptyTitle, PAGE.api.emptyBody);
+    return;
+  }
+  // One status column while verify cannot say which probe was the anonymous
+  // one; the pair returns when the JSON carries a probe kind.
+  const heads = PAGE.api.columns;
+  const cols = `70px 1fr ${heads.map(() => "118px").join(" ")}`;
+  const bars = PAGE.api.bars.map(b =>
+    `<span class="m${b.cls ? " " + b.cls : ""}"><b>${esc(b.v)}</b> ${esc(b.l)}</span>`).join("");
+  const mcls = m => ({GET:"m-get",POST:"m-post",PUT:"m-put",DELETE:"m-del"}[m] || "m-get");
+  const groups = SWEEP.map(g => {
+    const rows = g.eps.map(e => `
+      <div class="eprow" style="grid-template-columns:${cols}">
+        <span class="meth ${mcls(e.m)}">${esc(e.m)}</span>
+        <span class="path">${esc(e.p)}</span>
+        ${e.cells.map(cell).join("")}
+      </div>`).join("");
+    return `<details class="grp">
+      <summary>${chev}
+        <span class="rname">${esc(g.res)}</span>
+        <span class="rcount">${esc(g.eps.length)} endpoint${g.eps.length === 1 ? "" : "s"}</span>
+        <span class="rtags">${g.tags.map(t =>
+          `<span class="rtag ${esc(t.cls)}">${t.cls === "mute" ? "" : '<span class="dot"></span>'}${esc(t.txt)}</span>`).join("")}</span>
+      </summary>
+      <div class="eptable">
+        <div class="ephead" style="grid-template-columns:${cols}"><span>Method</span><span>Endpoint</span>${
+          heads.map(h => `<span>${esc(h)}</span>`).join("")}</div>
+        ${rows}
+      </div>
+    </details>`;
+  }).join("");
+  el("apiBody").innerHTML = `
+    <div class="attest"><p>${PAGE.api.attest}</p></div>
+    <div class="sweepbar">${bars}<button class="exp" id="expandAll" aria-expanded="false">Expand all</button></div>
+    <div id="sweepGroups">${groups}</div>
+    ${excBox(PAGE.api.exceptionsHead, PAGE.api.exceptions)}`;
+  wireExpand("expandAll", "#sweepGroups .grp");
+})();
+
+/* ---- integration graph + coverage list ---- */
+(function(){
+  el("graphEyebrow").textContent = PAGE.graph.eyebrow;
+  if(!POINTS.length && !CHAIN.length){
+    el("graphBody").innerHTML = emptyState(PAGE.graph.emptyTitle, PAGE.graph.emptyBody);
+    return;
+  }
+  el("graphBody").innerHTML = `
+    <div class="graphcard">
+      <svg id="graphSvg" viewBox="0 0 900 470" role="img" aria-label="${esc(PAGE.graph.alt)}"></svg>
+      <div class="glegend">
+        <span><i class="swatch"></i> verified edge</span>
+        <span><i class="swatch dash"></i> cross-stack (external ARN)</span>
+        <span><i class="swatch ring"></i> wildcard resource</span>
+        <span><i class="swatch node"></i> in-state resource</span>
+      </div>
+    </div>
+    <div class="cov" id="cov"></div>`;
+
+  const crow = (main, tags, id) =>
+    `<div class="row"><div class="st"><span class="dotst"></span></div>
+      <div><div class="edge">${main}</div><div class="tags">${tags}</div></div>
+      <div class="ev"><span class="mono">${esc(id)}</span></div></div>`;
+  const marks = p => `${p.wild ? '<span class="tag wild">wildcard</span>' : ""}${
+    p.ext ? '<span class="tag ext">external</span>' : ""}${
+    p.isNew ? '<span class="tag" style="color:var(--accent);border-color:var(--accent)">new</span>' : ""}`;
+  let cov = "";
+  if(POINTS.length){
+    cov += `<details class="covgrp" open><summary>${chev} ${esc(PAGE.graph.pointsTitle)} <span class="c">${esc(PAGE.graph.pointsCount)}</span></summary>` +
+      POINTS.map(p => crow(
+        `<span class="mono" style="color:var(--faint)">${esc(p.src)}</span><span class="arrow">→</span><span class="tgt">${esc(p.tgt)}</span>`,
+        `<span class="tag mech">${esc(p.tag)}</span>${marks(p)}<span class="tag">${esc(p.status)}</span>`,
+        p.id)).join("") + `</details>`;
+  }
+  if(CHAIN.length){
+    cov += `<details class="covgrp"><summary>${chev} ${esc(PAGE.graph.chainTitle)} <span class="c">${esc(PAGE.graph.chainCount)}</span></summary>` +
+      CHAIN.map(c => crow(
+        `<span class="tgt">${esc(c.from)}</span><span class="arrow">→</span><span class="tgt">${esc(c.to)}</span>`,
+        `<span class="tag mech">${esc(c.tag)}</span>${c.isNew ? '<span class="tag" style="color:var(--accent);border-color:var(--accent)">new</span>' : ""}<span class="tag">${esc(c.status)}</span>`,
+        c.id)).join("") + `</details>`;
+  }
+  el("cov").innerHTML = cov;
+})();
+
+/* The diagram scales to whatever the data holds: one point, none, a chain of
+   any length, or no hub at all. */
 function drawGraph(){
-  const svg=document.getElementById("graphSvg");
-  const H=470, ok=css('--ok'), accent=css('--accent'), ink=css('--ink'),
-        muted=css('--muted'), warn=css('--warn'), surf=css('--surface'), faint=css('--faint');
-  const roleX=150, roleY=H/2, tx=560, n=POINTS.length, top=44, bot=H-30, step=(bot-top)/(n-1);
-  let edges='', nodes='';
-  POINTS.forEach((p,i)=>{
-    const y=top+i*step, c1=roleX+150, c2=tx-150, dash=p.ext?'stroke-dasharray="2 5"':'';
-    edges+=`<path d="M${roleX+64},${roleY} C${c1},${roleY} ${c2},${y} ${tx-6},${y}" fill="none" stroke="${ok}" stroke-width="2" opacity=".85" ${dash}/>`;
-    nodes+=`<g><circle cx="${tx}" cy="${y}" r="5.5" fill="${surf}" stroke="${accent}" stroke-width="2"/>${p.wild?`<circle cx="${tx}" cy="${y}" r="9.5" fill="none" stroke="${warn}" stroke-width="1.6"/>`:''}<text x="${tx+16}" y="${y+4}" font-family="IBM Plex Mono" font-size="12.5" fill="${ink}">${p.tgt}</text></g>`;
+  const svg = el("graphSvg");
+  if(!svg) return;
+  const H = 470, ok = css('--ok'), accent = css('--accent'), ink = css('--ink'),
+        muted = css('--muted'), warn = css('--warn'), surf = css('--surface'), faint = css('--faint');
+  const roleX = 150, roleY = H/2, tx = 560, n = POINTS.length, top = 44, bot = H - 30;
+  const step = n > 1 ? (bot - top) / (n - 1) : 0;
+  const yAt = i => n > 1 ? top + i * step : roleY;
+  let edges = '', nodes = '';
+  POINTS.forEach((p, i) => {
+    const y = yAt(i), c1 = roleX + 150, c2 = tx - 150, dash = p.ext ? 'stroke-dasharray="2 5"' : '';
+    const stroke = p.status === "PASS" ? ok : faint;
+    edges += `<path d="M${roleX+64},${roleY} C${c1},${roleY} ${c2},${y} ${tx-6},${y}" fill="none" stroke="${stroke}" stroke-width="2" opacity=".85" ${dash}/>`;
+    nodes += `<g><circle cx="${tx}" cy="${y}" r="5.5" fill="${surf}" stroke="${accent}" stroke-width="2"/>${
+      p.wild ? `<circle cx="${tx}" cy="${y}" r="9.5" fill="none" stroke="${warn}" stroke-width="1.6"/>` : ''
+    }<text x="${tx+16}" y="${y+4}" font-family="IBM Plex Mono" font-size="12.5" fill="${ink}">${esc(p.tgt)}</text></g>`;
   });
-  const sqsIdx=POINTS.findIndex(p=>p.hub), sqsY=top+sqsIdx*step, chainX=tx+250, ys=[sqsY-70, sqsY+70];
-  CHAIN.forEach((c,i)=>{
-    const y=ys[i];
-    edges+=`<path d="M${tx+150},${sqsY} C${tx+200},${sqsY} ${chainX-60},${y} ${chainX},${y}" fill="none" stroke="${ok}" stroke-width="2" opacity=".85"/>`;
-    const lab=c.to.includes('dlq')?'sqs:…_dlq':'λ:planner';
-    nodes+=`<g><circle cx="${chainX}" cy="${y}" r="5.5" fill="${surf}" stroke="${accent}" stroke-width="2"/><text x="${chainX+15}" y="${y+4}" font-family="IBM Plex Mono" font-size="12" fill="${muted}">${lab}</text></g>`;
-  });
-  const rn=`<g><rect x="${roleX-64}" y="${roleY-26}" width="128" height="52" rx="12" fill="${accent}"/><text x="${roleX}" y="${roleY-3}" text-anchor="middle" font-family="Archivo" font-weight="700" font-size="13" fill="#fff">agents role</text><text x="${roleX}" y="${roleY+14}" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#dfe6ff">lambda_agents_role</text></g>`;
-  const caps=`<text x="${tx}" y="24" text-anchor="middle" font-family="IBM Plex Sans" font-weight="600" font-size="12" fill="${faint}" letter-spacing=".04em">RESOURCES REACHED</text><text x="${chainX+8}" y="${sqsY-96}" text-anchor="middle" font-family="IBM Plex Sans" font-weight="600" font-size="12" fill="${faint}" letter-spacing=".04em">QUEUE DRIVES</text>`;
+  if(CHAIN.length){
+    const hubIdx = POINTS.findIndex(p => p.hub);
+    const hubY = hubIdx >= 0 ? yAt(hubIdx) : roleY;
+    const chainX = tx + 250;
+    const spread = 70, first = hubY - spread * (CHAIN.length - 1) / 2;
+    CHAIN.forEach((c, i) => {
+      const y = CHAIN.length === 1 ? hubY : first + i * spread;
+      const stroke = c.status === "PASS" ? ok : faint;
+      edges += `<path d="M${tx+150},${hubY} C${tx+200},${hubY} ${chainX-60},${y} ${chainX},${y}" fill="none" stroke="${stroke}" stroke-width="2" opacity=".85"/>`;
+      nodes += `<g><circle cx="${chainX}" cy="${y}" r="5.5" fill="${surf}" stroke="${accent}" stroke-width="2"/><text x="${chainX+15}" y="${y+4}" font-family="IBM Plex Mono" font-size="12" fill="${muted}">${esc(c.to)}</text></g>`;
+    });
+    nodes += `<text x="${chainX+8}" y="24" text-anchor="middle" font-family="IBM Plex Sans" font-weight="600" font-size="12" fill="${faint}" letter-spacing=".04em">${esc(PAGE.graph.chainCaption)}</text>`;
+  }
+  const rn = `<g><rect x="${roleX-64}" y="${roleY-26}" width="128" height="52" rx="12" fill="${accent}"/><text x="${roleX}" y="${roleY-3}" text-anchor="middle" font-family="Archivo" font-weight="700" font-size="13" fill="#fff">${esc(PAGE.graph.rootLabel)}</text><text x="${roleX}" y="${roleY+14}" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#dfe6ff">${esc(PAGE.graph.rootSub)}</text></g>`;
+  const caps = POINTS.length
+    ? `<text x="${tx}" y="24" text-anchor="middle" font-family="IBM Plex Sans" font-weight="600" font-size="12" fill="${faint}" letter-spacing=".04em">${esc(PAGE.graph.pointsCaption)}</text>`
+    : '';
   svg.innerHTML = caps + edges + nodes + rn;
 }
 drawGraph();
+
+/* ---- not analyzed ---- */
+el("notAnalyzed").innerHTML = PAGE.notAnalyzed.present
+  ? `<div class="blind">
+      <span class="i" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.4" r="1.1" fill="currentColor"/></svg></span>
+      <div><p><b>${esc(PAGE.notAnalyzed.headline)}</b> ${esc(PAGE.notAnalyzed.body)}</p>
+        <div class="chips">${PAGE.notAnalyzed.chips.map(c => `<code>${esc(c)}</code>`).join("")}</div></div>
+    </div>`
+  : emptyState(PAGE.notAnalyzed.emptyTitle, PAGE.notAnalyzed.emptyBody);
+
+/* ---- footer ---- */
+el("foot").innerHTML = PAGE.footer.map(f =>
+  `<span><b>${esc(f.k)}</b> ${esc(f.v)}</span>`).join('<span class="sep">/</span>');
 
 document.getElementById('tog').addEventListener('click',()=>{
   const cur=document.documentElement.getAttribute('data-theme');
