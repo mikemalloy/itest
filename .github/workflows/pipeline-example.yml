@@ -1,0 +1,105 @@
+# ============================================================================
+# EXAMPLE — copy this into your own repository. It is NOT one of ITest's gates.
+#
+# ITest's own CI is .github/workflows/ci.yml. This file is a template for the
+# "CI step after `terraform apply`" shape in docs/pipeline.md, kept here so it
+# is executable and reviewable rather than a code block in prose.
+#
+# It is `workflow_dispatch` only, never `push`: a template that ran on every
+# commit would be a gate, and this is not one. `tests/test_pipeline_example.py`
+# executes these steps against the same fixture and asserts every `itest`
+# command below is one it ran, so the example cannot drift from the CLI.
+#
+# WHAT TO CHANGE WHEN YOU COPY IT
+#   - the "terraform show -json" step: run the real command instead of copying
+#     a fixture (the real command is in that step, commented)
+#   - drop the `|| true` on `itest verify` — its exit code is your gate
+#   - `.itest/environments.yaml` will already be committed in your repo, so
+#     drop the step that copies it into place
+#   - give the job read-only cloud credentials (see docs/pipeline.md)
+# ============================================================================
+name: "Example: verify after apply"
+
+on:
+  workflow_dispatch:
+
+# Read-only. This example touches no cloud account: it renders a readiness page
+# from a committed fixture. A real post-apply job additionally needs read-only
+# cloud credentials, which are not repository permissions.
+permissions:
+  contents: read
+
+jobs:
+  verify-after-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # The environment BINDING — the gitignored half of the gate, so CI has to
+      # supply it. A repository variable (`${{ vars.ITEST_ENVIRONMENT }}`) is
+      # the usual source; writing the name to a runner-local `.itest/environment`
+      # file in a step does the same job. Never commit it. See docs/pipeline.md.
+      ITEST_ENVIRONMENT: example
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ITest is not published to PyPI yet (mikemalloy/itest#3), so install it
+      # from the repository. Pin a tag once there is a release to pin.
+      - name: Install ITest
+        run: pip install "itest-cli @ git+https://github.com/mikemalloy/itest.git"
+
+      - name: terraform show -json
+        # In your pipeline this step is the real command, run in the Terraform
+        # working directory right after apply:
+        #
+        #     terraform show -json > state.json
+        #
+        # The example reads a committed fixture instead so it needs no cloud
+        # account: sanitized state from a production RAG stage, 14 integration
+        # points across IAM and event wiring.
+        run: cp tests/fixtures/alex/alex-s6.json state.json
+
+      - name: Environment policy
+        # The committed half of the gate. In your repository this file is
+        # already at .itest/environments.yaml and this step does not exist.
+        run: |
+          mkdir -p .itest
+          cp docs/examples/environments.yaml .itest/environments.yaml
+
+      - name: itest plan
+        # Exits 0 when it could read the state, 1 when it could not. The exit
+        # code does not report WHAT it found: to gate on an unexpected
+        # changeset, read `itest plan --output json` and fail the job when
+        # `new_points` or `orphan_candidates` is non-empty. docs/pipeline.md
+        # explains what "unexpected" means here.
+        run: itest plan --tf-json state.json
+
+      - name: itest sync
+        # NOT the default for a real pipeline: sync writes test files, and a
+        # test file is source a human reviews and implements, so it belongs in
+        # the developer's checkout in the same commit as the HCL. The example
+        # runs it because its fixture arrives with no manifest, so without a
+        # sync there would be nothing for verify to run. It consumes the plan
+        # the previous step wrote, so it needs no terraform of its own.
+        run: itest sync --auto-approve
+
+      - name: itest verify
+        # In a real pipeline drop the `|| true` — verify's exit code IS the
+        # gate (0 green, 1 a failing integration point, 2 a collection or
+        # configuration error). Here the example proceeds to render a
+        # stub-only page: every point is an unimplemented stub, which verify
+        # reports as 0 and the readiness page stamps AT RISK.
+        run: itest verify --environment "$ITEST_ENVIRONMENT" --output json > verify.json || true
+
+      - name: itest report
+        # Always exits 0 when the page renders. The verdict on the page is
+        # deliberately not an exit code — that stays verify's job.
+        run: itest report --html --from verify.json --out readiness.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: readiness-page
+          path: readiness.html

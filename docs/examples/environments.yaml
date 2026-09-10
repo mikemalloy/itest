@@ -1,0 +1,18 @@
+# The committed half of the environment gate, for the example workflow.
+#
+# In your own repository this file lives at `.itest/environments.yaml` and is
+# committed and code-reviewed: it is where a reviewer vetoes a mutating tier
+# before it exists. It is kept here under docs/examples/ only so the example
+# workflow can copy it into place on a runner that starts from a fixture.
+#
+# `example` allows the safe floor and nothing more. Any absence — no policy, no
+# binding, a tier left off the list — resolves to that same floor, so this file
+# grants nothing the default would not; it exists to give the run a NAMED
+# environment, which is what the `--environment` flag binds to.
+#
+# The other half of the gate is the binding, and it is deliberately NOT here:
+# where a checkout points is not a project fact. See docs/pipeline.md.
+version: 1
+environments:
+  example:
+    tiers: [static, readonly]
