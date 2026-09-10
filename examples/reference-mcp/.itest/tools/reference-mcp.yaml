@@ -1,0 +1,95 @@
+# The declaration for examples/reference-mcp/server.py.
+#
+# FACTS IN, TRAITS OUT. Everything here is something the person who runs the
+# server knows: how to reach it, which env var holds its token, what a
+# non-existent id looks like. Nothing here says whether a tool is dangerous —
+# the mutation class is DETECTED from the live tool listing and only
+# cross-checked against a value stated here. `mutation: detect` is the default
+# and the honest answer for a server you did not write.
+#
+# NO URL AND NO TOKEN IS EVER LITERAL. `url_env` and `credential_env` name
+# environment variables; ITest resolves them at plan time and never logs them.
+server: reference-mcp
+
+transport:
+  # The default way this server is probed: a subprocess speaking JSON-RPC on
+  # stdin/stdout, launched from the repo root.
+  kind: stdio
+  command: [python, examples/reference-mcp/server.py]
+  # The same server also serves streamable HTTP (`server.py --http`). The URL
+  # is named, never written: export REFERENCE_MCP_URL to probe that variant.
+  url_env: REFERENCE_MCP_URL
+
+auth:
+  scheme: bearer
+  credential_env: REFERENCE_MCP_TOKEN
+  # A second tenant's credential. Its presence is what makes the tenant
+  # isolation trait (A2) applicable at all: with one identity there is nothing
+  # to cross. Leave it out and that check is not generated, rather than
+  # generated and quietly passing.
+  second_tenant_env: REFERENCE_MCP_TOKEN_TENANT_B
+
+tenancy:
+  # This server scopes by credential: the bearer token decides what you see.
+  scoped_by: credential
+
+identity:
+  # It acts as itself, not as the caller.
+  runs_as: service
+  backing_role: reference-mcp-service
+
+audit:
+  # Where a mutation is recorded. Its presence is what makes the audit trait
+  # (B4) applicable; a server with nowhere to write an audit record gets no
+  # audit check rather than a check that asserts nothing.
+  sink: stderr-json
+
+approval:
+  # No server-wide approval policy. `delete_record` has its own gate, declared
+  # per-tool below — a blanket claim here would be a false one.
+  destructive_requires: none
+
+sentinels:
+  # An id no record can have. A mutating probe carries it so the probe is
+  # proven by being ADMITTED, never by destroying something.
+  nonexistent_id: sentinel-cannot-exist-0000
+  # A record that exists and is safe to read.
+  readable_record: r-1
+
+environments:
+  # Where the active (mutating) tier may run. Every name here must be an
+  # environment that .itest/environments.yaml already permits `active` in —
+  # this list cannot grant a tier the committed policy withholds.
+  active_allowed_in: [staging]
+
+defaults:
+  mutation: detect
+  egress: none
+  active: true
+
+tools:
+  delete_record:
+    # The tool takes `confirm: bool` and refuses without it. This is the gate,
+    # stated; the *destructive* class itself is detected, not declared.
+    approval: confirm_param
+    notes: >-
+      Reports a miss in its payload instead of raising, so a call with
+      sentinels.nonexistent_id returns a successful result and the
+      "an anonymous caller reached this tool" catch can fire without
+      destroying anything.
+
+  enrich:
+    # The one declared egress edge: it describes an external data provider.
+    # (The reference implementation calls nothing — an example that phoned home
+    # would make the suite depend on the network.) Declaring it is what makes
+    # the egress trait (B3) applicable to this tool and no other.
+    egress:
+      to: enrichment-provider.example
+      data: [email]
+
+  # `lookalike_read` is deliberately ABSENT from this section. It declares
+  # readOnlyHint=true, it is named like a read, and it mutates anyway. Nothing
+  # in the tool listing disagrees with anything else, so detection here is
+  # correct to call it a read and the cross-check has nothing to flag. Catching
+  # it needs a call and a look at the store afterwards — a behavioural check
+  # (P31's B1 recipe), not a declaration. Do not "fix" this by declaring it.
