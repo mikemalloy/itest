@@ -1,0 +1,423 @@
+{
+  "CHAIN": [],
+  "PAGE": {
+    "api": {
+      "attest": "<span class='b'>Access-control report.</span> Every row is a route ITest detected in Terraform, carrying the status verify recorded for it. Verify does not yet record which registered test was the anonymous probe, so this run shows one status column rather than an unauthenticated/authenticated pair holding the same value.",
+      "bars": [
+        {
+          "l": "routes detected",
+          "v": 7
+        },
+        {
+          "cls": "good",
+          "l": "verified",
+          "v": 0
+        }
+      ],
+      "columns": [
+        "Status"
+      ],
+      "emptyBody": "No API Gateway route was detected in the Terraform this run read, so there is no endpoint to sweep.",
+      "emptyTitle": "No API sweep in this run",
+      "exceptions": [],
+      "exceptionsHead": "Deliberately not swept \u2014 named, not hidden",
+      "eyebrow": "7 routes detected"
+    },
+    "footer": [
+      {
+        "k": "run",
+        "v": "verify"
+      },
+      {
+        "k": "account",
+        "v": "222233334444"
+      },
+      {
+        "k": "region",
+        "v": "us-east-2"
+      }
+    ],
+    "graph": {
+      "alt": "0 resources reached by 0 sources",
+      "chainCaption": "DOWNSTREAM",
+      "chainCount": "0 verified of 0",
+      "chainTitle": "Event flow \u2014 downstream chain",
+      "emptyBody": "No IAM or event edge was detected, so there is no reach diagram to draw.",
+      "emptyTitle": "No graphable integration in this run",
+      "eyebrow": "0 edges \u00b7 every edge carries the status verify recorded",
+      "pointsCaption": "RESOURCES REACHED",
+      "pointsCount": "0 verified of 0",
+      "pointsTitle": "Grant reach \u2014 role to resource",
+      "rootLabel": "0 sources",
+      "rootSub": ""
+    },
+    "nav": [
+      {
+        "count": null,
+        "id": "posture",
+        "label": "Security Posture",
+        "pill": "warn"
+      },
+      {
+        "count": "6 \u00b7 1",
+        "id": "tools",
+        "label": "Agent tools",
+        "pill": "warn"
+      },
+      {
+        "count": 7,
+        "id": "api",
+        "label": "API access",
+        "pill": "warn"
+      },
+      {
+        "count": 7,
+        "id": "graph",
+        "label": "Integrations",
+        "pill": "warn"
+      },
+      {
+        "count": "soon",
+        "id": "database",
+        "label": "Database",
+        "pill": "soon"
+      },
+      {
+        "count": "soon",
+        "id": "queue",
+        "label": "Queue",
+        "pill": "soon"
+      },
+      {
+        "count": null,
+        "id": "notanalyzed",
+        "label": "Not analyzed",
+        "pill": "soon"
+      }
+    ],
+    "notAnalyzed": {
+      "body": "",
+      "chips": [],
+      "emptyBody": "The census of resources no detector models is produced by `itest plan`, not by verify, so this page cannot report it yet. It is named rather than dropped: an empty list and an unavailable one are different facts.",
+      "emptyTitle": "Not analyzed is not in this run",
+      "headline": "",
+      "present": false
+    },
+    "posture": {
+      "infraMeta": "7 points",
+      "since": "",
+      "toolsMeta": "reference-mcp \u00b7 staging"
+    },
+    "toolBand": {
+      "cls": "risk",
+      "review": "1 change to review",
+      "sub": "<b>5 of 6</b> tools verified against every declared property",
+      "word": "TOOLS AT RISK"
+    },
+    "tools": {
+      "attest": "<span class='b'>Tool-boundary report.</span> Each row is a tool the declaration names, and each column a trait its checks recorded. Every cell is the status the check reported \u2014 nothing here is inferred from a tool's name or its mutation class.",
+      "bars": [
+        {
+          "cls": "good",
+          "l": "declared",
+          "v": 6
+        },
+        {
+          "cls": "good",
+          "l": "verified",
+          "v": 5
+        },
+        {
+          "l": "live",
+          "v": 6
+        },
+        {
+          "cls": "attn",
+          "l": "changed",
+          "v": 1
+        }
+      ],
+      "emptyBody": "",
+      "emptyTitle": "",
+      "exceptions": [
+        {
+          "body": "Description changed since v0.2.0; schema unchanged. Awaiting review.",
+          "diff": {
+            "current": "Update fields on a record and refresh its last-touched date.",
+            "previous": "Update fields on a record."
+          },
+          "tag": "changed",
+          "title": "update_record \u2014 D3 (reference-mcp)"
+        }
+      ],
+      "exceptionsHead": "Needs a human \u2014 named, not hidden",
+      "eyebrow": "reference-mcp \u00b7 staging"
+    },
+    "verdict": {
+      "cls": "risk",
+      "glyph": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\" fill=\"none\"><path d=\"M12 3 2 20h20L12 3z\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linejoin=\"round\"/><path d=\"M12 10v4\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><circle cx=\"12\" cy=\"17\" r=\"1.2\" fill=\"currentColor\"/></svg>",
+      "note": "0 of 7 integration points verified against the live account, 7 awaiting an implemented test. 7 gateway routes detected; 0 verified. 5 of 6 declared agent tools verified, 1 change waiting on a reviewer.",
+      "nums": [
+        {
+          "cls": "tools",
+          "label": "agent tools verified",
+          "total": 6,
+          "value": 5,
+          "word": "risk"
+        },
+        {
+          "label": "integrations verified",
+          "sep": true,
+          "total": 7,
+          "value": 0
+        },
+        {
+          "label": "endpoints verified",
+          "sep": true,
+          "total": 7,
+          "value": 0
+        },
+        {
+          "label": "drift",
+          "sep": true,
+          "total": null,
+          "value": 0
+        }
+      ],
+      "since": null,
+      "sub": "<b>no environment bound</b> \u2014 7 integration points",
+      "word": "AT RISK"
+    }
+  },
+  "POINTS": [],
+  "POSTURE": [
+    {
+      "lab": "cross-stack dependencies<br>resolved to other stacks",
+      "n": 7
+    },
+    {
+      "lab": "wildcard-resource grants<br>flagged for review",
+      "n": 0
+    },
+    {
+      "lab": "broad managed policies<br>(e.g. *FullAccess)",
+      "n": 0,
+      "zero": true
+    },
+    {
+      "lab": "unauthenticated routes<br>detected in the gateway",
+      "n": 3
+    }
+  ],
+  "SWEEP": [
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/health"
+        }
+      ],
+      "res": "/health",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    },
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "POST",
+          "p": "/leaky/action"
+        }
+      ],
+      "res": "/leaky",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    },
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/public/info"
+        }
+      ],
+      "res": "/public",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    },
+    {
+      "eps": [
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/secured/item"
+        },
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "POST",
+          "p": "/secured/item"
+        },
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/secured/lookup/{item_id}"
+        },
+        {
+          "cells": [
+            {
+              "cls": "none",
+              "txt": "STUB"
+            }
+          ],
+          "m": "GET",
+          "p": "/secured/me"
+        }
+      ],
+      "res": "/secured",
+      "tags": [
+        {
+          "cls": "mute",
+          "txt": "no verified probe"
+        }
+      ]
+    }
+  ],
+  "TOOLPOSTURE": [
+    {
+      "lab": "Authority checks passed<br>6 checked \u00b7 0 not verifiable",
+      "n": 6
+    },
+    {
+      "lab": "Blast radius checks passed<br>2 checked \u00b7 0 not verifiable",
+      "n": 2
+    },
+    {
+      "lab": "Containment checks passed<br>0 checked \u00b7 0 not verifiable",
+      "n": 0
+    },
+    {
+      "attn": true,
+      "lab": "Change checks passed<br>6 checked \u00b7 0 not verifiable",
+      "n": 5
+    }
+  ],
+  "TOOLS": [
+    {
+      "cls": "del",
+      "clsLabel": "destructive",
+      "count": 1,
+      "g": "Destructive",
+      "headers": [
+        "A1",
+        "B1",
+        "D2",
+        "D3"
+      ],
+      "rows": [
+        {
+          "cells": [
+            {
+              "cls": "ok",
+              "txt": "PASS"
+            },
+            {
+              "cls": "ok",
+              "txt": "PASS"
+            },
+            {
+              "cls": "ok",
+              "txt": "PASS"
+            },
+            {
+              "cls": "ok",
+              "txt": "PASS"
+            }
+          ],
+          "flag": false,
+          "n": "delete_record"
+        }
+      ],
+      "tags": [
+        {
+          "cls": "locked",
+          "txt": "1 verified"
+        }
+      ]
+    },
+    {
+      "cls": "write",
+      "clsLabel": "write",
+      "count": 1,
+      "g": "Writes",
+      "headers": [
+        "A1",
+        "D3"
+      ],
+      "rows": [
+        {
+          "cells": [
+            {
+              "cls": "ok",
+              "txt": "PASS"
+            },
+            {
+              "cls": "warn",
+              "txt": "CHANGED"
+            }
+          ],
+          "flag": true,
+          "n": "update_record"
+        }
+      ],
+      "tags": [
+        {
+          "cls": "warn",
+          "txt": "1 changed"
+        }
+      ]
+    }
+  ]
+}

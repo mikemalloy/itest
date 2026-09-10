@@ -305,6 +305,9 @@ class ApiSweep(BaseModel):
 
 class GraphPoint(BaseModel):
     id: str
+    #: The edge's source, short. Carried so the diagram can name its root node
+    #: from data instead of assuming every graph hangs off one IAM role.
+    src: str
     tgt: str
     tag: str
     wild: bool = False
@@ -434,13 +437,36 @@ def _manifest_as_points(manifest: Manifest) -> list[dict]:
     return [{"id": p.id, "attributes": p.attributes} for p in manifest.points]
 
 
-def _api_resource(path: str) -> str:
-    """Group key for an endpoint: the path up to its first variable segment."""
+def _fixed_segments(path: str) -> list[str]:
+    """The path's leading segments, up to its first variable one."""
     segments: list[str] = []
     for segment in path.strip("/").split("/"):
-        if segment.startswith("{"):
+        if segment.startswith("{") or not segment:
             break
         segments.append(segment)
+    return segments
+
+
+def _group_depth(paths: list[str]) -> int:
+    """How many path segments to group endpoints by.
+
+    One segment normally. An API that puts everything under a single prefix
+    (`/api/...`) would collapse to one group at that depth, which says nothing,
+    so the depth grows until the paths actually separate.
+    """
+    depth = 1
+    while depth < 4:
+        keys = {tuple(_fixed_segments(p)[:depth]) for p in paths}
+        deeper = any(len(_fixed_segments(p)) > depth for p in paths)
+        if len(keys) > 1 or not deeper:
+            return depth
+        depth += 1
+    return depth
+
+
+def _api_resource(path: str, depth: int = 1) -> str:
+    """Group key for an endpoint: its first ``depth`` fixed path segments."""
+    segments = _fixed_segments(path)[:depth]
     return "/" + "/".join(segments) if segments else path or "/"
 
 
@@ -496,10 +522,12 @@ def build(
         posture.deltas = {k: counts[k] - prior_counts[k] for k in counts}
 
     # --- API sweep --------------------------------------------------------
+    route_points = [p for p in verify_points if types.get(p["id"]) == "route_edge"]
+    depth = _group_depth(
+        [(p.get("attributes") or {}).get("path") or "" for p in route_points]
+    )
     grouped: dict[str, list[ApiEndpoint]] = {}
-    for point in verify_points:
-        if types.get(point["id"]) != "route_edge":
-            continue
+    for point in route_points:
         attrs = point.get("attributes") or {}
         path = attrs.get("path") or ""
         endpoint = ApiEndpoint(
@@ -508,7 +536,7 @@ def build(
             status=status_of[point["id"]],
             point_id=point["id"],
         )
-        grouped.setdefault(_api_resource(path), []).append(endpoint)
+        grouped.setdefault(_api_resource(path, depth), []).append(endpoint)
     api = ApiSweep(
         groups=[
             ApiGroup(resource=resource, endpoints=endpoints)
@@ -525,6 +553,7 @@ def build(
             graph.points.append(
                 GraphPoint(
                     id=point["id"],
+                    src=_short_target(point["source"]),
                     tgt=_short_target(point["target"]),
                     tag=point.get("tag", ""),
                     wild=bool(attrs.get("wildcard_resource")),

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
@@ -512,3 +513,167 @@ def test_rendered_page_escapes_data_into_the_script_block(alex_s7) -> None:
 
     assert "</script><img" not in html
     assert html.count("</script>") == 1
+
+
+# --------------------------------------------------------------------------
+# End to end: the CLI, and a snapshot of every page's data blocks.
+# --------------------------------------------------------------------------
+
+SNAPSHOTS = FIXTURES / "report" / "snapshots"
+REFERENCE_API = FIXTURES / "report" / "reference-api-state.json"
+
+
+def stable(data: dict) -> dict:
+    """Drop the two values that legitimately differ between runs."""
+    footer = [
+        f for f in data["PAGE"]["footer"] if f["k"] not in ("elapsed", "generated")
+    ]
+    data["PAGE"]["footer"] = footer
+    return data
+
+
+def snapshot(name: str, data: dict) -> None:
+    """Compare against the committed snapshot, or write it the first time."""
+    path = SNAPSHOTS / f"{name}.json"
+    actual = json.dumps(stable(data), indent=2, sort_keys=True) + "\n"
+    if not path.exists():  # pragma: no cover - only on a new snapshot
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(actual, encoding="utf-8")
+        pytest.fail(f"Wrote a new snapshot at {path}; re-run to check it.")
+    assert actual == path.read_text(encoding="utf-8"), (
+        f"{name} data blocks changed. If intended, delete {path} and re-run."
+    )
+
+
+def render_project(project: Path, **kwargs) -> dict:
+    from itest.report import render as render_module
+
+    verify = verify_json(project)
+    verify["elapsed_seconds"] = 0.0
+    manifest = load_manifest(project / ".itest" / "manifest.yaml")
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT, **kwargs)
+    return blocks(render_module.render(page))
+
+
+def test_snapshot_alex_stub_only_run(tmp_path, monkeypatch) -> None:
+    """A stub-only run renders honestly: named, counted, and not green."""
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    data = render_project(project)
+
+    assert data["PAGE"]["verdict"]["word"] == "AT RISK"
+    snapshot("alex-s7", data)
+
+
+def test_snapshot_reference_api_sweep(tmp_path, monkeypatch) -> None:
+    """The reference API's seven routes become a grouped endpoint sweep."""
+    project = synced(tmp_path, monkeypatch, REFERENCE_API)
+    data = render_project(project)
+
+    resources = [g["res"] for g in data["SWEEP"]]
+    assert resources == ["/health", "/leaky", "/public", "/secured"]
+    assert sum(len(g["eps"]) for g in data["SWEEP"]) == 7
+    snapshot("reference-api", data)
+
+
+def test_snapshot_tool_ledger_page(tmp_path, monkeypatch) -> None:
+    """A verify JSON carrying the P31 tool ledger renders the tools sections."""
+    from itest.report import render as render_module
+
+    project = synced(tmp_path, monkeypatch, REFERENCE_API)
+    verify = verify_json(project)
+    verify["elapsed_seconds"] = 0.0
+    verify["tools"] = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))["tools"]
+    manifest = load_manifest(project / ".itest" / "manifest.yaml")
+    page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
+    data = blocks(render_module.render(page))
+
+    assert data["PAGE"]["toolBand"]["word"] == "TOOLS AT RISK"
+    assert len(data["TOOLS"]) == 2
+    snapshot("tool-ledger", data)
+
+
+def test_cli_report_writes_a_page(tmp_path, monkeypatch) -> None:
+    synced(tmp_path, monkeypatch, ALEX_S7)
+    out = tmp_path / "readiness.html"
+
+    result = runner.invoke(app, ["report", "--html", "--out", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert "Wrote" in result.output
+    # The verdict never becomes an exit code; that is verify's job.
+    assert "AT RISK" in result.output
+    assert "itest:data:" not in out.read_text(encoding="utf-8")
+
+
+def test_cli_report_reads_a_verify_json_with_from(tmp_path, monkeypatch) -> None:
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    document = verify_json(project)
+    source = tmp_path / "verify.json"
+    source.write_text(json.dumps(document), encoding="utf-8")
+    out = tmp_path / "from.html"
+
+    result = runner.invoke(
+        app, ["report", "--html", "--from", str(source), "--out", str(out)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert blocks(out.read_text(encoding="utf-8"))["PAGE"]["verdict"]["word"]
+
+
+def test_cli_report_redacts_account_ids(tmp_path, monkeypatch) -> None:
+    """--redact pseudonymizes through verify's own scrubber, not a new one."""
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    document = verify_json(project)
+    # The alex fixture already ships a pseudonymous account; give it a real
+    # shaped one so there is something for the scrubber to do.
+    raw = json.dumps(document).replace("111111111111", "987654321098")
+    source = tmp_path / "verify.json"
+    source.write_text(raw, encoding="utf-8")
+    out = tmp_path / "redacted.html"
+
+    result = runner.invoke(
+        app,
+        ["report", "--html", "--from", str(source), "--out", str(out), "--redact"],
+    )
+
+    assert result.exit_code == 0, result.output
+    html = out.read_text(encoding="utf-8")
+    data = blocks(html)
+    assert "987654321098" not in html
+    account = next(f for f in data["PAGE"]["footer"] if f["k"] == "account")
+    assert account["v"] == "111111111111"
+    assert "--redact" in next(f for f in data["PAGE"]["footer"] if f["k"] == "run")["v"]
+
+
+def test_cli_report_since_adds_trends(tmp_path, monkeypatch) -> None:
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    manifest_file = project / ".itest" / "manifest.yaml"
+    prior_file = tmp_path / "prior.yaml"
+    prior = load_manifest(manifest_file)
+    prior.points = [p for p in prior.points if p.type != "event_edge"]
+    prior_file.write_text(
+        yaml.safe_dump(prior.model_dump(mode="json"), sort_keys=False),
+        encoding="utf-8",
+    )
+    out = tmp_path / "since.html"
+
+    plain = runner.invoke(app, ["report", "--out", str(tmp_path / "plain.html")])
+    assert plain.exit_code == 0, plain.output
+    result = runner.invoke(
+        app, ["report", "--out", str(out), "--since", str(prior_file)]
+    )
+    assert result.exit_code == 0, result.output
+
+    without = blocks((tmp_path / "plain.html").read_text(encoding="utf-8"))
+    with_since = blocks(out.read_text(encoding="utf-8"))
+    assert without["PAGE"]["verdict"]["since"] is None
+    assert with_since["PAGE"]["verdict"]["since"]["added"] == 1
+    assert any(tile.get("trend") for tile in with_since["POSTURE"])
+
+
+def test_cli_report_without_a_manifest_exits_2(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["report", "--html"])
+    assert result.exit_code == 2
+    assert "No manifest" in result.output
