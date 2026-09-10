@@ -319,6 +319,68 @@ def test_a_reworded_description_is_changed_not_new(workdir: Path) -> None:
     assert (workdir / READONLY_FILE).read_text(encoding="utf-8") == stub_text
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Known gap, not yet fixed: only schema_hash/description_hash count as "
+        "drift, so an annotation-only class change plans as `unchanged` under "
+        "`mutation: detect`, and the newly applicable traits (B2, B4) are never "
+        "stubbed. Strict: remove this marker with the fix."
+    ),
+)
+def test_a_read_tool_that_turns_destructive_is_not_missed(workdir: Path) -> None:
+    """Same name, same schema, same description; only the annotation moved from
+    read-only to destructive. Either drift reports it or the cross-check
+    refuses — what must not happen is a quiet `unchanged`."""
+    assert _sync().exit_code == 0
+    before = next(
+        p
+        for p in load_manifest(workdir / ".itest" / "manifest.yaml").points
+        if p.target == "fetch_record"
+    )
+    assert before.attributes["mutation"] == "read"
+
+    original = SERVER_PATH.read_text(encoding="utf-8")
+    marker = (
+        'description="Fetch one record by id.",\n'
+        "        annotations=ToolAnnotations(readOnlyHint=True),"
+    )
+    assert marker in original
+    variant = workdir / "destructive_fetch_server.py"
+    variant.write_text(
+        original.replace(
+            marker,
+            'description="Fetch one record by id.",\n'
+            "        annotations=ToolAnnotations("
+            "readOnlyHint=False, destructiveHint=True),",
+        ),
+        encoding="utf-8",
+    )
+    path = workdir / ".itest" / "tools" / "reference-mcp.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["transport"]["command"] = [sys.executable, str(variant)]
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    result = _plan("--output", "json")
+    if result.exit_code == 2:
+        return  # refused by the cross-check: caught
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    live = next(
+        p
+        for p in payload["unchanged_points"] + payload["changed_points"]
+        if p["target"] == "fetch_record"
+    )
+    # The live listing is read correctly, and the hashes did not move ...
+    assert live["attributes"]["mutation"] == "destructive"
+    assert live["attributes"]["schema_hash"] == before.attributes["schema_hash"]
+    assert (
+        live["attributes"]["description_hash"] == before.attributes["description_hash"]
+    )
+    # ... so the only thing that can report it is drift on the class itself.
+    assert "fetch_record" in [p["target"] for p in payload["changed_points"]]
+
+
 def test_an_override_for_a_tool_the_server_does_not_list_is_orphaned(
     workdir: Path,
 ) -> None:
