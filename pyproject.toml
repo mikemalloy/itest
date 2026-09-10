@@ -29,6 +29,10 @@ dependencies = [
 examples = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
+    # The official Python MCP SDK. examples/reference-mcp/ is built on its
+    # MCPServer (the 2.x name for what 1.x called FastMCP), so the floor is a
+    # 2.x one: 1.x has no such class and the import would fail outright.
+    "mcp>=2.2",
 ]
 dev = [
     # Floored at 0.16 (not pinned) because 0.16 formats Python inside Markdown
@@ -41,6 +45,7 @@ dev = [
     # `pip install -e .[dev]` alone makes `pytest` green.
     "fastapi>=0.110",
     "uvicorn>=0.29",
+    "mcp>=2.2",
     # Starlette's TestClient (used by test_reference_app.py) is built on httpx.
     "httpx2>=2",
 ]
