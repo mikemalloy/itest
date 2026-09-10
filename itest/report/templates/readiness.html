@@ -1,0 +1,645 @@
+<title>ITest Readiness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#f5f6f9; --surface:#ffffff; --surface-2:#fbfcfe;
+    --ink:#19212e; --muted:#5b6675; --faint:#8791a1;
+    --hair:#e4e7ee; --hair-2:#eef1f6;
+    --accent:#3d4f8c; --accent-soft:#eaeef8;
+    --ok:#0f9d58; --ok-soft:#e6f4ec; --ok-line:#8fd3ac;
+    --warn:#c77700; --warn-soft:#f8efdd;
+    --bad:#d64550; --bad-soft:#f8e5e6;
+    --shadow:0 1px 2px rgba(20,30,50,.04),0 6px 20px rgba(20,30,50,.06);
+    --navh:52px;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0e131d; --surface:#161d29; --surface-2:#1a2230;
+      --ink:#e9edf4; --muted:#93a0b3; --faint:#6f7c90;
+      --hair:#273140; --hair-2:#212a38;
+      --accent:#7d93de; --accent-soft:#1d2740;
+      --ok:#35c07e; --ok-soft:#122a1f; --ok-line:#2f6f4f;
+      --warn:#e5a13a; --warn-soft:#2c2312;
+      --bad:#ef6b74; --bad-soft:#2e1a1c;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.34);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0e131d; --surface:#161d29; --surface-2:#1a2230;
+    --ink:#e9edf4; --muted:#93a0b3; --faint:#6f7c90;
+    --hair:#273140; --hair-2:#212a38;
+    --accent:#7d93de; --accent-soft:#1d2740;
+    --ok:#35c07e; --ok-soft:#122a1f; --ok-line:#2f6f4f;
+    --warn:#e5a13a; --warn-soft:#2c2312;
+    --bad:#ef6b74; --bad-soft:#2e1a1c;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.34);
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:calc(var(--navh) + 14px)}
+  @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+  body{background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+    line-height:1.5; margin:0; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px; margin:0 auto; padding:28px 24px 72px}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+  h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; text-wrap:balance; margin:0}
+  .tnum{font-variant-numeric:tabular-nums}
+  a{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+    border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:12px;padding:11px 14px;margin-bottom:16px;
+    font-size:12.5px;color:var(--muted)}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand .d{width:9px;height:9px;border-radius:2px;background:var(--accent)}
+  .brand b{font-family:"Archivo";font-weight:800;letter-spacing:-.01em;font-size:15px}
+  .brand span{color:var(--muted);font-size:13px}
+  .topbar .right{display:flex;gap:10px;align-items:center}
+  .preview{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+    border:1px solid var(--hair);border-radius:999px;padding:4px 10px;background:var(--surface)}
+  .toggle{background:var(--surface);border:1px solid var(--hair);color:var(--muted);
+    border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+  .toggle:hover{color:var(--ink);border-color:var(--faint)}
+
+  .verdict{background:var(--surface);border:1px solid var(--hair);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .verdict .band{height:4px;background:var(--ok)}
+  .verdict .body{display:grid;grid-template-columns:auto 1fr;gap:24px;padding:20px 26px;align-items:center}
+  @media(max-width:760px){.verdict .body{grid-template-columns:1fr;gap:18px}}
+  .stamp{display:flex;align-items:center;gap:14px}
+  .stamp .glyph{width:48px;height:48px;border-radius:12px;flex:none;background:var(--ok-soft);display:grid;place-items:center}
+  .stamp .word{font-family:"Archivo";font-weight:800;font-size:30px;letter-spacing:-.02em;line-height:1;color:var(--ok)}
+  .stamp .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .stamp .sub b{color:var(--ink)}
+  .hnums{display:grid;grid-template-columns:repeat(5,auto);gap:14px;justify-content:end;align-items:center}
+  @media(max-width:1000px){.hnums{grid-template-columns:repeat(5,auto);gap:12px}}
+  @media(max-width:760px){.hnums{grid-template-columns:repeat(3,1fr);justify-content:start;gap:12px}.hn.sep{border-left:0;padding-left:0}}
+  .hn{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .hn .v{font-family:"Archivo";font-weight:700;font-size:22px;letter-spacing:-.02em;line-height:1;white-space:nowrap}
+  .hn .v small{font-size:13px;color:var(--muted);font-weight:600}
+  .hn .l{font-size:11px;color:var(--muted);white-space:nowrap}
+  .hn.sep{border-left:1px solid var(--hair);padding-left:14px}
+  .hn.tools .v{color:var(--ok)}
+  .meta-row{display:flex;gap:18px;flex-wrap:wrap;padding:11px 26px;border-top:1px solid var(--hair-2);
+    background:var(--surface-2);font-size:12.5px;color:var(--muted)}
+  .meta-row .k{color:var(--faint)} .meta-row b{color:var(--ink);font-weight:600}
+  .meta-row .w{color:var(--warn);font-weight:600}
+  @media(max-width:760px){.meta-row .mono{white-space:normal!important}}
+
+  nav.jump{position:sticky;top:0;z-index:20;margin:14px 0 0;background:color-mix(in srgb,var(--ground) 86%,transparent);
+    backdrop-filter:blur(8px);border:1px solid var(--hair);border-radius:12px}
+  nav.jump ul{display:flex;gap:2px;list-style:none;margin:0;padding:6px;overflow-x:auto}
+  nav.jump a{display:flex;align-items:center;gap:7px;white-space:nowrap;text-decoration:none;color:var(--muted);
+    font-size:13px;font-weight:500;padding:8px 13px;border-radius:8px}
+  nav.jump a:hover{background:var(--surface);color:var(--ink)}
+  nav.jump a.active{background:var(--accent-soft);color:var(--accent)}
+  nav.jump a .c{font-family:"IBM Plex Mono";font-size:11px;color:var(--faint)}
+  nav.jump a.active .c{color:var(--accent)}
+  nav.jump .pill{width:7px;height:7px;border-radius:50%}
+  .pill.ok{background:var(--ok)} .pill.soon{background:var(--faint)} .pill.warn{background:var(--warn)}
+
+  section{margin-top:30px;scroll-margin-top:calc(var(--navh) + 14px)}
+  .eyebrow{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600;
+    margin-bottom:11px;display:flex;align-items:center;gap:9px}
+  .eyebrow .n{margin-left:auto;font-family:"IBM Plex Mono";letter-spacing:0;text-transform:none;color:var(--muted)}
+  .sub-eyebrow{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;
+    margin:16px 0 8px;display:flex;gap:9px;align-items:baseline}
+  .sub-eyebrow.first{margin-top:0}
+  .sub-eyebrow .mono{text-transform:none;letter-spacing:0;color:var(--faint);font-weight:500;font-size:11.5px}
+
+  .posture{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:720px){.posture{grid-template-columns:repeat(2,1fr)}}
+  .pcard{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:14px 15px;display:flex;flex-direction:column;gap:6px}
+  .pcard .top{display:flex;align-items:center;justify-content:space-between}
+  .pcard .n{font-family:"Archivo";font-weight:700;font-size:23px;letter-spacing:-.02em}
+  .pcard .trend{font-size:12px;font-family:"IBM Plex Mono";display:flex;align-items:center;gap:3px}
+  .pcard .lab{font-size:12.5px;color:var(--muted);line-height:1.35}
+  .trend.flat{color:var(--faint)} .trend.down{color:var(--ok)} .trend.up{color:var(--warn)}
+  .pcard.zero .n{color:var(--muted)}
+  .pcard.attn{border-color:color-mix(in srgb,var(--warn) 45%,transparent);background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
+  .pcard.attn .n{color:var(--warn)}
+
+  /* agent-tools status band (the phone-screen answer) */
+  .toolband{background:var(--surface);border:1px solid var(--ok-line);border-radius:12px;padding:14px 16px;
+    display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;margin-bottom:12px}
+  @media(max-width:640px){.toolband{grid-template-columns:auto 1fr}.toolband .right{grid-column:1/-1;justify-self:start}}
+  .toolband .glyph{width:40px;height:40px;border-radius:10px;background:var(--ok-soft);display:grid;place-items:center;flex:none}
+  .toolband .word{font-family:"Archivo";font-weight:800;font-size:19px;letter-spacing:-.01em;color:var(--ok);line-height:1.1}
+  .toolband .sub{font-size:12.5px;color:var(--muted);margin-top:3px} .toolband .sub b{color:var(--ink)}
+  .review{display:inline-flex;align-items:center;gap:7px;font-family:"IBM Plex Mono";font-size:12px;font-weight:600;
+    color:var(--warn);background:var(--warn-soft);border-radius:999px;padding:6px 12px;white-space:nowrap;text-decoration:none}
+  .review:hover{text-decoration:underline}
+  .review .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+
+  /* attestation + sweep */
+  .attest{display:flex;gap:12px;align-items:center;background:var(--ok-soft);border:1px solid var(--ok-line);
+    border-radius:12px;padding:13px 16px;margin-bottom:14px}
+  .attest .b{font-family:"Archivo";font-weight:700;color:var(--ok);font-size:14px}
+  .attest p{margin:0;font-size:13px;color:var(--muted)} .attest p b{color:var(--ink)}
+
+  .sweepbar{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;padding:12px 16px;margin-bottom:12px;
+    background:var(--surface);border:1px solid var(--hair);border-radius:12px}
+  .sweepbar .m{display:flex;align-items:baseline;gap:7px;font-size:13px;color:var(--muted)}
+  .sweepbar .m b{font-family:"Archivo";font-weight:700;font-size:17px;color:var(--ink);letter-spacing:-.01em}
+  .sweepbar .m.good b{color:var(--ok)} .sweepbar .m.attn b{color:var(--warn)}
+  .sweepbar .exp{margin-left:auto}
+  .exp{background:none;border:1px solid var(--hair);color:var(--muted);border-radius:8px;padding:6px 12px;
+    font-size:12.5px;cursor:pointer;font-family:inherit}
+  .exp:hover{color:var(--ink);border-color:var(--faint)}
+
+  .grp{background:var(--surface);border:1px solid var(--hair);border-radius:12px;margin-bottom:9px;overflow:hidden}
+  .grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:13px 16px}
+  .grp>summary::-webkit-details-marker{display:none}
+  .grp>summary:hover{background:var(--surface-2)}
+  .grp .chev{color:var(--faint);flex:none;transition:transform .15s}
+  .grp[open] .chev{transform:rotate(90deg)}
+  .grp .rname{font-family:"IBM Plex Mono";font-weight:600;font-size:13.5px;color:var(--ink)}
+  .grp .rname.plain{font-family:"IBM Plex Sans";font-weight:600}
+  .grp .rcount{font-size:12.5px;color:var(--faint)}
+  .grp .rtags{margin-left:auto;display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .rtag{font-size:11px;font-family:"IBM Plex Mono";display:inline-flex;align-items:center;gap:5px;
+    padding:3px 9px;border-radius:999px}
+  .rtag.locked{color:var(--ok);background:var(--ok-soft)}
+  .rtag.authed{color:var(--accent);background:var(--accent-soft)}
+  .rtag.warn{color:var(--warn);background:var(--warn-soft)}
+  .rtag.mute{color:var(--faint);background:var(--surface-2)}
+  .rtag .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+  .eptable{border-top:1px solid var(--hair-2)}
+  .ephead,.eprow{display:grid;grid-template-columns:70px 1fr 118px 118px;gap:10px;align-items:center;padding:9px 16px 9px 40px}
+  .ephead{background:var(--surface-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600}
+  .eprow{border-top:1px solid var(--hair-2);font-size:13px}
+  .meth{font-family:"IBM Plex Mono";font-size:11px;font-weight:600;padding:3px 0;text-align:center;border-radius:6px}
+  .m-get{color:var(--accent);background:var(--accent-soft)}
+  .m-post,.m-put{color:var(--warn);background:var(--warn-soft)}
+  .m-del{color:var(--bad);background:var(--bad-soft)}
+  .path{font-family:"IBM Plex Mono";font-size:12.5px;color:var(--ink);overflow-wrap:anywhere}
+  .res{display:inline-flex;align-items:center;gap:6px;font-family:"IBM Plex Mono";font-size:12px;font-weight:600}
+  .res .dot{width:7px;height:7px;border-radius:50%}
+  .res.refused{color:var(--ok)} .res.refused .dot{background:var(--ok)}
+  .res.ok{color:var(--ok)} .res.ok .dot{background:var(--ok)}
+  .res.warn{color:var(--warn)} .res.warn .dot{background:var(--warn)}
+  .res.acc{color:var(--accent)} .res.acc .dot{background:var(--accent)}
+  .res.none{color:var(--faint);font-weight:400}
+
+  /* tool ledger table */
+  .tooltable{border-top:1px solid var(--hair-2);overflow-x:auto}
+  .thead,.trow{display:grid;grid-template-columns:minmax(200px,1.4fr) 104px 104px 104px 150px 104px;gap:10px;align-items:center;
+    padding:9px 16px 9px 40px;min-width:760px}
+  .thead{background:var(--surface-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600}
+  .trow{border-top:1px solid var(--hair-2);font-size:13px}
+  .trow.flag{background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
+  .cls{font-family:"IBM Plex Mono";font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;text-align:center;white-space:nowrap}
+  .c-read{color:var(--accent);background:var(--accent-soft)}
+  .c-write{color:var(--warn);background:var(--warn-soft)}
+  .c-del{color:var(--bad);background:var(--bad-soft)}
+  .c-egress{color:var(--warn);background:var(--warn-soft)}
+  .c-info{color:var(--muted);background:var(--surface-2)}
+
+  .exc{background:var(--surface);border:1px solid var(--hair);border-radius:12px;margin-top:14px;overflow:hidden}
+  .exc .ehead{padding:11px 16px;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--warn);
+    font-weight:600;background:var(--warn-soft);display:flex;align-items:center;gap:8px}
+  .exc .erow{display:flex;gap:12px;padding:12px 16px;border-top:1px solid var(--hair-2);font-size:12.5px;color:var(--muted)}
+  .exc .erow .mono{color:var(--ink)} .exc .erow b{color:var(--ink)}
+  .exc .erow .tag{flex:none;font-family:"IBM Plex Mono";font-size:11px;color:var(--warn);background:var(--warn-soft);
+    border-radius:999px;padding:2px 9px;height:fit-content}
+  .exc .erow .acts{margin-top:6px;display:flex;gap:14px;font-family:"IBM Plex Mono";font-size:11.5px}
+  .exc .erow .acts a{text-decoration:none} .exc .erow .acts a:hover{text-decoration:underline}
+  .diff{margin-top:8px;font-family:"IBM Plex Mono";font-size:11.5px;line-height:1.55;background:var(--surface-2);
+    border:1px solid var(--hair-2);border-radius:8px;padding:8px 10px;overflow-x:auto}
+  .diff .del{color:var(--bad)} .diff .add{color:var(--ok)}
+
+  .graphcard{background:var(--surface);border:1px solid var(--hair);border-radius:14px;box-shadow:var(--shadow);padding:8px 8px 4px;overflow-x:auto}
+  #graphSvg{display:block;width:100%;min-width:660px;height:auto}
+  .glegend{display:flex;gap:18px;flex-wrap:wrap;padding:6px 14px 12px;font-size:12px;color:var(--muted)}
+  .glegend span{display:inline-flex;align-items:center;gap:7px}
+  .swatch{width:20px;height:0;border-top:2.5px solid var(--ok)} .swatch.dash{border-top-style:dashed}
+  .swatch.node{width:11px;height:11px;border-radius:3px;background:var(--accent)}
+  .swatch.ring{width:11px;height:11px;border-radius:50%;border:2px solid var(--warn)}
+
+  .cov{background:var(--surface);border:1px solid var(--hair);border-radius:14px;overflow:hidden;margin-top:4px}
+  details.covgrp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:11px 16px;
+    background:var(--surface-2);border-top:1px solid var(--hair-2);font-size:12px;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--muted);font-weight:600}
+  details.covgrp:first-child>summary{border-top:0}
+  details.covgrp>summary::-webkit-details-marker{display:none}
+  details.covgrp .chev{color:var(--faint);transition:transform .15s} details.covgrp[open]>summary .chev{transform:rotate(90deg)}
+  details.covgrp>summary .c{margin-left:auto;color:var(--faint);letter-spacing:0;text-transform:none;font-family:"IBM Plex Mono"}
+  .row{display:grid;grid-template-columns:22px 1fr auto;gap:12px;align-items:center;padding:11px 16px 11px 40px;border-top:1px solid var(--hair-2)}
+  .dotst{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+  .row .edge{font-size:13.5px;display:flex;gap:7px;align-items:baseline;flex-wrap:wrap}
+  .row .edge .arrow{color:var(--faint)}
+  .row .edge .tgt{font-family:"IBM Plex Mono";font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+  .row .tags{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+  .tag{font-size:10.5px;letter-spacing:.02em;padding:2px 7px;border-radius:999px;font-family:"IBM Plex Mono";border:1px solid var(--hair)}
+  .tag.wild{color:var(--warn);background:var(--warn-soft);border-color:transparent}
+  .tag.ext{color:var(--muted);background:var(--surface-2)}
+  .tag.mech{color:var(--accent);background:var(--accent-soft);border-color:transparent}
+  .row .ev{text-align:right;font-family:"IBM Plex Mono";font-size:11.5px}
+  .row .ev a{color:var(--accent);text-decoration:none} .row .ev a:hover{text-decoration:underline}
+
+  .tier{background:var(--surface);border:1px dashed var(--hair);border-radius:14px;padding:18px 20px;
+    display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center}
+  @media(max-width:640px){.tier{grid-template-columns:1fr}}
+  .tier .ic{width:44px;height:44px;border-radius:11px;background:var(--surface-2);border:1px solid var(--hair);display:grid;place-items:center;color:var(--faint)}
+  .tier h3{font-family:"Archivo";font-size:16px;font-weight:700}
+  .tier .q{font-size:13px;color:var(--muted);margin-top:5px;max-width:60ch} .tier .q b{color:var(--ink)}
+  .tier .state{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);
+    border:1px solid var(--hair);border-radius:999px;padding:5px 12px;white-space:nowrap;justify-self:end}
+
+  .blind{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px dashed var(--hair);border-radius:12px;padding:15px 18px}
+  .blind .i{color:var(--faint);flex:none;margin-top:1px}
+  .blind p{margin:0;font-size:13px;color:var(--muted)} .blind b{color:var(--ink)}
+  .blind .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .blind .chips code{font-family:"IBM Plex Mono";font-size:11.5px;background:var(--surface-2);border:1px solid var(--hair-2);border-radius:6px;padding:2px 7px;color:var(--muted)}
+
+  .foot{margin-top:30px;padding-top:16px;border-top:1px solid var(--hair);display:flex;gap:18px;flex-wrap:wrap;
+    font-family:"IBM Plex Mono";font-size:11.5px;color:var(--faint)}
+  .foot b{color:var(--muted);font-weight:500} .foot .sep{color:var(--hair)}
+
+  /* --- added for engine-rendered data: a failing cell, a non-green verdict,
+     and a sweep table whose column count comes from the data --- */
+  .res.bad{color:var(--bad)} .res.bad .dot{background:var(--bad)}
+  .verdict.risk .band{background:var(--warn)}
+  .verdict.risk .stamp .glyph{background:var(--warn-soft)}
+  .verdict.risk .stamp .word{color:var(--warn)}
+  .verdict.blocked .band{background:var(--bad)}
+  .verdict.blocked .stamp .glyph{background:var(--bad-soft)}
+  .verdict.blocked .stamp .word{color:var(--bad)}
+  .hn.tools .v.risk{color:var(--warn)} .hn.tools .v.blocked{color:var(--bad)}
+  .toolband.risk{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+  .toolband.risk .glyph{background:var(--warn-soft)} .toolband.risk .word{color:var(--warn)}
+  .toolband.blocked{border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+  .toolband.blocked .glyph{background:var(--bad-soft)} .toolband.blocked .word{color:var(--bad)}
+  .toolband.empty{border-color:var(--hair)}
+  .toolband.empty .glyph{background:var(--surface-2)} .toolband.empty .word{color:var(--muted)}
+  .empty{background:var(--surface);border:1px dashed var(--hair);border-radius:12px;
+    padding:16px 18px;color:var(--muted);font-size:13px}
+  .empty b{color:var(--ink);font-weight:600;display:block;margin-bottom:3px}
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><span class="d" aria-hidden="true"></span><b>ITest</b><span>· production readiness</span></div>
+    <div class="right"><span class="preview">Release readiness</span><button class="toggle" id="tog">Theme</button></div>
+  </div>
+
+  <div class="verdict" id="verdict"></div>
+
+  <nav class="jump" aria-label="Report sections"><ul id="navList"></ul></nav>
+
+  <section id="posture">
+    <div class="eyebrow">Security Posture <span class="n" id="postureSince"></span></div>
+    <div class="sub-eyebrow first">Agent tools <span class="mono" id="toolsMeta"></span></div>
+    <div id="toolBand"></div>
+    <div class="posture" id="toolPostureGrid"></div>
+    <div class="sub-eyebrow">Infrastructure <span class="mono" id="infraMeta"></span></div>
+    <div class="posture" id="postureGrid"></div>
+  </section>
+
+  <section id="tools">
+    <div class="eyebrow">Agent tool sweep <span class="n" id="toolsEyebrow"></span></div>
+    <div id="toolsBody"></div>
+  </section>
+
+  <section id="api">
+    <div class="eyebrow">API access sweep <span class="n" id="apiEyebrow"></span></div>
+    <div id="apiBody"></div>
+  </section>
+
+  <section id="graph">
+    <div class="eyebrow">Integration graph <span class="n" id="graphEyebrow"></span></div>
+    <div id="graphBody"></div>
+  </section>
+
+  <section id="database">
+    <div class="eyebrow">Database probes</div>
+    <div class="tier">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" stroke-width="1.6"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" stroke="currentColor" stroke-width="1.6"/></svg></div>
+      <div><h3>Database — read/write round-trip</h3>
+        <p class="q">Designed on the same probe framework as the API sweep, and gated by the same environments policy. Comes online once a project answers one question: <b>which CRUD operations may a probe perform, and against which table?</b></p></div>
+      <span class="state">Designed · not yet built</span>
+    </div>
+  </section>
+
+  <section id="queue">
+    <div class="eyebrow">Queue delivery probes</div>
+    <div class="tier">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="17" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/></svg></div>
+      <div><h3>Queue → function — marked-message delivery</h3>
+        <p class="q">Event-source mappings and dead-letter redrives are verified as <b>wiring</b> today (see the integration graph). The active probe would send a <b>marked, self-cleaning message</b> and observe it arrive — proving delivery, not just configuration. Opt-in per environment; refuses production.</p></div>
+      <span class="state">Designed · not yet built</span>
+    </div>
+  </section>
+
+  <section id="notanalyzed">
+    <div class="eyebrow">Not analyzed <span class="n">named, never silently skipped</span></div>
+    <div id="notAnalyzed"></div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const chev = `<svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/* ---- DATA BLOCKS — every one emitted by itest/report/render.py from verify
+   JSON and the manifest. There is no sample data in this file. ---- */
+<!-- itest:data:PAGE -->
+<!-- itest:data:TOOLS -->
+<!-- itest:data:TOOLPOSTURE -->
+<!-- itest:data:SWEEP -->
+<!-- itest:data:POSTURE -->
+<!-- itest:data:POINTS -->
+<!-- itest:data:CHAIN -->
+
+/* Text from data is escaped; the only markup the model may carry is the <br>
+   inside a fixed tile label, which is why labels are inserted raw and every
+   other value goes through esc(). */
+const esc = s => String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const cell = c => c ? `<span class="res ${c.cls}"><span class="dot"></span>${esc(c.txt)}</span>`
+                    : `<span class="res none">—</span>`;
+const plain = t => `<span class="res none">${esc(t)}</span>`;
+const el = id => document.getElementById(id);
+const emptyState = (title, body) => `<div class="empty"><b>${esc(title)}</b>${esc(body)}</div>`;
+
+/* ---- verdict banner ---- */
+(function(){
+  const v = PAGE.verdict;
+  const nums = v.nums.map(n => `
+    <div class="hn${n.sep ? " sep" : ""}${n.cls ? " " + n.cls : ""}">
+      <span class="v tnum${n.word ? " " + n.word : ""}">${esc(n.value)}${
+        n.total == null ? "" : `<small> / ${esc(n.total)}</small>`}</span>
+      <span class="l">${esc(n.label)}</span>
+    </div>`).join("");
+  const since = v.since
+    ? `<span class="mono" style="white-space:nowrap"><span class="k">since ${esc(v.since.label)}:</span>
+        &nbsp;<b>${esc(v.since.added)} new</b>, ${esc(v.since.removed)} removed${
+        v.since.review ? ` &nbsp;·&nbsp; <span class="w">${esc(v.since.review)}</span>` : ""}</span>`
+    : "";
+  el("verdict").className = "verdict" + (v.cls ? " " + v.cls : "");
+  el("verdict").innerHTML = `
+    <div class="band"></div>
+    <div class="body">
+      <div class="stamp">
+        <div class="glyph" aria-hidden="true">${v.glyph}</div>
+        <div><div class="word">${esc(v.word)}</div><div class="sub">${v.sub}</div></div>
+      </div>
+      <div class="hnums">${nums}</div>
+    </div>
+    <div class="meta-row"><span>${esc(v.note)}</span>${since}</div>`;
+})();
+
+/* ---- jump nav ---- */
+el("navList").innerHTML = PAGE.nav.map(n => `
+  <li><a href="#${esc(n.id)}"><span class="pill ${esc(n.pill)}"></span>${esc(n.label)}${
+    n.count == null ? "" : ` <span class="c">${esc(n.count)}</span>`}</a></li>`).join("");
+
+/* ---- posture tiles ---- */
+const tileHtml = p => `
+  <div class="pcard${p.attn ? " attn" : ""}${p.zero ? " zero" : ""}">
+    <div class="top"><span class="n tnum">${esc(p.n)}</span>${
+      p.trend ? `<span class="trend ${esc(p.dir)}">${esc(p.sym)} ${esc(p.trend)}</span>` : ""}</div>
+    <span class="lab">${p.lab}</span>
+  </div>`;
+el("postureGrid").innerHTML = posture.map(tileHtml).join("");
+el("infraMeta").textContent = PAGE.posture.infraMeta;
+el("postureSince").textContent = PAGE.posture.since || "";
+el("toolsMeta").textContent = PAGE.posture.toolsMeta;
+
+/* ---- agent tools: band, tiles, groups, exceptions ---- */
+(function(){
+  const band = PAGE.toolBand;
+  const shield = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M12 3l7 3v5c0 4.2-2.8 7.4-7 9-4.2-1.6-7-4.8-7-9V6l7-3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  el("toolBand").innerHTML = `
+    <div class="toolband ${esc(band.cls)}">
+      <div class="glyph" aria-hidden="true">${shield}</div>
+      <div><div class="word">${esc(band.word)}</div><div class="sub">${band.sub}</div></div>
+      ${band.review ? `<a class="right review" href="#tools"><span class="dot"></span>${esc(band.review)}</a>` : ""}
+    </div>`;
+  el("toolPostureGrid").innerHTML = toolPosture.map(tileHtml).join("");
+
+  if(!TOOLS.length){
+    el("toolsBody").innerHTML = emptyState(PAGE.tools.emptyTitle, PAGE.tools.emptyBody);
+    el("toolsEyebrow").textContent = PAGE.tools.eyebrow;
+    return;
+  }
+  el("toolsEyebrow").textContent = PAGE.tools.eyebrow;
+  const bars = PAGE.tools.bars.map(b =>
+    `<span class="m${b.cls ? " " + b.cls : ""}"><b>${esc(b.v)}</b> ${esc(b.l)}</span>`).join("");
+  const groups = TOOLS.map(g => {
+    const cols = `minmax(200px,1.4fr) 104px repeat(${g.headers.length}, 104px)`;
+    const head = `<div class="thead" style="grid-template-columns:${cols}"><span>Tool</span><span>Reads as</span>${
+      g.headers.map(h => `<span>${esc(h)}</span>`).join("")}</div>`;
+    const rows = g.rows.map(r => `
+      <div class="trow${r.flag ? " flag" : ""}" style="grid-template-columns:${cols}">
+        <span class="path">${esc(r.n)}</span>
+        <span class="cls c-${esc(g.cls)}">${esc(g.clsLabel)}</span>
+        ${r.cells.map(cell).join("")}
+      </div>`).join("");
+    return `<details class="grp">
+      <summary>${chev}
+        <span class="rname plain">${esc(g.g)}</span>
+        <span class="rcount">${esc(g.count)} tool${g.count === 1 ? "" : "s"}</span>
+        <span class="rtags">${g.tags.map(t =>
+          `<span class="rtag ${esc(t.cls)}">${t.cls === "mute" ? "" : '<span class="dot"></span>'}${esc(t.txt)}</span>`).join("")}</span>
+      </summary>
+      <div class="tooltable">${head}${rows}</div>
+    </details>`;
+  }).join("");
+  el("toolsBody").innerHTML = `
+    <div class="attest">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">${shield}</svg>
+      <p>${PAGE.tools.attest}</p>
+    </div>
+    <div class="sweepbar">${bars}<button class="exp" id="expandTools" aria-expanded="false">Expand all</button></div>
+    <div id="toolGroups">${groups}</div>
+    ${excBox(PAGE.tools.exceptionsHead, PAGE.tools.exceptions)}`;
+  wireExpand("expandTools", "#toolGroups .grp");
+})();
+
+/* ---- exceptions box: named, never hidden ---- */
+function excBox(head, rows){
+  if(!rows || !rows.length) return "";
+  const warn = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
+  return `<div class="exc"><div class="ehead">${warn} ${esc(head)}</div>${
+    rows.map(r => `<div class="erow"><span class="tag">${esc(r.tag)}</span><div><b>${esc(r.title)}</b> ${esc(r.body)}${
+      r.diff ? `<div class="diff"><span class="del">− ${esc(r.diff.previous)}</span><br><span class="add">+ ${esc(r.diff.current)}</span></div>` : ""
+    }</div></div>`).join("")}</div>`;
+}
+
+function wireExpand(id, selector){
+  const btn = el(id);
+  if(!btn) return;
+  btn.addEventListener("click", () => {
+    const open = btn.getAttribute("aria-expanded") === "true";
+    [...document.querySelectorAll(selector)].forEach(d => d.open = !open);
+    btn.setAttribute("aria-expanded", String(!open));
+    btn.textContent = open ? "Expand all" : "Collapse all";
+  });
+}
+
+/* ---- API access sweep ---- */
+(function(){
+  el("apiEyebrow").textContent = PAGE.api.eyebrow;
+  if(!SWEEP.length){
+    el("apiBody").innerHTML = emptyState(PAGE.api.emptyTitle, PAGE.api.emptyBody);
+    return;
+  }
+  // One status column while verify cannot say which probe was the anonymous
+  // one; the pair returns when the JSON carries a probe kind.
+  const heads = PAGE.api.columns;
+  const cols = `70px 1fr ${heads.map(() => "118px").join(" ")}`;
+  const bars = PAGE.api.bars.map(b =>
+    `<span class="m${b.cls ? " " + b.cls : ""}"><b>${esc(b.v)}</b> ${esc(b.l)}</span>`).join("");
+  const mcls = m => ({GET:"m-get",POST:"m-post",PUT:"m-put",DELETE:"m-del"}[m] || "m-get");
+  const groups = SWEEP.map(g => {
+    const rows = g.eps.map(e => `
+      <div class="eprow" style="grid-template-columns:${cols}">
+        <span class="meth ${mcls(e.m)}">${esc(e.m)}</span>
+        <span class="path">${esc(e.p)}</span>
+        ${e.cells.map(cell).join("")}
+      </div>`).join("");
+    return `<details class="grp">
+      <summary>${chev}
+        <span class="rname">${esc(g.res)}</span>
+        <span class="rcount">${esc(g.eps.length)} endpoint${g.eps.length === 1 ? "" : "s"}</span>
+        <span class="rtags">${g.tags.map(t =>
+          `<span class="rtag ${esc(t.cls)}">${t.cls === "mute" ? "" : '<span class="dot"></span>'}${esc(t.txt)}</span>`).join("")}</span>
+      </summary>
+      <div class="eptable">
+        <div class="ephead" style="grid-template-columns:${cols}"><span>Method</span><span>Endpoint</span>${
+          heads.map(h => `<span>${esc(h)}</span>`).join("")}</div>
+        ${rows}
+      </div>
+    </details>`;
+  }).join("");
+  el("apiBody").innerHTML = `
+    <div class="attest"><p>${PAGE.api.attest}</p></div>
+    <div class="sweepbar">${bars}<button class="exp" id="expandAll" aria-expanded="false">Expand all</button></div>
+    <div id="sweepGroups">${groups}</div>
+    ${excBox(PAGE.api.exceptionsHead, PAGE.api.exceptions)}`;
+  wireExpand("expandAll", "#sweepGroups .grp");
+})();
+
+/* ---- integration graph + coverage list ---- */
+(function(){
+  el("graphEyebrow").textContent = PAGE.graph.eyebrow;
+  if(!POINTS.length && !CHAIN.length){
+    el("graphBody").innerHTML = emptyState(PAGE.graph.emptyTitle, PAGE.graph.emptyBody);
+    return;
+  }
+  el("graphBody").innerHTML = `
+    <div class="graphcard">
+      <svg id="graphSvg" viewBox="0 0 900 470" role="img" aria-label="${esc(PAGE.graph.alt)}"></svg>
+      <div class="glegend">
+        <span><i class="swatch"></i> verified edge</span>
+        <span><i class="swatch dash"></i> cross-stack (external ARN)</span>
+        <span><i class="swatch ring"></i> wildcard resource</span>
+        <span><i class="swatch node"></i> in-state resource</span>
+      </div>
+    </div>
+    <div class="cov" id="cov"></div>`;
+
+  const crow = (main, tags, id) =>
+    `<div class="row"><div class="st"><span class="dotst"></span></div>
+      <div><div class="edge">${main}</div><div class="tags">${tags}</div></div>
+      <div class="ev"><span class="mono">${esc(id)}</span></div></div>`;
+  const marks = p => `${p.wild ? '<span class="tag wild">wildcard</span>' : ""}${
+    p.ext ? '<span class="tag ext">external</span>' : ""}${
+    p.isNew ? '<span class="tag" style="color:var(--accent);border-color:var(--accent)">new</span>' : ""}`;
+  let cov = "";
+  if(POINTS.length){
+    cov += `<details class="covgrp" open><summary>${chev} ${esc(PAGE.graph.pointsTitle)} <span class="c">${esc(PAGE.graph.pointsCount)}</span></summary>` +
+      POINTS.map(p => crow(
+        `<span class="mono" style="color:var(--faint)">${esc(p.src)}</span><span class="arrow">→</span><span class="tgt">${esc(p.tgt)}</span>`,
+        `<span class="tag mech">${esc(p.tag)}</span>${marks(p)}<span class="tag">${esc(p.status)}</span>`,
+        p.id)).join("") + `</details>`;
+  }
+  if(CHAIN.length){
+    cov += `<details class="covgrp"><summary>${chev} ${esc(PAGE.graph.chainTitle)} <span class="c">${esc(PAGE.graph.chainCount)}</span></summary>` +
+      CHAIN.map(c => crow(
+        `<span class="tgt">${esc(c.from)}</span><span class="arrow">→</span><span class="tgt">${esc(c.to)}</span>`,
+        `<span class="tag mech">${esc(c.tag)}</span>${c.isNew ? '<span class="tag" style="color:var(--accent);border-color:var(--accent)">new</span>' : ""}<span class="tag">${esc(c.status)}</span>`,
+        c.id)).join("") + `</details>`;
+  }
+  el("cov").innerHTML = cov;
+})();
+
+/* The diagram scales to whatever the data holds: one point, none, a chain of
+   any length, or no hub at all. */
+function drawGraph(){
+  const svg = el("graphSvg");
+  if(!svg) return;
+  const H = 470, ok = css('--ok'), accent = css('--accent'), ink = css('--ink'),
+        muted = css('--muted'), warn = css('--warn'), surf = css('--surface'), faint = css('--faint');
+  const roleX = 150, roleY = H/2, tx = 560, n = POINTS.length, top = 44, bot = H - 30;
+  const step = n > 1 ? (bot - top) / (n - 1) : 0;
+  const yAt = i => n > 1 ? top + i * step : roleY;
+  let edges = '', nodes = '';
+  POINTS.forEach((p, i) => {
+    const y = yAt(i), c1 = roleX + 150, c2 = tx - 150, dash = p.ext ? 'stroke-dasharray="2 5"' : '';
+    const stroke = p.status === "PASS" ? ok : faint;
+    edges += `<path d="M${roleX+64},${roleY} C${c1},${roleY} ${c2},${y} ${tx-6},${y}" fill="none" stroke="${stroke}" stroke-width="2" opacity=".85" ${dash}/>`;
+    nodes += `<g><circle cx="${tx}" cy="${y}" r="5.5" fill="${surf}" stroke="${accent}" stroke-width="2"/>${
+      p.wild ? `<circle cx="${tx}" cy="${y}" r="9.5" fill="none" stroke="${warn}" stroke-width="1.6"/>` : ''
+    }<text x="${tx+16}" y="${y+4}" font-family="IBM Plex Mono" font-size="12.5" fill="${ink}">${esc(p.tgt)}</text></g>`;
+  });
+  if(CHAIN.length){
+    const hubIdx = POINTS.findIndex(p => p.hub);
+    const hubY = hubIdx >= 0 ? yAt(hubIdx) : roleY;
+    const chainX = tx + 250;
+    const spread = 70, first = hubY - spread * (CHAIN.length - 1) / 2;
+    CHAIN.forEach((c, i) => {
+      const y = CHAIN.length === 1 ? hubY : first + i * spread;
+      const stroke = c.status === "PASS" ? ok : faint;
+      edges += `<path d="M${tx+150},${hubY} C${tx+200},${hubY} ${chainX-60},${y} ${chainX},${y}" fill="none" stroke="${stroke}" stroke-width="2" opacity=".85"/>`;
+      nodes += `<g><circle cx="${chainX}" cy="${y}" r="5.5" fill="${surf}" stroke="${accent}" stroke-width="2"/><text x="${chainX+15}" y="${y+4}" font-family="IBM Plex Mono" font-size="12" fill="${muted}">${esc(c.to)}</text></g>`;
+    });
+    nodes += `<text x="${chainX+8}" y="24" text-anchor="middle" font-family="IBM Plex Sans" font-weight="600" font-size="12" fill="${faint}" letter-spacing=".04em">${esc(PAGE.graph.chainCaption)}</text>`;
+  }
+  const rn = `<g><rect x="${roleX-64}" y="${roleY-26}" width="128" height="52" rx="12" fill="${accent}"/><text x="${roleX}" y="${roleY-3}" text-anchor="middle" font-family="Archivo" font-weight="700" font-size="13" fill="#fff">${esc(PAGE.graph.rootLabel)}</text><text x="${roleX}" y="${roleY+14}" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#dfe6ff">${esc(PAGE.graph.rootSub)}</text></g>`;
+  const caps = POINTS.length
+    ? `<text x="${tx}" y="24" text-anchor="middle" font-family="IBM Plex Sans" font-weight="600" font-size="12" fill="${faint}" letter-spacing=".04em">${esc(PAGE.graph.pointsCaption)}</text>`
+    : '';
+  svg.innerHTML = caps + edges + nodes + rn;
+}
+drawGraph();
+
+/* ---- not analyzed ---- */
+el("notAnalyzed").innerHTML = PAGE.notAnalyzed.present
+  ? `<div class="blind">
+      <span class="i" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.4" r="1.1" fill="currentColor"/></svg></span>
+      <div><p><b>${esc(PAGE.notAnalyzed.headline)}</b> ${esc(PAGE.notAnalyzed.body)}</p>
+        <div class="chips">${PAGE.notAnalyzed.chips.map(c => `<code>${esc(c)}</code>`).join("")}</div></div>
+    </div>`
+  : emptyState(PAGE.notAnalyzed.emptyTitle, PAGE.notAnalyzed.emptyBody);
+
+/* ---- footer ---- */
+el("foot").innerHTML = PAGE.footer.map(f =>
+  `<span><b>${esc(f.k)}</b> ${esc(f.v)}</span>`).join('<span class="sep">/</span>');
+
+document.getElementById('tog').addEventListener('click',()=>{
+  const cur=document.documentElement.getAttribute('data-theme');
+  const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  document.documentElement.setAttribute('data-theme', cur ? (cur==='dark'?'light':'dark') : (dark?'light':'dark'));
+  drawGraph();
+});
+window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{
+  if(!document.documentElement.getAttribute('data-theme')) drawGraph();
+});
+
+/* scrollspy */
+const links=[...document.querySelectorAll('nav.jump a')];
+const byId=Object.fromEntries(links.map(a=>[a.getAttribute('href').slice(1), a]));
+const spy=new IntersectionObserver((ents)=>{ents.forEach(e=>{ if(e.isIntersecting){links.forEach(l=>l.classList.remove('active')); byId[e.target.id]?.classList.add('active');}});},{rootMargin:'-45% 0px -50% 0px', threshold:0});
+document.querySelectorAll('section[id]').forEach(s=>spy.observe(s));
+</script>

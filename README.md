@@ -374,7 +374,8 @@ Stated up front, because it is the first question anyone asks:
 In order:
 
 1. A release readiness page: one URL, one verdict, the graph, posture, and
-   what changed since the last release.
+   what changed since the last release. `itest report --html` ships the page —
+   see [docs/report.md](docs/report.md).
 2. The rest of the probe library — a marked message pushed through a queue or
    event mapping and observed arriving, a database round-trip — self-cleaning,
    timeboxed, and serialized per resource group, on the same gate as the HTTP

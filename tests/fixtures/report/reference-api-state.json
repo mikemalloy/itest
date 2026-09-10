@@ -1,0 +1,207 @@
+{
+  "format_version": "1.0",
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_apigatewayv2_api.reference",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_api",
+          "name": "reference",
+          "values": {
+            "id": "api-ref",
+            "api_endpoint": "https://ref.example.com"
+          }
+        },
+        {
+          "address": "aws_lambda_function.reference",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "reference",
+          "values": {
+            "function_name": "reference-api",
+            "arn": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_stage.default",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_stage",
+          "name": "default",
+          "values": {
+            "api_id": "api-ref",
+            "name": "$default"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_integration.secured_item_get",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_integration",
+          "name": "secured_item_get",
+          "values": {
+            "api_id": "api-ref",
+            "id": "int-secured_item_get",
+            "integration_type": "AWS_PROXY",
+            "integration_uri": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_route.secured_item_get",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "secured_item_get",
+          "values": {
+            "api_id": "api-ref",
+            "route_key": "GET /secured/item",
+            "target": "integrations/int-secured_item_get",
+            "authorization_type": "JWT"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_integration.secured_item_post",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_integration",
+          "name": "secured_item_post",
+          "values": {
+            "api_id": "api-ref",
+            "id": "int-secured_item_post",
+            "integration_type": "AWS_PROXY",
+            "integration_uri": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_route.secured_item_post",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "secured_item_post",
+          "values": {
+            "api_id": "api-ref",
+            "route_key": "POST /secured/item",
+            "target": "integrations/int-secured_item_post",
+            "authorization_type": "JWT"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_integration.public_info",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_integration",
+          "name": "public_info",
+          "values": {
+            "api_id": "api-ref",
+            "id": "int-public_info",
+            "integration_type": "AWS_PROXY",
+            "integration_uri": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_route.public_info",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "public_info",
+          "values": {
+            "api_id": "api-ref",
+            "route_key": "GET /public/info",
+            "target": "integrations/int-public_info",
+            "authorization_type": "NONE"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_integration.health",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_integration",
+          "name": "health",
+          "values": {
+            "api_id": "api-ref",
+            "id": "int-health",
+            "integration_type": "AWS_PROXY",
+            "integration_uri": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_route.health",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "health",
+          "values": {
+            "api_id": "api-ref",
+            "route_key": "GET /health",
+            "target": "integrations/int-health",
+            "authorization_type": "NONE"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_integration.secured_lookup",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_integration",
+          "name": "secured_lookup",
+          "values": {
+            "api_id": "api-ref",
+            "id": "int-secured_lookup",
+            "integration_type": "AWS_PROXY",
+            "integration_uri": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_route.secured_lookup",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "secured_lookup",
+          "values": {
+            "api_id": "api-ref",
+            "route_key": "GET /secured/lookup/{item_id}",
+            "target": "integrations/int-secured_lookup",
+            "authorization_type": "JWT"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_integration.leaky_action",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_integration",
+          "name": "leaky_action",
+          "values": {
+            "api_id": "api-ref",
+            "id": "int-leaky_action",
+            "integration_type": "AWS_PROXY",
+            "integration_uri": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_route.leaky_action",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "leaky_action",
+          "values": {
+            "api_id": "api-ref",
+            "route_key": "POST /leaky/action",
+            "target": "integrations/int-leaky_action",
+            "authorization_type": "NONE"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_integration.secured_me",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_integration",
+          "name": "secured_me",
+          "values": {
+            "api_id": "api-ref",
+            "id": "int-secured_me",
+            "integration_type": "AWS_PROXY",
+            "integration_uri": "arn:aws:lambda:us-east-2:222233334444:function:reference-api"
+          }
+        },
+        {
+          "address": "aws_apigatewayv2_route.secured_me",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "secured_me",
+          "values": {
+            "api_id": "api-ref",
+            "route_key": "GET /secured/me",
+            "target": "integrations/int-secured_me",
+            "authorization_type": "JWT"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -197,6 +197,90 @@ def verify(
 
 
 @app.command()
+def report(
+    html: bool = typer.Option(
+        True, "--html", help="Render the HTML readiness page (the only format today)."
+    ),
+    # B008: see the note on `plan` above — typer requires the call here.
+    out: Path = typer.Option(  # noqa: B008
+        Path("readiness.html"), "--out", help="Where to write the page."
+    ),
+    from_json: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--from",
+        help="A `verify --output json` document to render. Runs verify if omitted.",
+    ),
+    manifest: Path | None = typer.Option(  # noqa: B008
+        None, "--manifest", help="Manifest to read. Defaults to .itest/manifest.yaml."
+    ),
+    since: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--since",
+        help="A prior manifest. Only this turns on trends and the since-line.",
+    ),
+    redact: bool = typer.Option(
+        False, "--redact", help="Pseudonymize AWS account IDs, for safe sharing."
+    ),
+) -> None:
+    """Render the release readiness page from verify's results."""
+    from itest.core import environments, planner, verifier
+    from itest.core import manifest as manifest_module
+    from itest.core import redact as redact_engine
+    from itest.report import model as report_model
+    from itest.report import render as report_render
+
+    base_dir = Path.cwd()
+    manifest_file = manifest or planner.manifest_path(base_dir)
+    if not manifest_file.exists():
+        echo(f"No manifest found at {manifest_file}.", err=True)
+        raise typer.Exit(code=2)
+
+    try:
+        if from_json is None:
+            # The same in-process path `verify --output json` prints, so the
+            # page and that command can never disagree about a run.
+            document = json.loads(
+                verifier.run_verify(
+                    base_dir, output="json", redact_accounts=redact
+                ).model_dump_json()
+            )
+        else:
+            if not from_json.exists():
+                echo(f"No verify JSON found at {from_json}.", err=True)
+                raise typer.Exit(code=2)
+            raw = from_json.read_text(encoding="utf-8")
+            if redact:
+                # Verify's own scrubber, over the whole document: no second
+                # redaction implementation can drift from the first.
+                raw = redact_engine.text_scrubber()(raw)
+            document = json.loads(raw)
+    except (verifier.VerifyConfigError, environments.EnvironmentConfigError) as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    except json.JSONDecodeError as exc:
+        echo(f"{from_json} is not valid JSON: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
+    prior = manifest_module.load_manifest(since) if since else None
+    page = report_model.build(
+        document,
+        manifest_module.load_manifest(manifest_file),
+        prior=prior,
+        redacted=redact,
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report_render.render(page), encoding="utf-8")
+
+    # A status note about a file, like the one `redact` writes: unstyled, and
+    # it never carries the verdict into the exit code — that is verify's job.
+    typer.echo(f"Wrote {out} ({out.stat().st_size} bytes).")
+    typer.echo(
+        f"Verdict: {page.verdict.word} — {page.verdict.integrations_verified} of "
+        f"{page.verdict.integrations_total} integration points verified."
+    )
+
+
+@app.command()
 def add(
     # B008: typer's declarative API requires the Option() call in the default;
     # `...` marks the option required — the caller states each one explicitly.

@@ -294,6 +294,26 @@ Shipped:
   resolved from it, never pasted. fastapi + uvicorn are an `[examples]`
   optional-dependency group (mirrored into dev deps so the suite runs); the CLI
   itself pulls no web framework.
+- Readiness page (`itest report --html`): one self-contained HTML file built
+  from `verify --output json` plus the manifest and injected into the committed
+  template (`itest/report/templates/readiness.html`) at seven exact markers.
+  `itest/report/model.py` decides no markup and `render.py` decides no meaning;
+  string templating only, so no new runtime dependency. **Nothing on the page
+  is illustrative**: every number, name and status comes from verify JSON, the
+  manifest, or a fixed label, and a section whose source is absent renders
+  empty-but-named ("No agent tools declared") rather than as sample data — a
+  test asserts none of the design artifact's example data can reach output. A
+  stub-only run is AT RISK, never VERIFIED: a stub is not coverage, so a green
+  stamp over "0 of 26 verified" is the one thing the page must never print.
+  Trends and the since-line appear only with `--since <prior manifest>`, never
+  as "steady"; `--redact` reuses verify's own scrubber rather than adding a
+  second one. The verdict is not an exit code — that stays verify's job. Tests
+  pin the extracted data blocks, not pixels. Four things verify cannot supply
+  today are modelled Optional and listed in `docs/report.md`: the tool ledger
+  (P30/P31), the not-analyzed census (it lives in the plan), the release
+  commit, and which registered test was the anonymous probe — the last is why
+  the API sweep shows one Status column rather than an
+  Unauthenticated/Authenticated pair holding the same neutral value.
 
 Not yet built (do not build without explicit instruction):
 - DNS and endpoint-availability detectors
