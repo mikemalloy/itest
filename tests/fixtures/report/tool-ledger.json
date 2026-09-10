@@ -1,0 +1,71 @@
+{
+  "$comment": "Contract for the agent-tools section of the readiness page. Produced by `itest verify --output json` once tool points exist (P30/P31); consumed by `itest report --html` (P32). P32 ships this file as a fixture and a snapshot test; P31 adds a test asserting verify emits exactly this shape. Field names are final; add fields only by extending, never renaming.",
+  "tools": {
+    "servers": [
+      {
+        "server": "reference-mcp",
+        "environment": "staging",
+        "run_at": "2026-09-16T06:00:12Z",
+        "declaration": ".itest/tools/reference-mcp.yaml",
+        "summary": {
+          "declared": 6,
+          "live": 6,
+          "undeclared": 0,
+          "orphaned": 0,
+          "verified": 5,
+          "changed": 1,
+          "held_out": 0,
+          "not_verifiable": 0,
+          "critical": 0
+        },
+        "families": [
+          { "id": "A", "name": "Authority",     "checked": 6, "passed": 6, "not_verifiable": 0 },
+          { "id": "B", "name": "Blast radius",  "checked": 2, "passed": 2, "not_verifiable": 0 },
+          { "id": "C", "name": "Containment",   "checked": 0, "passed": 0, "not_verifiable": 0 },
+          { "id": "D", "name": "Change",        "checked": 6, "passed": 5, "not_verifiable": 0 }
+        ],
+        "tools": [
+          {
+            "name": "delete_record",
+            "point_id": "3f9a1c2b7d10",
+            "mutation": "destructive",
+            "mutation_source": "detected",
+            "egress": null,
+            "approval": "confirm_param",
+            "held_out": false,
+            "schema_hash": "a1b2c3d4e5f6",
+            "description_hash": "0f1e2d3c4b5a",
+            "checks": [
+              { "trait": "A1", "status": "pass", "detail": "unauthenticated tools/call refused (401)", "test": "itest_tests/test_tools_reference_mcp.py::test_a1_delete_record" },
+              { "trait": "B1", "status": "pass", "detail": "declared destructive; annotations destructiveHint=true; name pattern delete_*", "test": "itest_tests/test_tools_reference_mcp.py::test_b1_delete_record" },
+              { "trait": "D2", "status": "pass", "detail": "schema unchanged since v0.2.0", "test": "itest_tests/test_tools_reference_mcp.py::test_d2_delete_record" },
+              { "trait": "D3", "status": "pass", "detail": "description unchanged since v0.2.0", "test": "itest_tests/test_tools_reference_mcp.py::test_d3_delete_record" }
+            ]
+          },
+          {
+            "name": "update_record",
+            "point_id": "8c7d6e5f4a39",
+            "mutation": "write",
+            "mutation_source": "confirmed",
+            "egress": null,
+            "approval": null,
+            "held_out": false,
+            "schema_hash": "1a2b3c4d5e6f",
+            "description_hash": "9e8d7c6b5a40",
+            "checks": [
+              { "trait": "A1", "status": "pass", "detail": "unauthenticated tools/call refused (401)", "test": "…::test_a1_update_record" },
+              { "trait": "D3", "status": "changed", "detail": "description changed since v0.2.0", "test": "…::test_d3_update_record",
+                "change": { "previous": "Update fields on a record.", "current": "Update fields on a record and refresh its last-touched date." } }
+            ]
+          }
+        ],
+        "exceptions": [
+          { "kind": "changed",  "tool": "update_record", "trait": "D3", "message": "Description changed since v0.2.0; schema unchanged. Awaiting review." }
+        ]
+      }
+    ]
+  },
+  "status_vocabulary": ["pass", "fail", "critical", "changed", "held_out", "not_verifiable", "n/a"],
+  "mutation_vocabulary": ["read", "write", "destructive", "informational"],
+  "mutation_source_vocabulary": ["detected", "declared", "confirmed"]
+}
