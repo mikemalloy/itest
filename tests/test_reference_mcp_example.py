@@ -7,6 +7,7 @@ what a first-time reader clones is what has to work.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -15,10 +16,28 @@ from pathlib import Path
 
 import pytest
 import yaml
+from typer.testing import CliRunner
 
-from itest.core import environments, planner
+from itest.cli import app
+from itest.core import environments, planner, stubgen
 from itest.core.declarations import load_declarations
 from itest.core.declarations.tools import build_target
+from itest.core.manifest import load_manifest
+from itest.report.render import extract_blocks
+
+runner = CliRunner()
+
+#: The reference server's eight tools (pinned in tests/test_reference_mcp.py).
+TOOLS = (
+    "get_guide",
+    "search_records",
+    "fetch_record",
+    "create_record",
+    "update_record",
+    "delete_record",
+    "lookalike_read",
+    "enrich",
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_DIR = REPO_ROOT / "examples" / "reference-mcp"
@@ -139,3 +158,70 @@ def test_plan_launches_the_example_server_from_any_working_directory(
     assert unreachable == {}
     assert len(points) == 8
     assert orphaned == []
+
+
+# --- the contract: the example stays runnable ---------------------------------
+
+SERVER_DIR = "itest_tests/tools_reference_mcp"
+ENGINE = f"{SERVER_DIR}/test_reference_mcp__engine.py"
+ENGINE_ACTIVE = f"{SERVER_DIR}/test_reference_mcp__engine_active.py"
+GENERATED_ACTIVE = f"{SERVER_DIR}/test_reference_mcp__generated_active.py"
+CONFTEST = f"{SERVER_DIR}/conftest.py"
+
+
+@pytest.mark.slow
+def test_reference_mcp_runs_plan_sync_verify_report_from_its_own_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The four commands a first-time reader runs, from a clean copy of the
+    example: no --tf-json, no terraform, no `python` on PATH, no stub file made
+    by hand, no edit to anything shipped. The real server runs throughout."""
+    example = copy_example(tmp_path / "reference-mcp")
+    monkeypatch.chdir(example)
+    no_python_on_path(tmp_path, monkeypatch)
+    monkeypatch.setenv("REFERENCE_MCP_TOKEN", "dry-run-token")
+
+    # plan: eight tool points, nothing unreachable.
+    plan = runner.invoke(app, ["plan", "--output", "json"])
+    assert plan.exit_code == 0, plan.output
+    payload = json.loads(plan.output)
+    assert payload["unreachable_servers"] == {}
+    assert sorted(p["target"] for p in payload["new_points"]) == sorted(TOOLS)
+    assert {p["type"] for p in payload["new_points"]} == {"mcp_tool"}
+
+    # sync: answered at the prompt, as a person runs it.
+    sync = runner.invoke(app, ["sync"], input="y\n")
+    assert sync.exit_code == 0, sync.output
+    assert "Applied:" in sync.output
+
+    # The generated tree is exactly what sync writes, and nothing else.
+    written = sorted(
+        path.relative_to(example).as_posix()
+        for path in (example / "itest_tests").rglob("*.py")
+    )
+    assert written == sorted([CONFTEST, ENGINE, ENGINE_ACTIVE, GENERATED_ACTIVE])
+    manifest = load_manifest(example / ".itest" / "manifest.yaml")
+    assert {t.path for t in manifest.tests} == {ENGINE, ENGINE_ACTIVE, GENERATED_ACTIVE}
+    assert len([p for p in manifest.points if p.type == "mcp_tool"]) == 8
+    for path in written:  # no hand-written stub anywhere
+        text = (example / path).read_text(encoding="utf-8")
+        assert stubgen.STUB_SKIP_LINE not in text, path
+
+    # verify in staging: the suite runs; A1's findings are real, not errors.
+    verify = runner.invoke(app, ["verify", "--environment", "staging"])
+    assert verify.exit_code in (0, 1), verify.output
+    assert "8 integration points" in verify.output
+    assert "0 errored" in verify.output
+    assert "gated" not in verify.output
+
+    # report: a page naming all eight tools under a verdict band.
+    page = tmp_path / "readiness.html"
+    report = runner.invoke(app, ["report", "--html", "--out", str(page)])
+    assert report.exit_code == 0, report.output
+    html = page.read_text(encoding="utf-8")
+    for tool in TOOLS:
+        assert tool in html, tool
+    verdict = extract_blocks(html)["PAGE"]["verdict"]
+    assert verdict["word"] in ("VERIFIED", "AT RISK", "BLOCKED")
+    assert f"Verdict: {verdict['word']}" in report.output
+    assert 'class="verdict' in html
