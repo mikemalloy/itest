@@ -41,8 +41,8 @@ def check_d1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     to compare against.
 
     Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain); the Semgrep
-    MCP security cheatsheet's client-tab rows on tool name collisions and
-    untrusted tool descriptions (an unreviewed tool is where both start).
+    MCP security cheatsheet, client tab, row 14 (name collisions — a newly
+    appearing, unreviewed tool is where a colliding name comes from).
     """
     server, tool = server_of(point), tool_of(point)
     try:
@@ -113,8 +113,8 @@ def check_d2(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
       the manifest recorded no hash.
 
     Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain) — a tool whose
-    contract moves under a pinned review; the Semgrep MCP security cheatsheet's
-    client-tab rows on name collisions and untrusted descriptions.
+    contract moves under a pinned review; the Semgrep MCP security cheatsheet,
+    client tab, rows 12 and 14 (untrusted descriptions, name collisions).
     """
     return _hash_check("schema_hash", "input schema", point, target, authenticated)
 
@@ -136,7 +136,6 @@ def check_d3(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
 
     Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain); OWASP LLM Top
     10 LLM01 (prompt injection, via the description); the Semgrep MCP security
-    cheatsheet's client-tab rows on untrusted tool descriptions and name
-    collisions.
+    cheatsheet, client tab, row 12 (tool descriptions treated as untrusted).
     """
     return _hash_check("description_hash", "description", point, target, authenticated)

@@ -81,9 +81,8 @@ def check_b1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     store — which is the active-tier "B1 observed" check, not this one.
 
     Standards: OWASP Agentic Top 10 ASI02 (Tool Misuse); the OWASP Agent Control
-    Standard's AgBOM mutation attribute. Semgrep cheatsheet: no row mapped (the
-    cheatsheet's server-tab annotation rows describe what a server should emit,
-    not a cross-check of it).
+    Standard's AgBOM mutation attribute. Semgrep MCP security cheatsheet: no row
+    mapped — it has no row for cross-checking a tool's annotations.
     """
     server, tool = server_of(point), tool_of(point)
     attributes = attributes_of(point)
