@@ -12,6 +12,18 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 - All commands must support machine-readable output (--output json) in addition
   to human terminal output.
 
+## Invariants
+- **The amount of generated code a human must maintain is proportional to the
+  facts only a human could supply, never to the number of tools.**
+- **Ownership.** A generated file whose content still matches its ownership hash
+  is ITest's and may be regenerated; a file a human edited is frozen — ITest
+  reports it, never rewrites it. A file that is human-owned from birth (a
+  declared server's `conftest.py`) carries no ownership hash at all.
+- **Nothing generated is ever deleted.** A check that no longer applies is
+  retired in place and reported; an orphan stays an orphan.
+- **No hardcoded trait rules.** `itest/traits/traits.yaml` is the only source of
+  which checks a declared tool gets.
+
 ## Command semantics (mirror Terraform's plan/apply model)
 - `itest plan`: reads `terraform show -json` output plus the existing manifest,
   detects integration points, prints a proposed changeset (new points, orphaned
@@ -233,6 +245,45 @@ it erase what is known: an unreachable server's recorded points are **held** as
 last recorded and their tests are never orphan candidates, and sync refuses to
 write (exit 1, the server named) unless `--allow-unreachable` accepts the gap.
 
+**The table is live.** Every plan recomputes every declared tool's trait set from
+the current table and the tool's current attributes, and diffs it against the
+`traits_planned` the manifest recorded, so a table edit or a tool that moved is
+a "Trait changes" line — `+A2 on server/tool (rule: ...)`,
+`−B2 on server/tool (mutation changed)` — and the manifest's `trait_table_hash`
+(over the table's parsed content) says when the table itself changed. The
+mutation class as detected (the resolved class and an `annotations_hash`) is a
+drift attribute: an annotation flip is `changed`, never a quiet `unchanged`. A
+trait that stops applying **retires** its test (`retired: true`: kept on disk,
+never run, reported `not_applicable`) and restores the same entry if it applies
+again. `itest traits` / `itest recipes` print the table, one tool's decisions,
+and the recipes it names, from the manifest and the table alone.
+
+### Engine checks and generated checks
+Each trait row says who runs it (`kind`). An **engine** check needs nothing but
+the tool's point and a way to reach its server, so there is no per-tool code for
+it: each declared server gets one engine module per tier, a single test the
+engine parametrizes over the manifest at collection time and runs through
+`itest.checks.run_engine_check` — a tool added to the manifest is covered without
+regenerating anything, and each case is registered as `test_engine[<tool>-<id>]`
+so verify maps its result. A **generated** check needs a fact only a human can
+supply (a second tenant's record, the identity the server should act as), so it
+gets one thin binding per tool — a frozen docstring (point id, trait id, the
+schema hash it was generated against), one import, one call to
+`run_generated_check` — fed by a `<trait>_fixtures` fixture in the server's
+`conftest.py`, which sync writes once and never again. What a human maintains is
+that one conftest, whatever the number of tools. The library the generated code
+binds to (`itest/traits/runtime.py`) is ITest's, so fixing it fixes every check.
+
+**Lifecycle states.** Every check in verify's tool ledger carries a `state`:
+`current` (ITest-owned, generated against the current schema), `hand_edited`
+(ownership hash differs), `stale` (hand-edited *and* generated against a schema
+the tool no longer has), `not_applicable` (retired), `orphan` (the tool is gone),
+and `recipe_newer` (defined, not yet emitted: nothing records a recipe version).
+VERIFIED is a coverage claim — every planned trait needs a counted check that
+passed — and stale, not-applicable and orphaned checks do not count; any stale
+check makes the page AT RISK and leads the exceptions. `docs/traits.md` is the
+reference.
+
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
   the manifest: recipes hold policy (what a good assertion for a point type
@@ -355,29 +406,48 @@ Shipped:
   `tools/list` with the mutation-class cross-check and per-field provenance,
   plan's **changed** / **orphaned tool override** / **unreachable server**
   sections (all append-only, so a terraform-only plan is byte-identical), the
-  applies-when table (`itest/traits/traits.yaml`, eleven traits in four families)
+  applies-when table (`itest/traits/traits.yaml`, eleven traits in four families at P30)
   driving one stub per (tool, trait) with the active tier in its own file, and
   `itest add --server` to register a hand-written test onto a tool point by name.
   No manifest schema bump: `mcp_tool` is a new value of an existing field.
+- The live trait table (`docs/traits.md`): a `kind` column (engine | generated),
+  A3/A4 identity rows and C3 output hygiene (fourteen traits), loader validation
+  (unique ids, known families, kind, tier, parseable `applies_when` over known
+  attributes — at load), and `trait_table_hash()` over the parsed table. Every
+  sync recomputes every tool's trait set and diffs it against `traits_planned`
+  (P30 manifests fall back to their per-trait tests); gains and retirements are
+  plan lines, `is_noop` counts them, and the mutation class is a drift
+  attribute. Manifest additions (`trait_table_hash`, `traits_planned`,
+  `trait`, `retired`) are optional and written only when set, so P30 and
+  declaration-free manifests load and round-trip byte for byte — no schema
+  bump.
+- Lifecycle states per check in verify's tool ledger (`tools.servers[]`, now
+  emitted), stale blocking VERIFIED, and state tags plus a "needs attention"
+  line on the readiness page.
+- `itest traits` (table, `--for <server>/<tool>`, `--json`) and `itest recipes`.
+- Thin binding stubs for generated traits, one parametrized engine module per
+  server and tier, and a human-owned conftest written once
+  (`itest_tests/tools_<server>/`); `itest/traits/runtime.py` is what they bind
+  to, and `itest/checks/` holds the agreed contract stub until 31A's library
+  replaces it.
+- Packaging: `traits.yaml` and the readiness template ship in the wheel and are
+  read through `importlib.resources`.
 - MCP probe SSRF guard: `McpTarget` refuses a loopback / link-local / metadata
   host and any non-http(s) scheme before the transport is built, reusing the HTTP
   probe's own check, with `allow_private_hosts=True` for a deliberate local
   target.
 
 Not yet built (do not build without explicit instruction):
-- The tool section of `verify --output json`
-  (`tests/fixtures/report/tool-ledger.json`) and the readiness page's tool
-  ledger. Deliberately **not** emitted yet, because most of that contract cannot
-  be filled truthfully from what verify knows: a per-check `detail` is a recipe's
-  assertion message, `status: changed` is plan's finding rather than verify's,
-  `change.previous` needs the previous description *text* (the manifest stores
-  only its hash), and `held_out` / `not_verifiable` / `critical` / `undeclared`
-  are judgments only a P31 recipe makes. Emitting zeros and nulls for them would
-  put illustrative data on a page whose whole rule is that nothing on it is
-  illustrative. P31 ships the recipes and the section together.
-- Tool recipes and the declaration interview (P31): the eleven `recipe:` files
-  the trait table names, and the skill flow that writes a declaration by asking.
-  The table ships in the minimal form P31 formalizes.
+- Tool recipes and the declaration interview (P31/31A): the recipe files the
+  trait table names (`itest recipes` lists which exist) and the skill flow that
+  writes a declaration by asking. Until the engine-check library lands, every
+  engine check skips as not implemented and every generated binding skips on
+  its unfilled fixture — reported `not_run`, never pass.
+- Regeneration of ITest-owned stubs on recipe change (and so `recipe_newer`:
+  nothing records the recipe version a check was generated from).
+- A declaration reconfirm flag: a way for a reviewer to accept a `changed` or
+  `stale` finding in the declaration rather than by editing the check.
+- The PR loop: sync opening a pull request for the checks it adds or retires.
 - Behavioural mutation checks. A tool that lies *consistently* —
   `lookalike_read` declares `readOnlyHint=true`, is named like a read, and
   mutates — cannot be caught by any reading of `tools/list`, so the cross-check
