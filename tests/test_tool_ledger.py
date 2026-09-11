@@ -12,8 +12,10 @@ tool *today*:
 ``current``        ITest-owned (ownership hash matches) and generated against
                    the tool's current schema
 ``hand_edited``    a human changed the file (ownership hash differs)
-``stale``          hand-edited AND generated against a schema the tool no
-                   longer has — nobody has re-read it since the tool moved
+``stale``          generated against a schema the tool no longer has — nobody
+                   has re-read it since the tool moved. Hand-edited, it stays
+                   stale until a human does; ITest-owned, the next sync
+                   regenerates it
 ``not_applicable`` retired: the trait no longer applies
 ``orphan``         the tool is gone; the test is kept, never deleted
 
@@ -334,6 +336,9 @@ def test_state_is_computed_from_the_manifest_and_the_files(tmp_path: Path) -> No
     assert state(owned, "aaaaaaaaaaaa") == "current"
     assert state("edited", "aaaaaaaaaaaa") == "hand_edited"
     assert state("edited", "bbbbbbbbbbbb") == "stale"
+    # Owning the file does not make a check frozen against an old schema
+    # current: until a sync regenerates it, it is stale.
+    assert state(owned, "bbbbbbbbbbbb") == "stale"
     assert state(owned, "aaaaaaaaaaaa", retired=True) == "not_applicable"
     assert state(owned, "aaaaaaaaaaaa", orphaned=True) == "orphan"
 
@@ -412,3 +417,132 @@ def test_the_rendered_page_tags_state_and_says_what_needs_attention(
     assert blocks["PAGE"]["tools"]["attention"] == [
         "reference-mcp needs attention: 3 hand-edited, 1 stale"
     ]
+
+
+# --- an owned binding whose schema moved -------------------------------------------
+
+
+def _point_id(workdir: Path, tool: str) -> str:
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    return next(p.id for p in manifest.points if p.target == tool)
+
+
+def _frozen_schemas(workdir: Path, point_id: str) -> set[str]:
+    """The ``schema:`` every binding for ``point_id`` was frozen with."""
+    text = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
+    return {
+        line.rsplit("schema: ", 1)[1].strip().rstrip('"')
+        for line in text.splitlines()
+        if f"itest point: {point_id} " in line
+    }
+
+
+def _record_schema(workdir: Path, tool: str, schema: str) -> None:
+    """The manifest now says the tool's schema is ``schema``; no file moves."""
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_file)
+    point = next(p for p in manifest.points if p.target == tool)
+    point.attributes["schema_hash"] = schema
+    save_manifest(manifest, manifest_file)
+
+
+def _refreeze(workdir: Path, point_id: str, schema: str) -> None:
+    """Rewrite one tool's bindings as though generated against ``schema``, and
+    record the result as ITest's (the file stays owned)."""
+    path = workdir / ACTIVE_FILE
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if f"itest point: {point_id} " in line:
+            head = line.rsplit("schema: ", 1)[0]
+            lines[i] = f'{head}schema: {schema}"""\n'
+    path.write_text("".join(lines), encoding="utf-8")
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_file)
+    for test in manifest.tests:
+        if test.path == ACTIVE_FILE:
+            test.ownership_hash = stubgen.file_hash(path)
+    save_manifest(manifest, manifest_file)
+
+
+OLD_SCHEMA = "0123456789ab"
+DELETE_GENERATED = {("delete_record", t) for t in ("A2", "A3", "B2", "B4")}
+
+
+def test_an_owned_binding_whose_schema_moved_is_stale_without_a_sync(
+    workdir: Path,
+) -> None:
+    """Nothing regenerated it, so nobody has read it against the tool as it is:
+    ITest owning the file does not make it current."""
+    _record_schema(workdir, "delete_record", OLD_SCHEMA)
+
+    payload = _verify()
+    checks = _checks(payload["tools"])
+    for key in DELETE_GENERATED:
+        assert checks[key]["state"] == "stale", key
+    assert checks[("create_record", "B4")]["state"] == "current"
+    assert checks[("delete_record", "A1")]["state"] == "current"  # engine module
+    (server,) = payload["tools"]["servers"]
+    stale = [e for e in server["exceptions"] if e["kind"] == "stale"]
+    assert {(e["tool"], e["trait"]) for e in stale} == DELETE_GENERATED
+    assert all("itest sync" in e["message"] for e in stale)
+    assert all("by hand" not in e["message"] for e in stale)
+
+
+def test_sync_regenerates_an_owned_binding_whose_schema_moved(
+    workdir: Path,
+) -> None:
+    """The schema moves (the manifest and the bindings both say the old one,
+    the live server the new); one sync regenerates the owned bindings, and
+    verify finds them current."""
+    point_id = _point_id(workdir, "delete_record")
+    (live,) = _frozen_schemas(workdir, point_id)
+    _record_schema(workdir, "delete_record", OLD_SCHEMA)
+    _refreeze(workdir, point_id, OLD_SCHEMA)
+    assert _frozen_schemas(workdir, point_id) == {OLD_SCHEMA}
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert "regenerated 4 check(s)" in result.output
+    assert _frozen_schemas(workdir, point_id) == {live}
+    # Still ITest's: the recorded hash is the regenerated file's.
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    recorded = {t.ownership_hash for t in manifest.tests if t.path == ACTIVE_FILE}
+    assert recorded == {stubgen.file_hash(workdir / ACTIVE_FILE)}
+
+    checks = _checks(_verify()["tools"])
+    for key in DELETE_GENERATED:
+        assert checks[key]["state"] == "current", key
+
+
+def test_a_no_op_sync_still_regenerates_an_owned_binding_left_behind(
+    workdir: Path,
+) -> None:
+    """The manifest already records the live schema (an older sync moved it and
+    did not regenerate), so the plan is a no-op — and the binding is still
+    regenerated, because a file ITest owns is ITest's to bring up to date."""
+    point_id = _point_id(workdir, "delete_record")
+    (live,) = _frozen_schemas(workdir, point_id)
+    _refreeze(workdir, point_id, OLD_SCHEMA)
+    assert _checks(_verify()["tools"])[("delete_record", "B2")]["state"] == "stale"
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert _frozen_schemas(workdir, point_id) == {live}
+    checks = _checks(_verify()["tools"])
+    for key in DELETE_GENERATED:
+        assert checks[key]["state"] == "current", key
+
+
+def test_sync_never_regenerates_a_hand_edited_binding(workdir: Path) -> None:
+    """A human edited it: frozen and reported, never rewritten."""
+    path = workdir / ACTIVE_FILE
+    path.write_text(path.read_text(encoding="utf-8") + "# reviewed\n", "utf-8")
+    point_id = _point_id(workdir, "delete_record")
+    _record_schema(workdir, "delete_record", OLD_SCHEMA)
+    edited = path.read_text(encoding="utf-8")
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert "regenerated" not in result.output
+    assert path.read_text(encoding="utf-8") == edited
+    assert OLD_SCHEMA not in _frozen_schemas(workdir, point_id)

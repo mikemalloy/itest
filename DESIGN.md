@@ -319,8 +319,9 @@ binds to (`itest/traits/runtime.py`) is ITest's, so fixing it fixes every check.
 
 **Lifecycle states.** Every check in verify's tool ledger carries a `state`:
 `current` (ITest-owned, generated against the current schema), `hand_edited`
-(ownership hash differs), `stale` (hand-edited *and* generated against a schema
-the tool no longer has), `not_applicable` (retired), `orphan` (the tool is gone),
+(ownership hash differs), `stale` (generated against a schema the tool no longer
+has — hand-edited and frozen, or ITest-owned and not yet regenerated; every sync
+regenerates the owned ones), `not_applicable` (retired), `orphan` (the tool is gone),
 and `recipe_newer` (defined, not yet emitted: nothing records a recipe version).
 VERIFIED is a coverage claim — every planned trait needs a counted check that
 passed — and stale, not-applicable and orphaned checks do not count; any stale

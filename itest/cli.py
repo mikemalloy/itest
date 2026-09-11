@@ -157,11 +157,18 @@ def sync(
     if syncer.is_noop(changeset):
         # Nothing to apply, but a stub implemented by hand since the last run
         # still has to be recorded: status is derived from the body, not from
-        # whether the plan moved.
+        # whether the plan moved. Likewise an owned binding frozen against a
+        # schema the manifest has since moved past is ITest's to regenerate.
+        regenerated = syncer.regenerate(base_dir)
         reclassified = syncer.reconcile(base_dir)
+        if regenerated:
+            echo(
+                f"Regenerated {regenerated} check(s) against their tool's "
+                "current schema."
+            )
         if reclassified:
             echo(f"Reclassified {reclassified} test(s) from their bodies.")
-        else:
+        if not (regenerated or reclassified):
             echo("No changes to apply. Manifest is up to date.")
         return
 

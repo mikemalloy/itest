@@ -143,6 +143,13 @@ ITest and may be regenerated. A file a human has edited is frozen: ITest
 reports it and never rewrites it. `conftest.py` is human-owned from birth and
 has no ownership hash.
 
+A binding records the schema it was generated against (`schema:` in its
+docstring). When the tool's schema moves, every sync — a no-op one included —
+regenerates the bindings ITest still owns against the new schema and records
+their new hash, so after a sync they are `current` again. A verify that runs
+before that sync reports them `stale`, never `current`: nothing has read them
+against the tool as it now is. A hand-edited binding is never regenerated.
+
 ## Lifecycle states
 
 Every check in verify's tool ledger carries a `state`:
@@ -151,7 +158,7 @@ Every check in verify's tool ledger carries a `state`:
 |---|---|---|
 | `current` | ITest-owned, and generated against the tool's current schema | yes |
 | `hand_edited` | a human changed the file (its ownership hash differs) | yes |
-| `stale` | hand-edited, *and* generated against a schema the tool no longer has | **no**, and a server with one cannot be VERIFIED |
+| `stale` | generated against a schema the tool no longer has: hand-edited (frozen until a human re-reads it), or ITest-owned and not yet regenerated (the next `itest sync` regenerates it) | **no**, and a server with one cannot be VERIFIED |
 | `recipe_newer` | the recipe moved since the check was generated | not emitted yet: nothing records a recipe version |
 | `not_applicable` | retired: the trait no longer applies | no |
 | `orphan` | the tool is gone, and the test is kept | no (listed under exceptions) |

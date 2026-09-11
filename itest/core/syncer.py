@@ -12,11 +12,18 @@ For declared tools it also applies the trait plan: it records each tool's
 **retires** the test of a trait that no longer applies — kept on disk and in the
 manifest, never run — restoring the same entry if the trait applies again.
 Nothing generated is ever deleted.
+
+A binding ITest still owns (its file matches the recorded ownership hash) whose
+frozen ``schema:`` is not the tool's current schema is **regenerated**: owning a
+file is what lets ITest bring it up to date, and a check left frozen against a
+schema the tool no longer has is ``stale`` in verify. A hand-edited file is
+never touched; verify reports it.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
@@ -62,6 +69,8 @@ class SyncResult(BaseModel):
     #: Per-trait tests whose trait stopped applying, and ones that came back.
     retired_checks: int = 0
     restored_checks: int = 0
+    #: ITest-owned bindings re-frozen against their tool's current schema.
+    regenerated_checks: int = 0
     #: Engine cases newly registered: (tool, engine trait) pairs the engine
     #: module now runs. No code is written for them.
     registered_engine_checks: int = 0
@@ -84,6 +93,11 @@ class SyncResult(BaseModel):
             if self.recorded_changes
             else ""
         )
+        regenerated = (
+            f"regenerated {self.regenerated_checks} check(s), "
+            if self.regenerated_checks
+            else ""
+        )
         retired = (
             f"retired {self.retired_checks} check(s), " if self.retired_checks else ""
         )
@@ -103,6 +117,7 @@ class SyncResult(BaseModel):
             f"{resurrected}"
             f"{reclassified}"
             f"{recorded}"
+            f"{regenerated}"
             f"{engine}"
             f"{retired}"
             f"{restored}"
@@ -180,6 +195,9 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
     flagged = _flag_orphans(manifest, changeset)
     _record_entry_traits(manifest)
     retired, restored = _apply_trait_lifecycle(manifest, changeset)
+    # Before any append: a regenerated file records its new hash first, so the
+    # human-modified check below still reads it as ITest's.
+    regenerated = _regenerate_owned_bindings(manifest, base_dir)
     engine = _write_tool_support(manifest, changeset, base_dir)
     added, human_modified_files = _generate_stubs(manifest, changeset, base_dir)
     # Last, so it reads the stubs this run just wrote as well as the ones a
@@ -197,6 +215,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         recorded_changes=len(changeset.changed_points),
         retired_checks=retired,
         restored_checks=restored,
+        regenerated_checks=regenerated,
         registered_engine_checks=engine,
         human_modified_files=human_modified_files,
     )
@@ -220,6 +239,86 @@ def reconcile(base_dir: Path) -> int:
     if changed:
         save_manifest(manifest, manifest_file)
     return changed
+
+
+def regenerate(base_dir: Path) -> int:
+    """Regenerate owned bindings when the changeset itself is a no-op.
+
+    The manifest can already record a tool's current schema while a binding is
+    still frozen against the old one (a sync from before regeneration existed).
+    No plan moves, so ``apply`` never runs; this is what brings the file up to
+    date. Returns the number of bindings regenerated; writes only when one was.
+    """
+    manifest_file = planner.manifest_path(base_dir)
+    if not manifest_file.exists():
+        return 0
+    manifest = load_manifest(manifest_file)
+    regenerated = _regenerate_owned_bindings(manifest, base_dir)
+    if regenerated:
+        save_manifest(manifest, manifest_file)
+    return regenerated
+
+
+#: A generated binding's frozen docstring line (``stubgen.render_generated_stub``).
+_BINDING_DOCSTRING = re.compile(
+    r'^(?P<head>[ \t]*"""itest point: (?P<point>\S+)[ \t]+trait: \S+[ \t]+schema: )'
+    r'(?P<schema>\S+?)(?P<tail>"""[ \t]*)$',
+    re.MULTILINE,
+)
+
+
+def _regenerate_owned_bindings(manifest: Manifest, base_dir: Path) -> int:
+    """Re-freeze every ITest-owned binding against its tool's current schema.
+
+    A binding's body does not depend on the schema; its docstring records the
+    one it was generated against, and that is what verify compares. So
+    regenerating one is rewriting that line — only in a file whose content
+    still matches its recorded ownership hash. A hand-edited file is frozen:
+    left byte for byte, and reported by verify as ``stale``. A regenerated file
+    records its new hash on every entry it holds, so it stays ITest's. Returns
+    the number of bindings regenerated.
+    """
+    schemas = {
+        p.id: p.attributes.get("schema_hash")
+        for p in manifest.points
+        if p.type == _TOOL_POINT_TYPE
+    }
+    files = sorted(
+        {
+            t.path
+            for t in manifest.tests
+            if t.point_id in schemas
+            and t.trait is not None
+            and t.status != "orphaned"
+            and not _is_engine_case(t)
+        }
+    )
+    regenerated = 0
+    for file_rel in files:
+        file_abs = stubgen.stub_file_path(base_dir, file_rel)
+        recorded = {t.ownership_hash for t in manifest.tests if t.path == file_rel}
+        if not file_abs.exists() or stubgen.file_hash(file_abs) not in recorded:
+            continue  # hand-edited (or gone): frozen, and verify says so
+        moved = 0
+
+        def refreeze(match: re.Match) -> str:
+            nonlocal moved
+            current = schemas.get(match["point"])
+            if not current or current == match["schema"]:
+                return match.group(0)
+            moved += 1
+            return f"{match['head']}{current}{match['tail']}"
+
+        text = _BINDING_DOCSTRING.sub(refreeze, file_abs.read_text(encoding="utf-8"))
+        if not moved:
+            continue
+        file_abs.write_text(text, encoding="utf-8")
+        owned = stubgen.file_hash(file_abs)
+        for test in manifest.tests:
+            if test.path == file_rel:
+                test.ownership_hash = owned
+        regenerated += moved
+    return regenerated
 
 
 def _refresh_point_registry(

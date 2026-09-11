@@ -560,24 +560,28 @@ def check_state(
     """How far one check's test can be trusted as a statement about the tool.
 
     ``orphan`` and ``not_applicable`` come from the manifest. Otherwise the file
-    decides: whose it is (its content against the recorded ownership hash) and
-    what it was generated against (the docstring's ``schema:``). ``stale`` is
-    the dangerous one — a human edited the check, and the tool's schema has
-    moved since it was generated, so nobody has read it against the tool as it
-    is. An ITest-owned file is ``current``: a binding has no schema-dependent
-    body, and an engine module reads the manifest live. ``recipe_newer`` is not
-    computed: nothing records which recipe version a check was generated from.
+    decides: what it was generated against (the docstring's ``schema:``) and
+    whose it is (its content against the recorded ownership hash). ``stale`` is
+    the dangerous one — the check was generated against a schema the tool no
+    longer has, so nobody has read it against the tool as it is. That holds
+    whoever owns the file: a hand-edited one is frozen until a human re-reads
+    it, and an ITest-owned one until ``itest sync`` regenerates it (which every
+    sync does). Otherwise an owned file is ``current`` and an edited one
+    ``hand_edited``; an engine module has no ``schema:`` and reads the manifest
+    live. ``recipe_newer`` is not computed: nothing records which recipe version
+    a check was generated from.
     """
     if orphaned:
         return "orphan"
     if retired:
         return "not_applicable"
     file = base_dir / path
-    if file.exists() and stubgen.file_hash(file) == ownership_hash:
-        return "current"
-    schema = _docstring_schema(file, test_name) if file.exists() else None
+    exists = file.exists()
+    schema = _docstring_schema(file, test_name) if exists else None
     if schema is not None and point_schema is not None and schema != point_schema:
         return "stale"
+    if exists and stubgen.file_hash(file) == ownership_hash:
+        return "current"
     return "hand_edited"
 
 
@@ -677,17 +681,24 @@ def _tool_checks(
             "state": state,
         }
         if state == "stale":
-            frozen = _docstring_schema(base_dir / entry.path, entry.test_name)
+            file = base_dir / entry.path
+            frozen = _docstring_schema(file, entry.test_name)
+            owned = stubgen.file_hash(file) == entry.ownership_hash
+            message = (
+                f"{entry.canonical} was generated against schema {frozen}; the "
+                f"tool's schema is now {schema}. ITest owns the file: run "
+                "`itest sync` to regenerate it."
+                if owned
+                else f"{entry.canonical} was edited by hand and generated "
+                f"against schema {frozen}; the tool's schema is now "
+                f"{schema}. Re-read it against the tool as it is."
+            )
             exceptions.append(
                 {
                     "kind": "stale",
                     "tool": point.target,
                     "trait": trait_id,
-                    "message": (
-                        f"{entry.canonical} was edited by hand and generated "
-                        f"against schema {frozen}; the tool's schema is now "
-                        f"{schema}. Re-read it against the tool as it is."
-                    ),
+                    "message": message,
                 }
             )
         elif status in ("critical", "fail", "changed"):
