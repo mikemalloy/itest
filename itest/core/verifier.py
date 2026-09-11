@@ -21,7 +21,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core import environments, planner, points, redact, stubgen
+from itest.core import environments, lifecycle, planner, points, redact, stubgen
 from itest.core.manifest import (
     IntegrationPoint,
     Manifest,
@@ -525,8 +525,8 @@ _OUTCOME_STATUS = {
 #: Statuses that mean the check actually ran and said something.
 _RAN = ("pass", "fail", "critical", "changed", "not_verifiable")
 
-#: Lifecycle states that count toward VERIFIED.
-_COUNTED = ("current", "hand_edited", "recipe_newer")
+#: Lifecycle states that count toward VERIFIED (derived in itest.core.lifecycle).
+_COUNTED = lifecycle.COUNTED_STATES
 
 _SCHEMA = re.compile(r"schema: (?P<schema>\S+)")
 
@@ -538,7 +538,7 @@ def _docstring_schema(path: Path, test_name: str) -> str | None:
     except (OSError, SyntaxError):
         return None
     name = test_name.split("[", 1)[0]
-    for node in tree.body:
+    for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and (
             node.name == name
         ):

@@ -191,8 +191,8 @@ checks or it needs those ones.
 Not from this file, and not from code: from
 [`itest/traits/traits.yaml`](../itest/traits/traits.yaml), whose `applies_when`
 column is a tiny expression over the tool's own attributes (`mutation`,
-`egress`, `has_free_form_input`, and three server facts: `auth.second_tenant_env`,
-`audit.sink` and `identity.runs_as`). The table is live. Every sync recomputes
+`egress`, `approval`, `active`, `has_free_form_input`, and three server facts:
+`auth.second_tenant_env`, `audit.sink` and `identity.runs_as`). The table is live. Every sync recomputes
 every tool's trait set from the current table and the tool's current
 attributes, and compares it with the set the manifest recorded
 (`traits_planned`). A trait that newly applies gains a check. A trait that

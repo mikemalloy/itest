@@ -11,6 +11,7 @@ edit (a new row, a moved rule, a different recipe) is a visible diff here.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -25,8 +26,14 @@ SNAPSHOTS = Path(__file__).resolve().parent / "fixtures" / "traits" / "snapshots
 
 
 def snapshot(name: str, actual: str) -> None:
-    """Compare against the committed snapshot, or write it the first time."""
+    """Compare against the committed snapshot, or write it the first time.
+
+    Never writes under CI: a missing snapshot there is a failure, not a new
+    baseline nobody reviewed.
+    """
     path = SNAPSHOTS / f"{name}.txt"
+    if not path.exists() and os.environ.get("CI"):
+        pytest.fail(f"Missing snapshot {path}; generate it locally and commit it.")
     if not path.exists():  # pragma: no cover - only on a new snapshot
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(actual, encoding="utf-8")

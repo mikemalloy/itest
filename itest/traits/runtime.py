@@ -67,13 +67,17 @@ def _manifest(start: Path) -> tuple[Path, Manifest]:
     return root, load_manifest(root / MANIFEST_REL)
 
 
-def engine_cases(module_file: str, server: str, tier: str) -> list:
-    """Every engine trait of every ``server`` tool in ``tier``, as pytest params.
+def engine_cases(module_file: str, server: str, group: str) -> list:
+    """Every engine trait of every ``server`` tool in ``group``, as pytest params.
+
+    ``group`` is the module's half of the two-way split (``stubgen.engine_group``):
+    ``active`` collects active-tier engine traits, ``passive`` every other tier.
 
     Read from the manifest's ``traits_planned`` — what the last sync decided —
     and typed by the trait table. Case ids are ``<tool>-<trait>``, which is the
     node name sync registers, so verify maps each result to its point.
     """
+    from itest.core import stubgen
     from itest.core.declarations.traits import load_traits
 
     _root, manifest = _manifest(Path(module_file).parent)
@@ -84,7 +88,11 @@ def engine_cases(module_file: str, server: str, tier: str) -> list:
             continue
         for trait_id in point.traits_planned or []:
             trait = table.get(trait_id)
-            if trait is None or trait.kind != "engine" or trait.tier != tier:
+            if (
+                trait is None
+                or trait.kind != "engine"
+                or stubgen.engine_group(trait.tier) != group
+            ):
                 continue
             cases.append(
                 pytest.param(

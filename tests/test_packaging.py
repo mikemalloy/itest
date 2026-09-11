@@ -34,9 +34,21 @@ print("ok")
 
 
 def _build_command(out_dir: Path) -> list[str] | None:
-    """``python -m build --wheel`` when available, else ``pip wheel``."""
+    """``python -m build --wheel`` when available, else ``pip wheel``.
+
+    ``--no-isolation`` builds with this interpreter's setuptools rather than
+    fetching one into an isolated environment, so the test needs no network.
+    """
     if importlib.util.find_spec("build") is not None:
-        return [sys.executable, "-m", "build", "--wheel", "--outdir", str(out_dir)]
+        return [
+            sys.executable,
+            "-m",
+            "build",
+            "--wheel",
+            "--no-isolation",
+            "--outdir",
+            str(out_dir),
+        ]
     if importlib.util.find_spec("pip") is not None:
         return [sys.executable, "-m", "pip", "wheel", ".", "--no-deps", "-w"] + [
             str(out_dir)

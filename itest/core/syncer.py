@@ -379,7 +379,7 @@ def _record_entry_traits(manifest: Manifest) -> None:
     tool_ids = {p.id for p in manifest.points if p.type == _TOOL_POINT_TYPE}
     for test in manifest.tests:
         if test.trait is None and test.point_id in tool_ids:
-            test.trait = planner._trait_from_entry(test)
+            test.trait = planner.trait_from_entry(test)
 
 
 def _apply_trait_lifecycle(manifest: Manifest, changeset: Changeset) -> tuple[int, int]:
@@ -466,7 +466,8 @@ def _write_tool_support(
 ) -> int:
     """Each observed server's engine modules and its conftest; register cases.
 
-    An **engine module** (one per server and tier that has an engine trait) is
+    An **engine module** (one per server and group — active, or passive for
+    every other tier — that has an engine trait) is
     ITest-owned: written when absent, rewritten when it no longer matches the
     template *and* still matches its recorded ownership hash, and otherwise —
     a human edited it — left frozen, which ``_generate_stubs`` then reports.
@@ -490,15 +491,17 @@ def _write_tool_support(
         for trait_id in changeset.traits_planned[point.id]:
             trait = table.get(trait_id)
             if trait is not None and trait.kind == "engine":
-                cases.setdefault((point.source, trait.tier), []).append(
-                    (point, trait_id)
-                )
+                # Keyed by the module a case lands in, not by its tier: every
+                # non-active tier shares one module, and keying by tier would
+                # render that one file once per tier, each overwriting the last.
+                group = stubgen.engine_group(trait.tier)
+                cases.setdefault((point.source, group), []).append((point, trait_id))
 
     registered = 0
-    for (server, tier), pairs in sorted(cases.items()):
-        file_rel = stubgen.engine_module_for(server, tier)
+    for (server, group), pairs in sorted(cases.items()):
+        file_rel = stubgen.engine_module_for(server, group)
         file_abs = stubgen.stub_file_path(base_dir, file_rel)
-        expected = stubgen.render_engine_module(server, tier)
+        expected = stubgen.render_engine_module(server, group)
         recorded = {t.ownership_hash for t in manifest.tests if t.path == file_rel}
         # ITest's while it is absent, unrecorded, or still what ITest wrote.
         owned = (

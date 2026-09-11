@@ -127,7 +127,7 @@ def _sync(*extra: str):
 
 
 def _functions(path: Path) -> set[str]:
-    """Every ``def test_...`` in a generated file, by name. None if absent."""
+    """Every ``def test_...`` in a generated file, by name. Empty if absent."""
     if not path.exists():
         return set()
     return {
@@ -552,7 +552,9 @@ def _edit_table(
             trait["applies_when"] = edit
         elif edit:
             trait.update(edit)
-    directory = tmp_path / "edited-table"
+    # A sibling of tmp_path, never inside it: tmp_path is the checkout under
+    # test, and the edited table must not become a file sync or pytest sees.
+    directory = tmp_path.parent / f"{tmp_path.name}-edited-table"
     directory.mkdir(exist_ok=True)
     (directory / traits_module.TABLE_RESOURCE).write_text(
         yaml.safe_dump(table, sort_keys=False), encoding="utf-8"

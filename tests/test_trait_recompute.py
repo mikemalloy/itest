@@ -239,42 +239,45 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
         t for t in _manifest(workdir).tests if t.test_name == "test_delete_record__B2"
     )
 
-    _edit_table(tmp_path, monkeypatch, B2="mutation == nothing")
-    payload = _plan_json()
-    assert [(c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]] == [
-        ("delete_record", "B2", "retired")
-    ]
-    human = _plan().output
-    assert "−B2 on reference-mcp/delete_record (rule: mutation == nothing)" in human
-    assert "0 tools gained checks, 1 tools retired checks." in human
+    # The edited table lives in its own MonkeyPatch context: leaving it restores
+    # the shipped table and nothing else (the fixture's chdir is untouched).
+    with pytest.MonkeyPatch.context() as table:
+        _edit_table(tmp_path, table, B2="mutation == nothing")
+        payload = _plan_json()
+        assert [
+            (c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]
+        ] == [("delete_record", "B2", "retired")]
+        human = _plan().output
+        assert "−B2 on reference-mcp/delete_record (rule: mutation == nothing)" in human
+        assert "0 tools gained checks, 1 tools retired checks." in human
 
-    result = _sync()
-    assert result.exit_code == 0, result.output
-    assert "retired 1 check(s)" in result.output
-    # Not deleted: the file is byte-identical and the entry is still registered.
-    assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8") == stubs_before
-    entry = next(
-        t for t in _manifest(workdir).tests if t.test_name == "test_delete_record__B2"
-    )
-    assert entry.retired is True
-    assert entry.id == entry_before.id
-    assert "B2" not in _planned(workdir)["delete_record"]
+        result = _sync()
+        assert result.exit_code == 0, result.output
+        assert "retired 1 check(s)" in result.output
+        # Not deleted: the file is byte-identical and the entry is still registered.
+        assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8") == stubs_before
+        entry = next(
+            t
+            for t in _manifest(workdir).tests
+            if t.test_name == "test_delete_record__B2"
+        )
+        assert entry.retired is True
+        assert entry.id == entry_before.id
+        assert "B2" not in _planned(workdir)["delete_record"]
 
-    # Not run: verify leaves it out of collection and says why.
-    result = runner.invoke(
-        app, ["verify", "--environment", "staging", "--output", "json"]
-    )
-    assert result.exit_code == 0, result.output
-    report = json.loads(result.output)
-    outcomes = {t["canonical"]: t["outcome"] for t in report["tests"]}
-    assert outcomes[entry.canonical] == "not_applicable"
-    ran = [o for o in outcomes.values() if o not in ("gated", "not_applicable")]
-    assert len(ran) == len(outcomes) - 1
+        # Not run: verify leaves it out of collection and says why.
+        result = runner.invoke(
+            app, ["verify", "--environment", "staging", "--output", "json"]
+        )
+        assert result.exit_code == 0, result.output
+        report = json.loads(result.output)
+        outcomes = {t["canonical"]: t["outcome"] for t in report["tests"]}
+        assert outcomes[entry.canonical] == "not_applicable"
+        ran = [o for o in outcomes.values() if o not in ("gated", "not_applicable")]
+        assert len(ran) == len(outcomes) - 1
 
     # And when the rule applies again, the same entry comes back: same id, same
     # function, no second stub appended.
-    monkeypatch.undo()
-    monkeypatch.chdir(workdir)
     payload = _plan_json()
     assert [(c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]] == [
         ("delete_record", "B2", "gained")
@@ -330,7 +333,7 @@ def test_point_and_entry_ids_hold_across_runs(workdir: Path) -> None:
 def _variant(workdir: Path, old: str, new: str) -> None:
     """Point the declaration at a copy of the reference server with one edit."""
     original = SERVER_PATH.read_text(encoding="utf-8")
-    assert old in original
+    assert original.count(old) == 1, f"{old!r} must name exactly one place"
     variant = workdir / "variant_server.py"
     variant.write_text(original.replace(old, new), encoding="utf-8")
     path = workdir / ".itest" / "tools" / "reference-mcp.yaml"

@@ -261,7 +261,8 @@ and the recipes it names, from the manifest and the table alone.
 ### Engine checks and generated checks
 Each trait row says who runs it (`kind`). An **engine** check needs nothing but
 the tool's point and a way to reach its server, so there is no per-tool code for
-it: each declared server gets one engine module per tier, a single test the
+it: each declared server gets two engine modules at most — one for the active
+tier, one for every other tier — each a single test the
 engine parametrizes over the manifest at collection time and runs through
 `itest.checks.run_engine_check` — a tool added to the manifest is covered without
 regenerating anything, and each case is registered as `test_engine[<tool>-<id>]`
@@ -426,7 +427,7 @@ Shipped:
   line on the readiness page.
 - `itest traits` (table, `--for <server>/<tool>`, `--json`) and `itest recipes`.
 - Thin binding stubs for generated traits, one parametrized engine module per
-  server and tier, and a human-owned conftest written once
+  server for the active tier and one for every other tier, and a human-owned conftest written once
   (`itest_tests/tools_<server>/`); `itest/traits/runtime.py` is what they bind
   to, and `itest/checks/` holds the agreed contract stub until 31A's library
   replaces it.

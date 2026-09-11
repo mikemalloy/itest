@@ -398,11 +398,18 @@ def test_the_table_hash_ignores_whitespace_only_edits(tmp_path: Path) -> None:
     a table change, and must not read as one on every tool."""
     text = _shipped_text()
     document = yaml.safe_load(text)
+    edited = set()
     for row in document["traits"]:
+        before = row["applies_when"]
         if row["id"] == "B2":
             row["applies_when"] = "  mutation==destructive  "
         if row["id"] == "B4":
             row["applies_when"] = row["applies_when"].replace(", ", ",")
+        if row["applies_when"] != before:
+            edited.add(row["id"])
+    # Each respacing really changed its row's text; otherwise the test proves
+    # nothing about canonicalization.
+    assert edited == {"B2", "B4"}
     # Same content, entirely different bytes: flow style, 4-space indent.
     reflowed = "# a new comment\n\n" + yaml.safe_dump(
         document, sort_keys=False, default_flow_style=True, indent=4

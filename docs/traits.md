@@ -44,7 +44,7 @@ traits:
 ### `kind`: engine or generated
 
 - **`engine`**: the engine runs the check straight from the manifest. No
-  per-tool file exists. Each declared server gets one engine module per tier
+  per-tool file exists. Each declared server gets at most two engine modules
   (`itest_tests/tools_<server>/test_<server>__engine.py`, plus `…_active.py`).
   The module holds a single test, parametrized at collection time over every
   (tool, engine trait) the manifest records, which calls

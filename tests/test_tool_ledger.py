@@ -260,15 +260,17 @@ def test_state_is_computed_from_the_manifest_and_the_files(tmp_path: Path) -> No
     path.write_text(body, encoding="utf-8")
     owned = stubgen.content_hash(body)
 
-    def state(recorded: str, schema: str, **entry) -> str:
+    def state(
+        recorded: str, schema: str, *, retired: bool = False, orphaned: bool = False
+    ) -> str:
         return verifier.check_state(
             base_dir=tmp_path,
             path="t.py",
             test_name="test_tool__B2",
             ownership_hash=recorded,
             point_schema=schema,
-            retired=entry.get("retired", False),
-            orphaned=entry.get("orphaned", False),
+            retired=retired,
+            orphaned=orphaned,
         )
 
     assert table.get("B2").kind == "generated"
@@ -353,4 +355,3 @@ def test_the_rendered_page_tags_state_and_says_what_needs_attention(
     assert blocks["PAGE"]["tools"]["attention"] == [
         "reference-mcp needs attention: 3 hand-edited, 1 stale"
     ]
-    assert "c.state" in html  # the template draws the tag

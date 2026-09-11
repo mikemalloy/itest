@@ -10,7 +10,8 @@ Declared tools follow one principle: **the amount of generated code a human
 must maintain is proportional to the facts only a human could supply, never to
 the number of tools.** So each declared server gets, in its own directory:
 
-- one **engine module** per tier — ITest-owned, no per-tool code: a single
+- one **engine module** per group (active, or passive for every other
+  tier) — ITest-owned, no per-tool code: a single
   parametrized test that reads the manifest at collection time and runs every
   *engine* trait of every tool through ``itest.checks.run_engine_check``;
 - one **thin binding** per (tool, *generated* trait) — the frozen docstring
@@ -89,9 +90,29 @@ def tool_stub_file_for(point: IntegrationPoint, tier: str) -> str:
     return f"{server_dir(point.source)}/test_{slug}__generated{_tier_suffix(tier)}.py"
 
 
-def engine_module_for(server: str, tier: str) -> str:
-    """The server's engine module for one tier. Active apart, as for bindings."""
-    return f"{server_dir(server)}/test_{_slug(server)}__engine{_tier_suffix(tier)}.py"
+#: The two engine modules a server can have. ``active`` holds the active-tier
+#: engine traits alone, so verify can ``--ignore`` it without importing it;
+#: ``passive`` holds every other tier (static and readonly alike).
+ENGINE_GROUPS = ("active", "passive")
+
+
+def engine_group(tier: str) -> str:
+    """The engine module an engine trait of ``tier`` belongs in."""
+    return "active" if tier == "active" else "passive"
+
+
+def _check_group(group: str) -> str:
+    if group not in ENGINE_GROUPS:
+        raise ValueError(
+            f"engine module group {group!r} is not one of {', '.join(ENGINE_GROUPS)}"
+        )
+    return group
+
+
+def engine_module_for(server: str, group: str) -> str:
+    """The server's engine module for one group (see :data:`ENGINE_GROUPS`)."""
+    suffix = _tier_suffix(_check_group(group))
+    return f"{server_dir(server)}/test_{_slug(server)}__engine{suffix}.py"
 
 
 def conftest_for(server: str) -> str:
@@ -198,10 +219,11 @@ ENGINE_HEADER = (
 )
 
 
-def render_engine_module(server: str, tier: str) -> str:
-    """The engine module for one server and tier. No tool is named in it."""
+def render_engine_module(server: str, group: str) -> str:
+    """The engine module for one server and group. No tool is named in it."""
+    _check_group(group)
     return (
-        ENGINE_HEADER + f'"""itest engine module: server {server}  tier: {tier}"""\n'
+        ENGINE_HEADER + f'"""itest engine module: server {server}  group: {group}"""\n'
         "\n"
         "import pytest\n"
         "\n"
@@ -215,7 +237,7 @@ def render_engine_module(server: str, tier: str) -> str:
         "\n"
         "\n"
         "@pytest.mark.parametrize(\n"
-        f'    "itest_case", engine_cases(__file__, "{server}", "{tier}")\n'
+        f'    "itest_case", engine_cases(__file__, "{server}", "{group}")\n'
         ")\n"
         f"def {ENGINE_TEST}(itest_case, itest_target, itest_authenticated, "
         "record_property):\n"

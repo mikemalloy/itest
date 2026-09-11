@@ -50,6 +50,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from itest.core import lifecycle
 from itest.core.manifest import Manifest
 
 #: The status vocabulary a tool check may carry. Pinned against the committed
@@ -66,26 +67,10 @@ CHECK_STATUSES = (
     "not_run",
 )
 
-#: A check's lifecycle state: how far its test can be trusted as a statement
-#: about the tool today. Pinned against the contract fixture by test.
-#:
-#: ``current``        ITest-owned and generated against the current schema
-#: ``stale``          hand-edited AND generated against an older schema
-#: ``hand_edited``    a human changed the file (its ownership hash differs)
-#: ``recipe_newer``   the recipe moved since the check was generated
-#: ``not_applicable`` retired: the trait no longer applies to the tool
-#: ``orphan``         the tool is gone; the test is kept, never deleted
-CHECK_STATES = (
-    "current",
-    "stale",
-    "hand_edited",
-    "recipe_newer",
-    "not_applicable",
-    "orphan",
-)
-
-#: States that do not count toward VERIFIED.
-UNCOUNTED_STATES = ("stale", "not_applicable", "orphan")
+#: A check's lifecycle state, and the ones that do not count toward VERIFIED.
+#: Defined once in ``itest.core.lifecycle``; re-exported here for the page.
+CHECK_STATES = lifecycle.CHECK_STATES
+UNCOUNTED_STATES = lifecycle.UNCOUNTED_STATES
 
 MUTATIONS = ("read", "write", "destructive", "informational")
 

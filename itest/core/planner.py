@@ -349,7 +349,7 @@ def compute_changeset(
     )
 
 
-def _trait_from_entry(entry: TestEntry) -> str | None:
+def trait_from_entry(entry: TestEntry) -> str | None:
     """The trait a test entry covers: recorded, else read from its id.
 
     Manifests written before ``trait`` existed encode it only in the id sync
@@ -382,7 +382,7 @@ def recorded_traits(
         for t in tests
         if t.point_id == point_id
         and not t.retired
-        and (trait := _trait_from_entry(t)) is not None
+        and (trait := trait_from_entry(t)) is not None
     }
 
 

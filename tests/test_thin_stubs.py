@@ -3,7 +3,8 @@ could supply — never to the number of tools.
 
 So, per declared server, sync writes:
 
-- **one engine module per tier** (``test_<server>__engine.py`` and
+- **one engine module per group** — active, or passive for every other
+  tier (``test_<server>__engine.py`` and
   ``..._active.py``), ITest-owned and regenerated while it matches its ownership
   hash. It holds no per-tool code: one parametrized test reads the manifest at
   collection time and runs every engine trait of every tool, so a tool added to
@@ -118,7 +119,7 @@ def test_generated_bindings_name_the_tool_then_the_trait(workdir: Path) -> None:
 def test_the_engine_module_is_one_parametrized_test_per_tier(workdir: Path) -> None:
     assert _sync().exit_code == 0
     text = (workdir / ENGINE_FILE).read_text(encoding="utf-8")
-    assert text == stubgen.render_engine_module("reference-mcp", "readonly")
+    assert text == stubgen.render_engine_module("reference-mcp", "passive")
     assert _functions(workdir / ENGINE_FILE) == {"test_engine"}
     # Nothing in it names a tool: the manifest is the only list of tools.
     for tool in ("delete_record", "get_guide", "enrich"):
@@ -342,3 +343,29 @@ def test_a_failing_check_still_fails(monkeypatch) -> None:
     case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="A1")
     result = runtime.run_engine_case(case, "TARGET", authenticated=False)
     assert result.status == "critical"
+
+
+def test_one_passive_engine_module_collects_every_non_active_tier(
+    workdir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Engine modules are keyed by path — (server, active | passive) — not by
+    tier. A static-tier and a readonly-tier engine trait on one server share the
+    one passive module, and that module collects both; keyed by tier, the second
+    tier's render overwrote the first's and its cases vanished."""
+    _edit_table(tmp_path, monkeypatch, D1={"tier": "static"})
+    assert _sync().exit_code == 0
+
+    text = (workdir / ENGINE_FILE).read_text(encoding="utf-8")
+    assert text == stubgen.render_engine_module("reference-mcp", "passive")
+    ids = {
+        case.id
+        for case in runtime.engine_cases(
+            str(workdir / ENGINE_FILE), "reference-mcp", "passive"
+        )
+    }
+    assert {"get_guide-D1", "get_guide-A1", "delete_record-D1"} <= ids
+    assert not {i for i in ids if i.endswith(("-C1", "-C2"))}  # active stays apart
+
+    entries = [t for t in _manifest(workdir).tests if t.path == ENGINE_FILE]
+    assert {t.tier for t in entries} == {"static", "readonly"}
+    assert {t.test_name for t in entries} == {f"test_engine[{i}]" for i in ids}
