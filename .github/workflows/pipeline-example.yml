@@ -40,7 +40,7 @@ jobs:
       # file in a step does the same job. Never commit it. See docs/pipeline.md.
       ITEST_ENVIRONMENT: example
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
