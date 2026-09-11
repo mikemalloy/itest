@@ -23,6 +23,7 @@ Nothing here logs, stores, or echoes a resolved URL.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -68,14 +69,47 @@ def _format_validation_error(path: Path, exc: ValidationError) -> str:
     return "\n".join(lines)
 
 
+#: A key at the start of a YAML line, optionally as a sequence item.
+_LINE_KEY = re.compile(r"^\s*(?:-\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*:")
+#: A quoted fragment inside PyYAML's problem text (a character, an alias).
+_QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+
+
+def _format_yaml_error(path: Path, text: str, exc: yaml.YAMLError) -> str:
+    """Render a YAML syntax error WITHOUT the source it points at.
+
+    PyYAML's ``str(exc)`` quotes the offending line with a caret under it, and
+    that line is where a pasted URL or token would be. Only the line number,
+    the key on that line, and the kind of problem are repeated.
+    """
+    mark = getattr(exc, "problem_mark", None)
+    if mark is None:
+        return f"{path} is not valid YAML."
+    where = f"line {mark.line + 1}"
+    lines = text.splitlines()
+    if mark.line < len(lines):
+        key = _LINE_KEY.match(lines[mark.line])
+        if key:
+            where += f", key '{key.group(1)}'"
+    problem = _QUOTED.sub("(...)", getattr(exc, "problem", None) or "").strip()
+    detail = f": {problem}" if problem else ""
+    return (
+        f"{path} is not valid YAML ({where}){detail}. The line itself is not "
+        "repeated, so no value in it reaches this message."
+    )
+
+
 def _load_one(path: Path) -> Declaration:
     """Parse and validate one declaration file."""
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise DeclarationError(f"{path} is not valid YAML: {exc}") from exc
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise DeclarationError(f"{path} could not be read: {exc}") from exc
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        # Not chained: the original exception's text is the leak.
+        raise DeclarationError(_format_yaml_error(path, text, exc)) from None
 
     if raw is None:
         raw = {}

@@ -115,6 +115,14 @@ def sync(
         "--tf-json",
         help="Path to a `terraform show -json` file for the implicit plan.",
     ),
+    allow_unreachable: bool = typer.Option(
+        False,
+        "--allow-unreachable",
+        help=(
+            "Apply even when a declared server cannot be reached. Its recorded "
+            "points and tests are held exactly as they are."
+        ),
+    ),
 ) -> None:
     """Apply the plan: update the manifest and generate test stubs."""
     from itest.core import planner, syncer
@@ -133,6 +141,18 @@ def sync(
         echo(note)
     echo(planner.render_changeset(changeset))
     echo("")
+
+    # A server that could not be asked is a failed sync, not a quiet partial
+    # one: nothing is written unless the user says the gap is acceptable.
+    if changeset.unreachable_servers and not allow_unreachable:
+        names = ", ".join(sorted(changeset.unreachable_servers))
+        echo(
+            f"Not applied: declared server(s) unreachable: {names}. "
+            "Make them reachable, or pass --allow-unreachable to apply the rest "
+            "and hold their recorded points and tests as they are.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     if syncer.is_noop(changeset):
         # Nothing to apply, but a stub implemented by hand since the last run

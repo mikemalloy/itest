@@ -51,9 +51,6 @@ from itest.probes.mcp import McpTarget, ToolInfo, classify_mutation
 #: The point type declarations produce. One per (server, tool).
 POINT_TYPE = "mcp_tool"
 
-#: Attributes whose change is drift on an existing point, not a new point.
-DRIFT_ATTRIBUTES = ("schema_hash", "description_hash")
-
 #: What ``classify_mutation`` returns when neither the annotations nor the name
 #: decided. Not a disagreement with anything — an absence of detection.
 UNKNOWN = "unknown"

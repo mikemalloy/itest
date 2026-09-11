@@ -319,6 +319,68 @@ def test_a_reworded_description_is_changed_not_new(workdir: Path) -> None:
     assert (workdir / READONLY_FILE).read_text(encoding="utf-8") == stub_text
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Known gap, not yet fixed: only schema_hash/description_hash count as "
+        "drift, so an annotation-only class change plans as `unchanged` under "
+        "`mutation: detect`, and the newly applicable traits (B2, B4) are never "
+        "stubbed. Strict: remove this marker with the fix."
+    ),
+)
+def test_a_read_tool_that_turns_destructive_is_not_missed(workdir: Path) -> None:
+    """Same name, same schema, same description; only the annotation moved from
+    read-only to destructive. Either drift reports it or the cross-check
+    refuses — what must not happen is a quiet `unchanged`."""
+    assert _sync().exit_code == 0
+    before = next(
+        p
+        for p in load_manifest(workdir / ".itest" / "manifest.yaml").points
+        if p.target == "fetch_record"
+    )
+    assert before.attributes["mutation"] == "read"
+
+    original = SERVER_PATH.read_text(encoding="utf-8")
+    marker = (
+        'description="Fetch one record by id.",\n'
+        "        annotations=ToolAnnotations(readOnlyHint=True),"
+    )
+    assert marker in original
+    variant = workdir / "destructive_fetch_server.py"
+    variant.write_text(
+        original.replace(
+            marker,
+            'description="Fetch one record by id.",\n'
+            "        annotations=ToolAnnotations("
+            "readOnlyHint=False, destructiveHint=True),",
+        ),
+        encoding="utf-8",
+    )
+    path = workdir / ".itest" / "tools" / "reference-mcp.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["transport"]["command"] = [sys.executable, str(variant)]
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    result = _plan("--output", "json")
+    if result.exit_code == 2:
+        return  # refused by the cross-check: caught
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    live = next(
+        p
+        for p in payload["unchanged_points"] + payload["changed_points"]
+        if p["target"] == "fetch_record"
+    )
+    # The live listing is read correctly, and the hashes did not move ...
+    assert live["attributes"]["mutation"] == "destructive"
+    assert live["attributes"]["schema_hash"] == before.attributes["schema_hash"]
+    assert (
+        live["attributes"]["description_hash"] == before.attributes["description_hash"]
+    )
+    # ... so the only thing that can report it is drift on the class itself.
+    assert "fetch_record" in [p["target"] for p in payload["changed_points"]]
+
+
 def test_an_override_for_a_tool_the_server_does_not_list_is_orphaned(
     workdir: Path,
 ) -> None:
@@ -549,6 +611,72 @@ def test_a_server_that_cannot_be_launched_is_reported_and_skipped(
     assert result.exit_code == 0, result.output
     assert "reference-mcp" in result.output
     assert "unreachable" in result.output
+
+
+def _make_unreachable(workdir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rewire the declared server to http behind a url variable that is unset."""
+    monkeypatch.delenv("REFERENCE_MCP_URL", raising=False)
+    path = workdir / ".itest" / "tools" / "reference-mcp.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["transport"] = {"kind": "http", "url_env": "REFERENCE_MCP_URL"}
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def test_an_unreachable_server_keeps_its_recorded_points_and_tests(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No evidence is not evidence of absence. A server ITest could not ask has
+    not lost its tools, so nothing recorded about it may be orphaned or dropped."""
+    assert _sync().exit_code == 0
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    before_text = manifest_file.read_text(encoding="utf-8")
+    before = load_manifest(manifest_file)
+    recorded_ids = {p.id for p in before.points if p.source == "reference-mcp"}
+    assert len(recorded_ids) == 8
+
+    _make_unreachable(workdir, monkeypatch)
+
+    payload = json.loads(_plan("--output", "json").output)
+    assert payload["unreachable_servers"] == {
+        "reference-mcp": "unreachable: REFERENCE_MCP_URL not set"
+    }
+    assert payload["orphan_candidates"] == []
+    assert {p["id"] for p in payload["held_points"]} == recorded_ids
+
+    # Without the flag, sync names the server, fails, and writes nothing.
+    result = _sync()
+    assert result.exit_code == 1, result.output
+    assert "reference-mcp" in result.output
+    assert "unreachable: REFERENCE_MCP_URL not set" in result.output
+    assert manifest_file.read_text(encoding="utf-8") == before_text
+
+
+def test_allow_unreachable_applies_the_rest_and_holds_the_server_as_recorded(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the flag, the reachable side is applied (the alex state adds its
+    fourteen points) while the unreachable server's points stay byte-for-byte
+    what the manifest last recorded — not re-stamped as seen, not orphaned."""
+    assert _sync().exit_code == 0
+    before = load_manifest(workdir / ".itest" / "manifest.yaml")
+    held_before = {p.id: p for p in before.points if p.source == "reference-mcp"}
+
+    _make_unreachable(workdir, monkeypatch)
+
+    result = runner.invoke(
+        app,
+        ["sync", "--auto-approve", "--allow-unreachable", "--tf-json", str(ALEX)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "reference-mcp" in result.output
+    assert "flagged 0 orphan(s)" in result.output
+
+    after = load_manifest(workdir / ".itest" / "manifest.yaml")
+    held_after = {p.id: p for p in after.points if p.source == "reference-mcp"}
+    assert held_after == held_before
+    assert len([p for p in after.points if p.type != "mcp_tool"]) == 14
+    assert all(t.status != "orphaned" for t in after.tests)
+    assert {t.id for t in before.tests} <= {t.id for t in after.tests}
 
 
 # --- itest add --server ------------------------------------------------------

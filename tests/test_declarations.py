@@ -491,6 +491,51 @@ def test_an_empty_declaration_names_what_is_missing(tmp_path: Path) -> None:
     assert "server" in str(excinfo.value)
 
 
+def test_a_yaml_error_names_the_key_and_line_never_the_value(tmp_path: Path) -> None:
+    """PyYAML's own message quotes the offending source line, which is exactly
+    where a pasted internal hostname would sit."""
+    _write(
+        tmp_path,
+        "reference-mcp",
+        "server: reference-mcp\n"
+        "transport:\n"
+        "  kind: http\n"
+        "  url_env: https://mcp.internal-corp.example: 8443\n",
+    )
+    with pytest.raises(DeclarationError) as excinfo:
+        load_declarations(tmp_path)
+    message = str(excinfo.value)
+    assert "reference-mcp.yaml" in message
+    assert "line 4" in message
+    assert "url_env" in message
+    assert "internal-corp" not in message
+    assert "8443" not in message
+
+
+def test_a_trait_listed_twice_for_one_tool_is_refused(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "reference-mcp",
+        _minimal(tools={"enrich": {"traits": ["B3", "D1", "B3"]}}),
+    )
+    with pytest.raises(DeclarationError) as excinfo:
+        load_declarations(tmp_path)
+    message = str(excinfo.value)
+    assert "tools.enrich.traits" in message
+    assert "B3" in message
+    assert "more than once" in message
+
+
+def test_the_drift_attributes_are_defined_once() -> None:
+    """The planner owns the set: it is the only reader, and it must not import
+    the tools module (which loads the probe transport) to get it."""
+    from itest.core import planner
+    from itest.core.declarations import tools
+
+    assert planner.DRIFT_ATTRIBUTES == ("schema_hash", "description_hash")
+    assert not hasattr(tools, "DRIFT_ATTRIBUTES")
+
+
 # --- resolving the url, by name, without printing it --------------------------
 
 
@@ -512,20 +557,21 @@ def test_the_url_is_read_from_the_environment_by_name(
     assert resolve_url(declaration, checkout) == "https://mcp.example.test/mcp"
 
 
-def test_the_url_is_read_from_a_gitignored_env_file_too(checkout: Path) -> None:
+def test_the_url_is_read_from_a_gitignored_env_file_too(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Same path a credential takes: a name in the file, the value in
     `.itest/.env` or the shell."""
+    # resolve_credential seeds os.environ with every key in the file. Swap in a
+    # copy for this test so whatever it seeds is gone afterwards, all of it.
+    monkeypatch.setattr(os, "environ", os.environ.copy())
     (checkout / ".itest" / ".env").write_text(
         "REFERENCE_MCP_URL=https://from-the-env-file.example/mcp\n", encoding="utf-8"
     )
     (declaration,) = load_declarations(checkout)
-    try:
-        assert resolve_url(declaration, checkout) == (
-            "https://from-the-env-file.example/mcp"
-        )
-    finally:
-        # resolve_credential seeds os.environ from the file; do not leak it.
-        os.environ.pop("REFERENCE_MCP_URL", None)
+    assert resolve_url(declaration, checkout) == (
+        "https://from-the-env-file.example/mcp"
+    )
 
 
 def test_a_stdio_only_declaration_resolves_no_url(tmp_path: Path) -> None:

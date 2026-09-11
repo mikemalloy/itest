@@ -296,7 +296,10 @@ not-analyzed counts — and writes `.itest/plan.json` and a Mermaid diagram to
 
 **`itest sync`** applies that plan: updates `.itest/manifest.yaml`, appends a
 stub for each new point, and reclassifies tests whose bodies have been
-implemented. It pauses for confirmation unless `--auto-approve`.
+implemented. It pauses for confirmation unless `--auto-approve`. If a declared
+MCP server cannot be reached, sync writes nothing and exits 1 unless
+`--allow-unreachable` is passed; either way that server's recorded points and
+tests are held as they are, never orphaned.
 
 **`itest verify`** runs pytest under `itest_tests/`, maps each result to its
 point, and rolls up: fail > error > pass > stub. Collection errors are

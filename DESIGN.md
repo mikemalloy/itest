@@ -228,7 +228,10 @@ stub: active-tier checks go in a per-server file of their own, because verify ca
 gated test sitting beside runnable siblings. Planning a declared server is the
 one place `itest plan` reaches past the filesystem, so the probe is imported
 inside that step and a server it cannot reach is a line in the changeset, never
-an exception: one broken server must not blind the rest of the project.
+an exception: one broken server must not blind the rest of the project. Nor may
+it erase what is known: an unreachable server's recorded points are **held** as
+last recorded and their tests are never orphan candidates, and sync refuses to
+write (exit 1, the server named) unless `--allow-unreachable` accepts the gap.
 
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
