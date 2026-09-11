@@ -73,14 +73,14 @@ for — a guessed assertion that passes is worse than no test.
 check per trait the trait table (`itest/traits/traits.yaml`) applies to it, and
 the trait decides what you do:
 
-- **Engine traits** — A1, B1, D1, D2, D3 today. There is **nothing to write**:
+- **Engine traits** — `authority.anonymous`, `blast.mutation_class`, `change.inventory`, `change.schema_drift`, `change.description_drift` today. There is **nothing to write**:
   ITest runs these itself from the manifest during `itest verify`. Say so, point
   the user at the recipe that explains the result
   ([`tool_authn`](references/recipes/tool_authn.md),
   [`tool_mutation_class`](references/recipes/tool_mutation_class.md),
   [`tool_provenance`](references/recipes/tool_provenance.md)), and move on. Do
   not hand-write a test for an engine trait, and leave any stub for one alone.
-- **Generated traits** — A2, B2, B4 as their recipes ship. Follow
+- **Generated traits** — `authority.tenant_isolation`, `blast.destructive_gating`, `blast.audit` as their recipes ship. Follow
   [`tool_recipe_shape.md`](references/recipes/tool_recipe_shape.md): ask the
   trait's facts in the batched interview (step 3), and write only the human-owned
   `<trait>_facts` fixture into `conftest.py`, after the review gate (step 5). The

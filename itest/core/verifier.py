@@ -29,6 +29,7 @@ from itest.core.manifest import (
     load_manifest,
     save_manifest,
 )
+from itest.traits.ids import LEGACY_BY_TRAIT, trait_ident
 
 JUNIT_NAME = "itest-results.xml"
 
@@ -560,24 +561,28 @@ def check_state(
     """How far one check's test can be trusted as a statement about the tool.
 
     ``orphan`` and ``not_applicable`` come from the manifest. Otherwise the file
-    decides: whose it is (its content against the recorded ownership hash) and
-    what it was generated against (the docstring's ``schema:``). ``stale`` is
-    the dangerous one — a human edited the check, and the tool's schema has
-    moved since it was generated, so nobody has read it against the tool as it
-    is. An ITest-owned file is ``current``: a binding has no schema-dependent
-    body, and an engine module reads the manifest live. ``recipe_newer`` is not
-    computed: nothing records which recipe version a check was generated from.
+    decides: what it was generated against (the docstring's ``schema:``) and
+    whose it is (its content against the recorded ownership hash). ``stale`` is
+    the dangerous one — the check was generated against a schema the tool no
+    longer has, so nobody has read it against the tool as it is. That holds
+    whoever owns the file: a hand-edited one is frozen until a human re-reads
+    it, and an ITest-owned one until ``itest sync`` regenerates it (which every
+    sync does). Otherwise an owned file is ``current`` and an edited one
+    ``hand_edited``; an engine module has no ``schema:`` and reads the manifest
+    live. ``recipe_newer`` is not computed: nothing records which recipe version
+    a check was generated from.
     """
     if orphaned:
         return "orphan"
     if retired:
         return "not_applicable"
     file = base_dir / path
-    if file.exists() and stubgen.file_hash(file) == ownership_hash:
-        return "current"
-    schema = _docstring_schema(file, test_name) if file.exists() else None
+    exists = file.exists()
+    schema = _docstring_schema(file, test_name) if exists else None
     if schema is not None and point_schema is not None and schema != point_schema:
         return "stale"
+    if exists and stubgen.file_hash(file) == ownership_hash:
+        return "current"
     return "hand_edited"
 
 
@@ -601,15 +606,24 @@ def _short_detail(outcome: str, detail: str, raw: dict, environment: str | None)
 
 
 def _tool_from_test_name(entry: TestEntry) -> str:
-    """The tool a test covers, read back from its name (for an orphan)."""
+    """The tool a test covers, read back from its name (for an orphan).
+
+    Three shapes: an engine case (``test_engine[<tool>-<trait>]``), a binding
+    (``test_<tool>__<trait ident>``, or ``test_<tool>__B2`` from before the
+    rename) and a P30 per-trait stub (``test_a1_<tool>``).
+    """
     name = entry.test_name
     if name.startswith(f"{stubgen.ENGINE_TEST}[") and name.endswith("]"):
         return name[len(stubgen.ENGINE_TEST) + 1 : -1].rsplit("-", 1)[0]
+    trait = entry.trait or ""
+    legacy = LEGACY_BY_TRAIT.get(trait, "")
+    for suffix in (f"__{trait_ident(trait)}", f"__{legacy}"):
+        if suffix != "__" and name.endswith(suffix):
+            return name.removeprefix("test_")[: -len(suffix)]
+    if legacy and name.startswith(f"test_{legacy.lower()}_"):
+        return name[len(f"test_{legacy.lower()}_") :]
     if "__" in name:
         return name.removeprefix("test_").rsplit("__", 1)[0]
-    trait = (entry.trait or "").lower()
-    if trait and name.startswith(f"test_{trait}_"):
-        return name[len(f"test_{trait}_") :]
     return f"point {entry.point_id}"
 
 
@@ -645,10 +659,19 @@ def _tool_checks(
     checks: list[dict] = []
     exceptions: list[dict] = []
 
+    def labels(trait_id: str) -> dict:
+        """The trait's display code and the standards it answers, from the table."""
+        trait = table.get(trait_id)
+        return {
+            "code": trait.code if trait else None,
+            "standards": list(trait.standards) if trait else [],
+        }
+
     def row(trait_id: str, entry: TestEntry | None) -> dict:
         if entry is None:
             return {
                 "trait": trait_id,
+                **labels(trait_id),
                 "status": "not_run",
                 "detail": "no test is registered for this check; run `itest sync`",
                 "test": "",
@@ -671,23 +694,31 @@ def _tool_checks(
         )
         result = {
             "trait": trait_id,
+            **labels(trait_id),
             "status": status,
             "detail": text,
             "test": entry.canonical,
             "state": state,
         }
         if state == "stale":
-            frozen = _docstring_schema(base_dir / entry.path, entry.test_name)
+            file = base_dir / entry.path
+            frozen = _docstring_schema(file, entry.test_name)
+            owned = stubgen.file_hash(file) == entry.ownership_hash
+            message = (
+                f"{entry.canonical} was generated against schema {frozen}; the "
+                f"tool's schema is now {schema}. ITest owns the file: run "
+                "`itest sync` to regenerate it."
+                if owned
+                else f"{entry.canonical} was edited by hand and generated "
+                f"against schema {frozen}; the tool's schema is now "
+                f"{schema}. Re-read it against the tool as it is."
+            )
             exceptions.append(
                 {
                     "kind": "stale",
                     "tool": point.target,
                     "trait": trait_id,
-                    "message": (
-                        f"{entry.canonical} was edited by hand and generated "
-                        f"against schema {frozen}; the tool's schema is now "
-                        f"{schema}. Re-read it against the tool as it is."
-                    ),
+                    "message": message,
                 }
             )
         elif status in ("critical", "fail", "changed"):

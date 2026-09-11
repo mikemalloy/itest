@@ -47,38 +47,40 @@ CONTEXT = {
 def test_the_shipped_table_is_the_fourteen_traits() -> None:
     table = load_traits()
     assert table.ids == [
-        "A1",
-        "A2",
-        "A3",
-        "A4",
-        "B1",
-        "B2",
-        "B3",
-        "B4",
-        "C1",
-        "C2",
-        "C3",
-        "D1",
-        "D2",
-        "D3",
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "authority.delegation",
+        "blast.mutation_class",
+        "blast.destructive_gating",
+        "blast.egress",
+        "blast.audit",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ]
     assert table.families == {
-        "A": "Authority",
-        "B": "Blast radius",
-        "C": "Containment",
-        "D": "Change",
+        "authority": "Authority",
+        "blast": "Blast radius",
+        "containment": "Containment",
+        "change": "Change",
     }
     # The tier is what the environment policy gates on, so it is policy too.
     assert {t.id for t in table.traits if t.tier == "active"} == {
-        "A2",
-        "A3",
-        "A4",
-        "B2",
-        "B4",
-        "C1",
-        "C2",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "authority.delegation",
+        "blast.destructive_gating",
+        "blast.audit",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
     }
-    assert {t.recipe for t in table.traits if t.family == "D"} == {"tool_provenance.md"}
+    assert {t.recipe for t in table.traits if t.family == "change"} == {
+        "tool_provenance.md"
+    }
 
 
 def test_the_kind_column_says_who_runs_each_check() -> None:
@@ -87,28 +89,32 @@ def test_the_kind_column_says_who_runs_each_check() -> None:
     table = load_traits()
     kinds = {t.id: t.kind for t in table.traits}
     assert {k for k, v in kinds.items() if v == "engine"} == {
-        "A1",
-        "B1",
-        "B3",
-        "C1",
-        "C2",
-        "C3",
-        "D1",
-        "D2",
-        "D3",
+        "authority.anonymous",
+        "blast.mutation_class",
+        "blast.egress",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     }
     assert {k for k, v in kinds.items() if v == "generated"} == {
-        "A2",
-        "A3",
-        "A4",
-        "B2",
-        "B4",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "authority.delegation",
+        "blast.destructive_gating",
+        "blast.audit",
     }
 
 
 def test_the_identity_and_hygiene_rows() -> None:
     table = load_traits()
-    a3, a4, c3 = table.get("A3"), table.get("A4"), table.get("C3")
+    a3, a4, c3 = (
+        table.get("authority.backing_least_privilege"),
+        table.get("authority.delegation"),
+        table.get("containment.output_hygiene"),
+    )
     assert a3.applies_when == "identity.runs_as present"
     assert a4.applies_when == "identity.runs_as == passthrough"
     assert (a3.tier, a3.kind, a3.recipe) == ("active", "generated", "tool_identity.md")
@@ -132,12 +138,12 @@ def test_every_shipped_expression_evaluates() -> None:
 def test_an_informational_tool_gets_only_the_always_traits() -> None:
     context = dict(CONTEXT, mutation="informational", has_free_form_input=False)
     assert [t.id for t in applicable(load_traits(), context)] == [
-        "A1",
-        "A3",
-        "B1",
-        "D1",
-        "D2",
-        "D3",
+        "authority.anonymous",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ]
 
 
@@ -204,10 +210,13 @@ def test_there_is_no_or_and_it_says_so() -> None:
 
 
 def _table(tmp_path: Path, document: object) -> Path:
-    """Write a table. A dict without ``families`` gets families A and B, so a
-    test about one refusal is not accidentally tripping another."""
+    """Write a table. A dict without ``families`` gets families authority and
+    blast, so a test about one refusal is not accidentally tripping another."""
     if isinstance(document, dict) and "families" not in document:
-        document = {**document, "families": {"A": "Authority", "B": "Blast radius"}}
+        document = {
+            **document,
+            "families": {"authority": "Authority", "blast": "Blast radius"},
+        }
     path = tmp_path / "traits.yaml"
     text = document if isinstance(document, str) else yaml.safe_dump(document)
     path.write_text(text, encoding="utf-8")
@@ -216,8 +225,9 @@ def _table(tmp_path: Path, document: object) -> Path:
 
 def _row(**changes: object) -> dict:
     row = {
-        "id": "A1",
-        "family": "A",
+        "id": "authority.anonymous",
+        "code": "AUTH-1",
+        "family": "authority",
         "name": "refuses anonymous",
         "applies_when": "always",
         "tier": "readonly",
@@ -273,7 +283,7 @@ def test_a_duplicate_trait_id_is_refused(tmp_path: Path) -> None:
     path = _table(tmp_path, {"version": 1, "traits": [_row(), _row()]})
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(path)
-    assert "A1" in str(excinfo.value)
+    assert "authority.anonymous" in str(excinfo.value)
 
 
 def test_an_unknown_key_in_a_row_is_refused(tmp_path: Path) -> None:
@@ -288,7 +298,7 @@ def test_an_unknown_tier_is_refused(tmp_path: Path) -> None:
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(path)
     message = str(excinfo.value)
-    assert "whenever" in message and "A1" in message
+    assert "whenever" in message and "authority.anonymous" in message
     assert "static, readonly, active" in message  # the policy's tiers
 
 
@@ -297,7 +307,7 @@ def test_an_unknown_kind_is_refused(tmp_path: Path) -> None:
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(path)
     message = str(excinfo.value)
-    assert "handwritten" in message and "A1" in message
+    assert "handwritten" in message and "authority.anonymous" in message
     assert "engine" in message and "generated" in message
 
 
@@ -315,8 +325,8 @@ def test_an_unknown_family_is_refused(tmp_path: Path) -> None:
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(path)
     message = str(excinfo.value)
-    assert "'Z'" in message and "A1" in message
-    assert "A, B" in message  # the families the table does define
+    assert "'Z'" in message and "authority.anonymous" in message
+    assert "authority, blast" in message  # the families the table does define
 
 
 def test_an_unparseable_applies_when_is_refused_at_load(tmp_path: Path) -> None:
@@ -328,7 +338,7 @@ def test_an_unparseable_applies_when_is_refused_at_load(tmp_path: Path) -> None:
     )
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(path)
-    assert "A1" in str(excinfo.value)
+    assert "authority.anonymous" in str(excinfo.value)
     assert "cannot read" in str(excinfo.value)
 
 
@@ -342,7 +352,7 @@ def test_an_applies_when_naming_an_unknown_attribute_is_refused_at_load(
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(path)
     assert "mutatoin" in str(excinfo.value)
-    assert "A1" in str(excinfo.value)
+    assert "authority.anonymous" in str(excinfo.value)
 
 
 def test_the_known_attributes_are_exactly_what_a_point_supplies() -> None:
@@ -401,15 +411,15 @@ def test_the_table_hash_ignores_whitespace_only_edits(tmp_path: Path) -> None:
     edited = set()
     for row in document["traits"]:
         before = row["applies_when"]
-        if row["id"] == "B2":
+        if row["id"] == "blast.destructive_gating":
             row["applies_when"] = "  mutation==destructive  "
-        if row["id"] == "B4":
+        if row["id"] == "blast.audit":
             row["applies_when"] = row["applies_when"].replace(", ", ",")
         if row["applies_when"] != before:
             edited.add(row["id"])
     # Each respacing really changed its row's text; otherwise the test proves
     # nothing about canonicalization.
-    assert edited == {"B2", "B4"}
+    assert edited == {"blast.destructive_gating", "blast.audit"}
     # Same content, entirely different bytes: flow style, 4-space indent.
     reflowed = "# a new comment\n\n" + yaml.safe_dump(
         document, sort_keys=False, default_flow_style=True, indent=4

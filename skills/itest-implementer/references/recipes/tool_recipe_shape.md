@@ -3,8 +3,8 @@ recipe-version: 1
 # The shape of a generated tool recipe
 
 **This is a template, not a recipe.** It fixes the shape every *generated*
-tool-trait recipe takes, so the A2 (tenant isolation), B2 (destructive gating)
-and B4 (audit record) recipes — and B1 observed — are written once, the same
+tool-trait recipe takes, so the `authority.tenant_isolation` (tenant isolation), `blast.destructive_gating` (destructive gating)
+and `blast.audit` (audit record) recipes — and mutation class observed — are written once, the same
 way. No trait uses it yet: the generated-check registry in `itest/checks` is
 empty, and `run_generated_check` answers every id with `not_verifiable` ("no
 generated check for <id> yet").
@@ -12,7 +12,7 @@ generated check for <id> yet").
 ## 1. Engine or generated?
 
 Most tool traits are **engine checks**: ITest runs them from the manifest and the
-live tool list, no file exists per tool, and nothing can go stale (A1, B1, D1–D3
+live tool list, no file exists per tool, and nothing can go stale (`authority.anonymous`, `blast.mutation_class`, `change.inventory`, `change.schema_drift` and `change.description_drift`
 today — see [`tool_authn.md`](tool_authn.md),
 [`tool_mutation_class.md`](tool_mutation_class.md),
 [`tool_provenance.md`](tool_provenance.md)).
@@ -48,13 +48,13 @@ from itest.checks import run_generated_check
 
 
 def test_mcp_reference_mcp_delete_record_b2(itest_point, itest_target, b2_facts):
-    """Integration point 3c0f6d2a91be (B2 destructive gating).
+    """Integration point 3c0f6d2a91be (blast.destructive_gating destructive gating).
 
     reference-mcp/delete_record — generated binding; the check is ITest's,
     the facts are in conftest.py (b2_facts).
     """
     result = run_generated_check(
-        "B2",
+        "blast.destructive_gating",
         itest_point("3c0f6d2a91be"),
         itest_target("reference-mcp"),
         fixtures=b2_facts,
@@ -132,7 +132,7 @@ person writes:
 ```python
 @pytest.fixture(scope="session")
 def b2_facts():
-    """B2 destructive gating, reference-mcp. Written by <name>, reviewed <date>.
+    """blast.destructive_gating destructive gating, reference-mcp. Written by <name>, reviewed <date>.
     Keys are the ones tool_gating.md lists; nothing here is a secret."""
     return {"gate_parameter": "confirm"}
 ```

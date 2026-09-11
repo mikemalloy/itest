@@ -37,6 +37,7 @@ from itest.core.declarations import load_declarations
 from itest.core.declarations import traits as traits_module
 from itest.core.declarations.tools import tool_point_id
 from itest.core.manifest import load_manifest
+from itest.traits.ids import LEGACY_TRAIT_IDS
 
 runner = CliRunner()
 
@@ -87,8 +88,8 @@ environments:
 def _declare(base_dir: Path, *, name: str = "reference-mcp", **changes: object) -> Path:
     """Write the example declaration into ``base_dir``, with the command rewired.
 
-    The committed example launches the server by a repo-relative path; a test
-    checkout is somewhere else entirely, so the argv becomes this interpreter and
+    The committed example launches `python server.py` in its own directory; a
+    test checkout holds no server.py, so the argv becomes this interpreter and
     the absolute path. Everything else is the real file.
     """
     document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
@@ -390,24 +391,30 @@ def test_a_read_tool_that_turns_destructive_is_not_missed(workdir: Path) -> None
         for c in payload["trait_changes"]
         if c["change"] == "gained"
     }
-    assert {("fetch_record", "B2"), ("fetch_record", "B4")} <= gained
+    assert {
+        ("fetch_record", "blast.destructive_gating"),
+        ("fetch_record", "blast.audit"),
+    } <= gained
 
     human = _plan()
     assert "mutation: read → destructive (annotation" in human.output
-    assert "+B2 on reference-mcp/fetch_record (rule: mutation == destructive)" in (
-        human.output
+    assert (
+        "+blast.destructive_gating on reference-mcp/fetch_record "
+        "(rule: mutation == destructive)" in (human.output)
     )
 
     result = _sync()
     assert result.exit_code == 0, result.output
-    assert "test_fetch_record__B2" in _functions(workdir / ACTIVE_FILE)
+    assert "test_fetch_record__blast__destructive_gating" in _functions(
+        workdir / ACTIVE_FILE
+    )
     after = next(
         p
         for p in load_manifest(workdir / ".itest" / "manifest.yaml").points
         if p.target == "fetch_record"
     )
     assert after.id == before.id
-    assert "B2" in after.traits_planned
+    assert "blast.destructive_gating" in after.traits_planned
 
 
 def test_an_override_for_a_tool_the_server_does_not_list_is_orphaned(
@@ -450,12 +457,21 @@ def test_an_override_for_a_tool_the_server_does_not_list_is_orphaned(
 #: are active-tier; the engine traits are recorded in `traits_planned` and run
 #: by the engine from the manifest, with no per-tool code.
 DELETE_STUBS = {
-    "test_delete_record__A2",
-    "test_delete_record__A3",
-    "test_delete_record__B2",
-    "test_delete_record__B4",
+    "test_delete_record__authority__tenant_isolation",
+    "test_delete_record__authority__backing_least_privilege",
+    "test_delete_record__blast__destructive_gating",
+    "test_delete_record__blast__audit",
 }
-DELETE_ENGINE = ["A1", "B1", "C1", "C2", "C3", "D1", "D2", "D3"]
+DELETE_ENGINE = [
+    "authority.anonymous",
+    "blast.mutation_class",
+    "containment.parameter_scope",
+    "containment.expression_passthrough",
+    "containment.output_hygiene",
+    "change.inventory",
+    "change.schema_drift",
+    "change.description_drift",
+]
 
 
 def _traits_planned(workdir: Path) -> dict[str, list[str]]:
@@ -481,12 +497,21 @@ def test_sync_generates_one_stub_per_tool_and_applicable_generated_trait(
     # get_guide is informational and takes no arguments: no isolation check, no
     # containment check, no gating, no egress, no audit. The identity check
     # still applies: the server acts as a service identity for every tool.
-    assert planned["get_guide"] == ["A1", "A3", "B1", "D1", "D2", "D3"]
+    assert planned["get_guide"] == [
+        "authority.anonymous",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
+    ]
     assert {f for f in active if f.startswith("test_get_guide__")} == {
-        "test_get_guide__A3"
+        "test_get_guide__authority__backing_least_privilege"
     }
     # B3 is the one egress check, and only `enrich` declares an egress edge.
-    assert [t for t, traits in planned.items() if "B3" in traits] == ["enrich"]
+    assert [t for t, traits in planned.items() if "blast.egress" in traits] == [
+        "enrich"
+    ]
 
 
 def test_the_active_tier_lives_in_its_own_file(
@@ -504,7 +529,7 @@ def test_the_active_tier_lives_in_its_own_file(
         by_path.setdefault(test.path, set()).add(test.tier)
     assert by_path[READONLY_FILE] == {"readonly"}
     assert by_path[ACTIVE_FILE] == {"active"}
-    assert _functions(workdir / READONLY_FILE) == {"test_enrich__B3"}
+    assert _functions(workdir / READONLY_FILE) == {"test_enrich__blast__egress"}
 
 
 def test_a_stub_records_its_point_id_and_its_trait_id(workdir: Path) -> None:
@@ -519,9 +544,9 @@ def test_a_stub_records_its_point_id_and_its_trait_id(workdir: Path) -> None:
         if p.target == "delete_record"
     )
     assert point.id == tool_point_id("reference-mcp", "delete_record")
-    block = text.split("def test_delete_record__B2(")[1]
+    block = text.split("def test_delete_record__blast__destructive_gating(")[1]
     assert (
-        f'"""itest point: {point.id}  trait: B2  '
+        f'"""itest point: {point.id}  trait: blast.destructive_gating  '
         f'schema: {point.attributes["schema_hash"]}"""' in block
     )
 
@@ -546,6 +571,8 @@ def _edit_table(
         .joinpath(traits_module.TABLE_RESOURCE)
         .read_text(encoding="utf-8")
     )
+    # Keyed by the short old id for convenience (a slug is not a keyword).
+    edits = {LEGACY_TRAIT_IDS.get(key, key): value for key, value in edits.items()}
     for trait in table["traits"]:
         edit = edits.get(trait["id"])
         if isinstance(edit, str):
@@ -575,11 +602,11 @@ def test_editing_one_applies_when_line_changes_the_generated_suite(
 
     assert _sync().exit_code == 0
     active = _functions(workdir / ACTIVE_FILE)
-    assert {f for f in active if f.endswith("__A2")} == {
-        f"test_{name}__A2" for name in EXPECTED_TOOLS
+    assert {f for f in active if f.endswith("__authority__tenant_isolation")} == {
+        f"test_{name}__authority__tenant_isolation" for name in EXPECTED_TOOLS
     }
     assert len(active) == 19 + 1
-    assert all("B3" in traits for traits in _traits_planned(workdir).values())
+    assert all("blast.egress" in traits for traits in _traits_planned(workdir).values())
 
 
 def test_a_tool_with_active_false_gets_no_active_stubs(workdir: Path) -> None:
@@ -596,12 +623,12 @@ def test_a_tool_with_active_false_gets_no_active_stubs(workdir: Path) -> None:
     assert not {f for f in active if f.startswith("test_delete_record__")}
     # The readonly (engine) traits still apply; only the active ones went.
     assert _traits_planned(workdir)["delete_record"] == [
-        "A1",
-        "B1",
-        "C3",
-        "D1",
-        "D2",
-        "D3",
+        "authority.anonymous",
+        "blast.mutation_class",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ]
 
 
@@ -625,13 +652,28 @@ def test_none_of_these_withholds_every_check_for_a_tool(workdir: Path) -> None:
 
 
 def test_a_hand_picked_trait_list_replaces_the_table(workdir: Path) -> None:
-    _declare(workdir, tools={"enrich": {"traits": ["A2", "B3", "D1"]}})
+    _declare(
+        workdir,
+        tools={
+            "enrich": {
+                "traits": [
+                    "authority.tenant_isolation",
+                    "blast.egress",
+                    "change.inventory",
+                ]
+            }
+        },
+    )
     assert _sync().exit_code == 0
     generated = _functions(workdir / READONLY_FILE) | _functions(workdir / ACTIVE_FILE)
     assert {f for f in generated if f.startswith("test_enrich__")} == {
-        "test_enrich__A2"
+        "test_enrich__authority__tenant_isolation"
     }
-    assert _traits_planned(workdir)["enrich"] == ["A2", "B3", "D1"]
+    assert _traits_planned(workdir)["enrich"] == [
+        "authority.tenant_isolation",
+        "blast.egress",
+        "change.inventory",
+    ]
 
 
 # --- an unreachable server is a line, not a crash ----------------------------

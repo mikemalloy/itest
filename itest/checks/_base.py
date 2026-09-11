@@ -54,11 +54,11 @@ class CheckResult:
 
 EngineCheck = Callable[..., CheckResult]
 
-#: trait id -> engine check. Populated by :func:`engine_check` as the check
+#: trait slug -> engine check. Populated by :func:`engine_check` as the check
 #: modules are imported by the package ``__init__``.
 ENGINE_CHECKS: dict[str, EngineCheck] = {}
 
-#: trait id -> generated check. Empty until the A2/B2/B4 recipes ship; the
+#: trait slug -> generated check. Empty until the first generated recipes ship; the
 #: registry exists so ``run_generated_check`` has something to dispatch on.
 GENERATED_CHECKS: dict[str, Callable[..., CheckResult]] = {}
 
@@ -90,7 +90,8 @@ def scrub_result(result: CheckResult, target: McpTarget) -> CheckResult:
     then :func:`itest.core.redact.text_scrubber` removes credential-shaped text
     and pseudonymizes account ids. A ``*_hash`` value skips the second pass
     only: a twelve-digit drift hash is data, and pseudonymizing it as an account
-    id would corrupt the evidence D2 and D3 exist to show.
+    id would corrupt the evidence the schema and description drift checks exist
+    to show.
     """
     secrets = _credential_values(target)
     patterns = redact.text_scrubber()
@@ -185,6 +186,7 @@ def _target_key(target: McpTarget) -> tuple:
         target.credential_env,
         target.timeout_s,
         target.allow_private_hosts,
+        target.cwd,
     )
 
 

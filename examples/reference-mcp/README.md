@@ -71,6 +71,36 @@ The bearer token comes from `REFERENCE_MCP_TOKEN`, defaulting to
 `reference-token` when unset. That constant is an example's convenience, not a
 product default — this server exists to be probed on loopback.
 
+## Running ITest against it
+
+The directory is an ITest project as shipped: a declaration
+(`.itest/tools/reference-mcp.yaml`) and the environment policy it needs
+(`.itest/environments.yaml`). There is no Terraform here, and none is needed —
+a declarations-only project plans its tools without it. From this directory,
+with ITest installed (`pip install -e '.[examples]'` at the repo root):
+
+```sh
+export REFERENCE_MCP_TOKEN=dry-run-token   # a name the declaration reads; any value
+itest plan                                  # eight tools, no --tf-json
+itest sync                                  # engine modules, bindings, your conftest.py
+itest verify --environment staging          # staging permits the active tier
+itest report --html --environment staging --out readiness.html
+```
+
+The declaration's `[python, server.py]` launches `server.py` from this
+directory under the interpreter ITest runs in, whatever directory you start
+from. Nothing generated here is meant to be committed: `.itest/manifest.yaml`,
+`.itest/plan.json` and `itest_tests/` are what a real project would keep, and
+here they are output from trying it out.
+
+What to expect, and why: over stdio this server has no guard at all, so `authority.anonymous`
+(refuses anonymous) **fails** on its five read tools and is `not_verifiable` on
+the three mutating ones — the page reads BLOCKED, which is the truth about an
+unauthenticated stdio server. The two deliberate defects are not caught by
+this run: the open mount exists only over HTTP, and a declaration cannot opt
+into a loopback URL; `lookalike_read` passes the readonly mutation-class check
+by design and waits on the active-tier "mutation class observed" check.
+
 ## Why a reference server has to exist
 
 Three of these branches cannot be shown against a real MCP server. You cannot

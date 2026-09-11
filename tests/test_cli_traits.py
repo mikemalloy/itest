@@ -70,10 +70,12 @@ def test_traits_prints_the_table(tmp_path: Path, monkeypatch) -> None:
         f"Trait table {trait_table_hash()}: 14 traits in 4 families "
         "(9 engine, 5 generated)."
     )
-    b2 = next(line for line in lines if line.lstrip().startswith("B2 "))
+    b2 = next(
+        line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
+    )
     for column in (
         "Blast radius",
-        "destructive gating",
+        "BLAST-2",
         "generated",
         "active",
         "mutation == destructive",
@@ -93,13 +95,15 @@ def test_traits_json_is_the_table(tmp_path: Path, monkeypatch) -> None:
     assert payload["families"] == table.families
     assert [t["id"] for t in payload["traits"]] == table.ids
     assert payload["traits"][0] == {
-        "id": "A1",
-        "family": "A",
+        "id": "authority.anonymous",
+        "family": "authority",
         "family_name": "Authority",
+        "code": "AUTH-1",
         "name": "refuses anonymous",
         "kind": "engine",
         "tier": "readonly",
         "applies_when": "always",
+        "standards": ["ASI03", "LLM02", "semgrep-server-4"],
         "recipe": "tool_authn.md",
     }
 
@@ -117,9 +121,20 @@ def test_traits_for_a_tool_decides_every_trait(synced: Path) -> None:
     )
     assert f"id={point_id}" in out
     assert "12 of 14 traits apply" in out
-    assert "APPLIES          B2  destructive gating" in out
+    lines = out.splitlines()
+    assert any(
+        line.lstrip().startswith("APPLIES")
+        and "blast.destructive_gating" in line
+        and "destructive gating" in line
+        for line in lines
+    )
     assert "rule: mutation == destructive" in out
-    assert "does not apply   A4  caller identity passthrough" in out
+    assert any(
+        line.lstrip().startswith("does not apply")
+        and "authority.delegation" in line
+        and "caller identity passthrough" in line
+        for line in lines
+    )
     assert "rule: identity.runs_as == passthrough" in out
     snapshot("for-delete-record", out)
 
@@ -155,8 +170,15 @@ def test_traits_for_json(synced: Path) -> None:
     assert payload["trait_table_hash"] == trait_table_hash()
     assert payload["table_changed_since_sync"] is False
     applies = {t["id"]: t["applies"] for t in payload["traits"]}
-    assert [k for k, v in applies.items() if v] == ["A1", "A3", "B1", "D1", "D2", "D3"]
-    a2 = next(t for t in payload["traits"] if t["id"] == "A2")
+    assert [k for k, v in applies.items() if v] == [
+        "authority.anonymous",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
+    ]
+    a2 = next(t for t in payload["traits"] if t["id"] == "authority.tenant_isolation")
     assert a2["reason"] == (
         "rule: auth.second_tenant_env present and mutation != informational"
     )
@@ -214,10 +236,13 @@ def test_recipes_lists_every_recipe_the_table_names(
     lines = result.output.splitlines()
     assert lines[0] == "Recipes the trait table references, in recipes:"
     authn = next(line for line in lines if "tool_authn.md" in line)
-    assert "present" in authn and "A1" in authn
+    assert "present" in authn and "authority.anonymous" in authn
     containment = next(line for line in lines if "tool_containment.md" in line)
     assert "missing" in containment
-    assert "C1, C2, C3" in containment
+    assert (
+        "containment.parameter_scope, containment.expression_passthrough, "
+        "containment.output_hygiene"
+    ) in containment
     assert lines[-1] == "9 recipe(s): 1 present, 8 missing."
     snapshot("recipes", result.output)
 
@@ -233,7 +258,7 @@ def test_recipes_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "recipe": "tool_identity.md",
         "path": "recipes/tool_identity.md",
         "exists": False,
-        "traits": ["A3", "A4"],
+        "traits": ["authority.backing_least_privilege", "authority.delegation"],
     }
 
 
@@ -252,3 +277,62 @@ def test_recipes_default_search_finds_a_checkout_of_the_skill(
     assert "in skills/itest-implementer/references/recipes:" in result.output
     gating = next(line for line in result.output.splitlines() if "tool_gating" in line)
     assert "present" in gating
+
+
+# --- slugs, codes and standards -------------------------------------------------
+
+
+def test_the_table_shows_slug_code_family_kind_tier_rule_standards_recipe(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = _traits()
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    header = lines[2].split()
+    assert header[:2] == ["SLUG", "CODE"]
+    assert " ".join(header) == (
+        "SLUG CODE FAMILY KIND TIER APPLIES WHEN STANDARDS RECIPE"
+    )
+    anonymous = next(
+        line for line in lines if line.lstrip().startswith("authority.anonymous ")
+    )
+    assert "AUTH-1" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    gating = next(
+        line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
+    )
+    assert "BLAST-2" in gating and "—" in gating  # no mapping yet, said so
+
+
+def test_traits_json_carries_code_and_standards(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    payload = json.loads(_traits("--json").output)
+    by_id = {t["id"]: t for t in payload["traits"]}
+    assert by_id["change.description_drift"]["code"] == "CHANGE-3"
+    assert by_id["change.description_drift"]["standards"] == [
+        "ASI04",
+        "LLM01",
+        "semgrep-client-12",
+    ]
+    assert by_id["blast.egress"]["standards"] == []
+
+
+def test_traits_for_shows_each_decision_with_its_rule_and_standards(
+    synced: Path,
+) -> None:
+    result = _traits("--for", "reference-mcp/get_guide")
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    anonymous = next(line for line in lines if "authority.anonymous " in line)
+    assert anonymous.lstrip().startswith("APPLIES")
+    assert "AUTH-1" in anonymous and "rule: always" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    isolation = next(line for line in lines if "authority.tenant_isolation " in line)
+    assert isolation.lstrip().startswith("does not apply")
+    assert "rule: auth.second_tenant_env present" in isolation
+
+    payload = json.loads(_traits("--for", "reference-mcp/get_guide", "--json").output)
+    first = payload["traits"][0]
+    assert (first["id"], first["code"]) == ("authority.anonymous", "AUTH-1")
+    assert first["standards"] == ["ASI03", "LLM02", "semgrep-server-4"]

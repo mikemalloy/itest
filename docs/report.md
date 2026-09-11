@@ -6,11 +6,20 @@ your data by your pipeline** — there is no sample content anywhere on the page
 
 ```sh
 itest report --html                          # runs verify, writes readiness.html
-itest report --html --out release.html
+itest report --html --environment staging    # runs verify as `verify --environment staging`
+itest report --html --out release.html       # --out is the path flag (as on `redact`)
 itest report --from verify.json              # render a run you already have
 itest report --since .itest/prev-manifest.yaml   # adds trends and the since-line
 itest report --redact                        # pseudonymized account ids
 ```
+
+`--environment` is passed to the verify the report runs, with the same policy
+and binding resolution and the same refusals as `itest verify --environment`:
+an environment the policy does not define, or a production one that lists the
+active tier, exits 2 and writes nothing. It cannot be combined with `--from`,
+whose document already records where it ran. `--output PATH` is a deprecated
+alias for `--out` for one release (on `plan` and `verify`, `--output` is a
+format), and warns.
 
 Exit code is 0 whenever the page renders. **The verdict never becomes an exit
 code** — that is `itest verify`'s job, and a report command that failed the
@@ -54,7 +63,7 @@ verifier already decided.
 | Verdict — integrations verified | `passing` / `total_points` | verify JSON |
 | Verdict — endpoints verified | route_edge points passing / detected | verify JSON `points[]` + manifest `type` |
 | Verdict — drift | `orphaned_tests` + `len(unregistered)` | verify JSON |
-| Verdict — agent tools verified | `tools.servers[].summary.verified` / `.declared` | verify JSON `tools` (P30/P31) |
+| Verdict — agent tools verified | `tools.servers[].summary.verified` / `.declared` | verify JSON `tools` |
 | Verdict — since-line | new / removed point ids | manifest vs `--since` manifest |
 | Posture — cross-stack | points with `attributes.external` | verify JSON `points[].attributes` |
 | Posture — wildcard | points with `attributes.wildcard_resource` | verify JSON `points[].attributes` |
@@ -83,9 +92,15 @@ on the roadmap and nothing has run.
 These render as named empty states rather than as guesses. Each is a
 follow-up, not a defect in the page:
 
+The agent-tool ledger is **not** among them. `itest verify --output json`
+emits `tools.servers[]` whenever the manifest records a declared tool
+(`verifier.build_tool_ledger`), in exactly the shape pinned by
+`tests/fixtures/report/tool-ledger.json` and its contract test, each check
+carrying its lifecycle `state`. Only a run whose manifest declares no tool omits
+the key, and the section then reads "No agent tools declared".
+
 | Field | Why it is absent | Unblocked by |
 | --- | --- | --- |
-| `tools` — the whole agent-tool ledger | verify emits no tool block yet; the shape is pinned by `tests/fixtures/report/tool-ledger.json` and its contract test | P30 / P31 |
 | `not_analyzed` | the census is computed by `itest plan` and written to `.itest/plan.json`; verify never sees it | a `not_analyzed` block in verify JSON |
 | `verdict.endpoints_refuse_anon`, `verdict.authenticated_200` | verify records a point's status but never **which registered test was the anonymous probe**; the http_probe recipe suggests name suffixes in prose but nothing freezes or closes that vocabulary, so deriving a probe kind from a function name would be a guess | a `probe_kind` field on `tests[]` in verify JSON |
 | `ApiEndpoint.unauth` / `.auth` | same cause | same |

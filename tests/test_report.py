@@ -71,9 +71,14 @@ def test_tool_ledger_fixture_loads_through_the_model() -> None:
     server = ledger.servers[0]
     assert server.summary.declared == 6
     assert server.summary.changed == 1
-    assert [f.id for f in server.families] == ["A", "B", "C", "D"]
+    assert [f.id for f in server.families] == [
+        "authority",
+        "blast",
+        "containment",
+        "change",
+    ]
     assert [t.name for t in server.tools] == ["delete_record", "update_record"]
-    assert server.tools[0].checks[0].trait == "A1"
+    assert server.tools[0].checks[0].trait == "authority.anonymous"
     assert server.tools[1].checks[1].change.previous == "Update fields on a record."
     assert server.exceptions[0].kind == "changed"
 
@@ -444,8 +449,16 @@ def test_tool_ledger_renders_groups_rows_and_exceptions(alex_s7) -> None:
     assert set(groups) == {"Destructive", "Writes"}
     assert [r["n"] for r in groups["Destructive"]["rows"]] == ["delete_record"]
     # Columns are the traits actually checked, not a fixed set.
-    assert groups["Destructive"]["headers"] == ["A1", "B1", "D2", "D3"]
-    assert groups["Writes"]["headers"] == ["A1", "D3"]
+    assert [h["slug"] for h in groups["Destructive"]["headers"]] == [
+        "authority.anonymous",
+        "blast.mutation_class",
+        "change.schema_drift",
+        "change.description_drift",
+    ]
+    assert [h["slug"] for h in groups["Writes"]["headers"]] == [
+        "authority.anonymous",
+        "change.description_drift",
+    ]
     changed = groups["Writes"]["rows"][0]
     assert changed["flag"] is True
     assert {c["txt"] for c in changed["cells"]} == {"PASS", "CHANGED"}
@@ -677,3 +690,101 @@ def test_cli_report_without_a_manifest_exits_2(tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["report", "--html"])
     assert result.exit_code == 2
     assert "No manifest" in result.output
+
+
+# --- report runs verify in the environment it is told ---------------------------------
+
+POLICY = """\
+version: 1
+environments:
+  staging: { tiers: [static, readonly, active] }
+  prod:    { tiers: [static, readonly] }
+"""
+
+
+def _with_policy(project: Path, text: str = POLICY) -> None:
+    (project / ".itest" / "environments.yaml").write_text(text, encoding="utf-8")
+
+
+def test_report_environment_is_the_environment_its_verify_runs_in(
+    tmp_path, monkeypatch
+) -> None:
+    from itest.report.render import extract_blocks
+
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    _with_policy(project)
+    out = tmp_path / "page.html"
+    result = runner.invoke(
+        app, ["report", "--html", "--environment", "staging", "--out", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    page = extract_blocks(out.read_text(encoding="utf-8"))["PAGE"]
+    assert "<b>staging</b>" in page["verdict"]["sub"]
+    assert "no environment bound" not in page["verdict"]["sub"]
+    assert "safe floor" not in page["verdict"]["sub"]
+    footer = {f["k"]: f["v"] for f in page["footer"]}
+    assert "--environment staging" in json.dumps(footer)
+
+
+def test_report_refuses_an_environment_the_policy_does_not_define(
+    tmp_path, monkeypatch
+) -> None:
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    _with_policy(project)
+    result = runner.invoke(
+        app, ["report", "--html", "--environment", "nope", "--out", "p.html"]
+    )
+    assert result.exit_code == 2
+    assert "'nope' is not defined" in result.output
+    assert not (tmp_path / "p.html").exists()
+
+
+def test_report_refuses_a_production_policy_that_allows_active(
+    tmp_path, monkeypatch
+) -> None:
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    _with_policy(
+        project,
+        "version: 1\nenvironments:\n  prod: { tiers: [static, readonly, active] }\n",
+    )
+    result = runner.invoke(
+        app, ["report", "--html", "--environment", "prod", "--out", "p.html"]
+    )
+    assert result.exit_code == 2
+    assert "production" in result.output
+    assert not (tmp_path / "p.html").exists()
+
+
+def test_report_output_is_a_deprecated_alias_for_out(tmp_path, monkeypatch) -> None:
+    """`--out` is the file-path flag (as on `redact`); `--output` means a format
+    on plan and verify. `report --output PATH` still works for one release."""
+    synced(tmp_path, monkeypatch, ALEX_S7)
+    result = runner.invoke(app, ["report", "--html", "--output", "old.html"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "old.html").exists()
+    assert "deprecated" in result.output and "--out" in result.output
+
+
+def test_report_refuses_out_and_output_naming_different_files(
+    tmp_path, monkeypatch
+) -> None:
+    synced(tmp_path, monkeypatch, ALEX_S7)
+    result = runner.invoke(
+        app, ["report", "--html", "--out", "a.html", "--output", "b.html"]
+    )
+    assert result.exit_code == 2
+    assert not (tmp_path / "a.html").exists() and not (tmp_path / "b.html").exists()
+
+
+def test_report_environment_and_from_are_one_or_the_other(
+    tmp_path, monkeypatch
+) -> None:
+    """--from renders a run that already happened; its environment is in it."""
+    synced(tmp_path, monkeypatch, ALEX_S7)
+    (tmp_path / "v.json").write_text("{}", encoding="utf-8")
+    result = runner.invoke(
+        app, ["report", "--from", "v.json", "--environment", "staging"]
+    )
+    assert result.exit_code == 2
+    assert "--from" in result.output
+    assert not (tmp_path / "readiness.html").exists()

@@ -8,6 +8,16 @@
 # hash of this table's parsed content, so the sync that follows an edit says
 # the table changed and which tools gained or lost checks.
 #
+# `id` is the trait's identity everywhere — the manifest, the ledger, stub and
+# fixture names (with the dot written as `__` where a name cannot hold one) —
+# and is `<family>.<slug>`. `code` (AUTH-1, BLAST-2, ...) is a short display
+# label for narrow table columns only: never an identity, never a dispatch key.
+# `standards` lists the published ids the trait answers — OWASP Agentic (ASI..),
+# OWASP LLM (LLM..), Semgrep MCP cheatsheet rows (semgrep-<tab>-<row>), CWE-..,
+# OWASP Agent Control Standard (ACS-..) — taken from the recipes' own "Standards
+# mapping" sections. A trait with no confident mapping yet has an empty list,
+# never an invented id; an entry with an unknown prefix refuses the table.
+#
 # `applies_when` is a tiny expression over the tool's attributes. The whole
 # grammar:
 #
@@ -40,122 +50,151 @@
 # implemented. `itest recipes` lists them and reports any that are missing.
 version: 1
 
-# Family names, for the readiness page's roll-up. The letter is the family id.
+# Family ids and names, for the readiness page's roll-up. Every trait id starts
+# with its family's id.
 families:
-  A: Authority
-  B: Blast radius
-  C: Containment
-  D: Change
+  authority: Authority
+  blast: Blast radius
+  containment: Containment
+  change: Change
 
 traits:
-  - id: A1
-    family: A
+  - id: authority.anonymous
+    code: AUTH-1
+    family: authority
     name: refuses anonymous
     applies_when: always
     tier: readonly
     kind: engine
     recipe: tool_authn.md
+    standards: [ASI03, LLM02, semgrep-server-4]
 
-  - id: A2
-    family: A
+  - id: authority.tenant_isolation
+    code: AUTH-2
+    family: authority
     name: tenant isolation
     applies_when: auth.second_tenant_env present and mutation != informational
     tier: active
     kind: generated
     recipe: tool_isolation.md
+    standards: []   # no recipe yet, so no confident mapping
 
-  - id: A3
-    family: A
+  - id: authority.backing_least_privilege
+    code: AUTH-3
+    family: authority
     name: acts as declared identity
     applies_when: identity.runs_as present
     tier: active
     kind: generated
     recipe: tool_identity.md
+    standards: []   # no recipe yet
 
-  - id: A4
-    family: A
+  - id: authority.delegation
+    code: AUTH-4
+    family: authority
     name: caller identity passthrough
     applies_when: identity.runs_as == passthrough
     tier: active
     kind: generated
     recipe: tool_identity.md
+    standards: []   # no recipe yet
 
-  - id: B1
-    family: B
+  - id: blast.mutation_class
+    code: BLAST-1
+    family: blast
     name: mutation class
     applies_when: always
     tier: readonly
     kind: engine
     recipe: tool_mutation_class.md
+    standards: [ASI02, LLM06]
 
-  - id: B2
-    family: B
+  - id: blast.destructive_gating
+    code: BLAST-2
+    family: blast
     name: destructive gating
     applies_when: mutation == destructive
     tier: active
     kind: generated
     recipe: tool_gating.md
+    standards: []   # no recipe yet
 
-  - id: B3
-    family: B
+  - id: blast.egress
+    code: BLAST-3
+    family: blast
     name: external egress
     applies_when: egress != none
     tier: readonly
     kind: engine
     recipe: tool_egress.md
+    standards: []   # no recipe yet
 
-  - id: B4
-    family: B
+  - id: blast.audit
+    code: BLAST-4
+    family: blast
     name: audit record
     applies_when: mutation in [write, destructive] and audit.sink present
     tier: active
     kind: generated
     recipe: tool_audit.md
+    standards: []   # no recipe yet
 
-  - id: C1
-    family: C
+  - id: containment.parameter_scope
+    code: CONTAIN-1
+    family: containment
     name: parameter scope
     applies_when: mutation != informational
     tier: active
     kind: engine
     recipe: tool_containment.md
+    standards: []   # no recipe yet
 
-  - id: C2
-    family: C
+  - id: containment.expression_passthrough
+    code: CONTAIN-2
+    family: containment
     name: expression passthrough
     applies_when: has_free_form_input
     tier: active
     kind: engine
     recipe: tool_containment.md
+    standards: []   # no recipe yet
 
-  - id: C3
-    family: C
+  - id: containment.output_hygiene
+    code: CONTAIN-3
+    family: containment
     name: output hygiene
     applies_when: mutation != informational
     tier: readonly
     kind: engine
     recipe: tool_containment.md
+    standards: []   # no recipe yet
 
-  - id: D1
-    family: D
+  - id: change.inventory
+    code: CHANGE-1
+    family: change
     name: inventory
     applies_when: always
     tier: readonly
     kind: engine
     recipe: tool_provenance.md
+    standards: [ASI04, LLM03, semgrep-client-14]
 
-  - id: D2
-    family: D
+  - id: change.schema_drift
+    code: CHANGE-2
+    family: change
     name: schema drift
     applies_when: always
     tier: readonly
     kind: engine
     recipe: tool_provenance.md
+    standards: [ASI04, LLM03]
 
-  - id: D3
-    family: D
+  - id: change.description_drift
+    code: CHANGE-3
+    family: change
     name: description drift
     applies_when: always
     tier: readonly
     kind: engine
     recipe: tool_provenance.md
+    standards: [ASI04, LLM01, semgrep-client-12]

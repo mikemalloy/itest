@@ -362,14 +362,19 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
         if not tools:
             continue
         heading, css_suffix, class_label = MUTATION_GROUP[key]
-        headers = sorted({c.trait for tool in tools for c in tool.checks})
+        first = {}
+        for tool in tools:
+            for check in tool.checks:
+                first.setdefault(check.trait, check)
+        order = sorted(first, key=lambda slug: _column_rank(slug, first[slug], ledger))
+        headers = [_trait_header(slug, first[slug]) for slug in order]
         rows = []
         flagged = {"changed": 0, "held_out": 0, "fail": 0, "critical": 0}
         passed = 0
         for tool in tools:
             by_trait = {c.trait: c for c in tool.checks}
             cells = []
-            for trait in headers:
+            for trait in order:
                 check = by_trait.get(trait)
                 if check is None:
                     cells.append(None)
@@ -422,17 +427,19 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
     eyebrow = servers + (f" · {', '.join(environments)}" if environments else "")
     exceptions = []
     for server in ledger.servers:
+        codes = {c.trait: c.code for t in server.tools for c in t.checks if c.code}
         for item in server.exceptions:
             change = None
             for tool in server.tools:
                 for check in tool.checks:
                     if tool.name == item.tool and check.change is not None:
                         change = check.change
+            trait = _trait_label(item.trait, codes.get(item.trait or ""))
             exceptions.append(
                 {
                     "tag": item.kind.replace("_", " "),
                     "title": f"{item.tool}"
-                    + (f" — {item.trait}" if item.trait else "")
+                    + (f" — {trait}" if item.trait else "")
                     + f" ({server.server})",
                     "body": item.message,
                     "diff": (
@@ -473,6 +480,42 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
         "attention": _attention(ledger),
     }
     return groups, labels
+
+
+def _trait_label(slug: str | None, code: str | None) -> str:
+    """``authority.anonymous · AUTH-1``: the identity, then the display code."""
+    if not slug:
+        return ""
+    return f"{slug} · {code}" if code else slug
+
+
+def _code_number(code: str | None) -> int:
+    tail = (code or "").rpartition("-")[2]
+    return int(tail) if tail.isdigit() else 10**6
+
+
+def _column_rank(slug: str, check, ledger) -> tuple:
+    """Columns in the ledger's own family order, then by code: the table's
+    order, read from the data rather than restated here."""
+    families = [f.id for server in ledger.servers for f in server.families]
+    family = slug.partition(".")[0]
+    rank = families.index(family) if family in families else len(families)
+    return (rank, _code_number(check.code), slug)
+
+
+def _trait_header(slug: str, check) -> dict:
+    """One column head: the code for the narrow column, the slug beneath it,
+    and the standards the trait answers in the hover detail."""
+    label = _trait_label(slug, check.code)
+    standards = list(check.standards)
+    mapped = ", ".join(standards) if standards else "no standards mapped yet"
+    return {
+        "slug": slug,
+        "code": check.code,
+        "label": label,
+        "standards": standards,
+        "title": f"{label} — {mapped}",
+    }
 
 
 def _attention(ledger) -> list[str]:

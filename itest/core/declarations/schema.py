@@ -30,6 +30,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from itest.traits.ids import migrate_trait_id
+
 #: What calling a tool does. The vocabulary the MCP probe's classifier returns,
 #: minus its ``unknown``: a declaration states a belief, and "I don't know" is
 #: spelled ``detect``.
@@ -53,8 +55,9 @@ _SERVER_NAME = re.compile(r"^[a-z0-9-]+$")
 #: ``/`` or a space is a URL or a token that has been pasted where a name goes.
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-#: A trait id as the traits table spells them: a family letter and a number.
-_TRAIT_ID = re.compile(r"^[A-Z][0-9]+$")
+#: A trait id as the traits table spells them: ``<family>.<slug>``. An old
+#: AN-style id (``A1``) is accepted and read as the slug it was renamed to.
+_TRAIT_ID = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 
 
 def _env_name(value: str | None, field: str) -> str | None:
@@ -95,7 +98,11 @@ class Transport(Strict):
     """How to reach the server. ``stdio`` launches it; ``http`` connects to it."""
 
     kind: Literal["stdio", "http"]
-    #: argv for ``kind: stdio``, relative to the project root.
+    #: argv for ``kind: stdio``. It is launched in the project directory — the
+    #: one holding this file's ``.itest/`` — so a relative path in it resolves
+    #: there, never against the caller's working directory or a repository root.
+    #: A bare ``python`` / ``python3`` first word is the interpreter ITest runs
+    #: under (see ``tools.build_target``).
     command: list[str] | None = None
     #: The NAME of the environment variable holding the base URL for
     #: ``kind: http``. Present alongside a stdio command when the same server
@@ -260,6 +267,7 @@ class ToolOverride(Strict):
                 "traits is an empty list. Omit the key to inherit the table, or "
                 f"write [{NO_TRAITS}] with notes to say the tool needs none."
             )
+        value = [migrate_trait_id(entry) for entry in value]
         if NO_TRAITS in value and len(value) > 1:
             raise ValueError(
                 f"traits '{NO_TRAITS}' cannot sit beside a trait id: either the "
@@ -268,8 +276,8 @@ class ToolOverride(Strict):
         for entry in value:
             if entry != NO_TRAITS and not _TRAIT_ID.match(entry):
                 raise ValueError(
-                    f"traits entry {entry!r} is not a trait id (a family letter "
-                    f"and a number, e.g. A1) or '{NO_TRAITS}'."
+                    f"traits entry {entry!r} is not a trait id (a family and a "
+                    f"slug, e.g. authority.anonymous) or '{NO_TRAITS}'."
                 )
         repeated = sorted({entry for entry in value if value.count(entry) > 1})
         if repeated:

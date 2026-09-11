@@ -48,10 +48,11 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from itest.core import lifecycle
 from itest.core.manifest import Manifest
+from itest.traits.ids import migrate_family_id, migrate_trait_id
 
 #: The status vocabulary a tool check may carry. Pinned against the committed
 #: contract fixture (tests/fixtures/report/tool-ledger.json) by test.
@@ -118,6 +119,8 @@ class ToolChange(_Strict):
 
 
 class ToolCheck(_Strict):
+    #: The trait's slug (``authority.anonymous``). A ledger written with the old
+    #: AN-style ids is read with the new ones.
     trait: str
     status: str
     detail: str
@@ -125,6 +128,15 @@ class ToolCheck(_Strict):
     change: ToolChange | None = None
     #: One of :data:`CHECK_STATES`; ``None`` when no test is registered to judge.
     state: str | None = None
+    #: The trait's display code (``AUTH-1``) — a label, never an identity.
+    code: str | None = None
+    #: The published ids the trait answers (``ASI03``, ``semgrep-server-4``).
+    standards: list[str] = Field(default_factory=list)
+
+    @field_validator("trait", mode="before")
+    @classmethod
+    def _current_trait_id(cls, value: object) -> object:
+        return migrate_trait_id(value) if isinstance(value, str) else value
 
 
 class ToolEntry(_Strict):
@@ -144,11 +156,17 @@ class ToolEntry(_Strict):
 
 
 class ToolFamily(_Strict):
+    #: The family id (``authority``); an old family letter is read as its id.
     id: str
     name: str
     checked: int
     passed: int
     not_verifiable: int = 0
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _current_family_id(cls, value: object) -> object:
+        return migrate_family_id(value) if isinstance(value, str) else value
 
 
 class ToolSummary(_Strict):
@@ -168,6 +186,11 @@ class ToolException(_Strict):
     tool: str
     trait: str | None = None
     message: str
+
+    @field_validator("trait", mode="before")
+    @classmethod
+    def _current_trait_id(cls, value: object) -> object:
+        return migrate_trait_id(value) if isinstance(value, str) else value
 
 
 class ToolServer(_Strict):

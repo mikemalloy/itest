@@ -28,7 +28,13 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 - `itest plan`: reads `terraform show -json` output plus the existing manifest,
   detects integration points, prints a proposed changeset (new points, orphaned
   tests, unchanged), writes the proposal to `.itest/plan.json`, and emits a
-  Mermaid diagram. Plan never modifies test files.
+  Mermaid diagram. Plan never modifies test files. **Terraform is optional
+  when a project is declarations-only**: with no `--tf-json`, no `*.tf` /
+  `*.tf.json` in the project directory, and a declaration under
+  `.itest/tools/`, terraform being absent, failing, or reporting an empty state
+  all mean an empty resource set, and plan goes on to the declarations. With
+  Terraform files present an empty state stays the "nothing was applied"
+  error.
 - `itest sync`: consumes the plan (running one implicitly if absent), updates
   the manifest, generates pytest stubs for new integration points. Pauses for
   confirmation unless --auto-approve. NEVER modifies or deletes a test file
@@ -229,22 +235,22 @@ purpose (`CheckResult`, `run_engine_check`, `run_generated_check`) and **honest
 by construction**: anything a check cannot establish — an unreachable server, a
 tool error, a missing sentinel, an unknown trait — is `not_verifiable` with the
 reason, never a pass and never an exception. An engine check has no per-tool
-file; most are readonly tier, and **C1 and C2 are active tier** — they will call
+file; most are readonly tier, and **`containment.parameter_scope` and `containment.expression_passthrough` are active tier** — they will call
 tools with sentinel injection arguments, which is safe only on a non-production
 environment — so they run only where the committed policy allows `active`. The
 engine checks shipped today are readonly and **judge only what they observed**:
-none passes `allow_mutating`, so A1 proves the
+none passes `allow_mutating`, so `authority.anonymous` proves the
 front door (an anonymous session refused passes every tool on the server) and
 calls only read tools behind an open one; a write or destructive tool there is
 `not_verifiable`, never `critical`, because a listing is not a call and
 `critical` means a demonstrated admission. The class used is the stricter of the
 recorded and the live one. With no credential resolving — a stdio server like
-reference-mcp is the normal case — the listing checks (B1, D1–D3) run on the
+reference-mcp is the normal case — the listing checks (`blast.mutation_class`, `change.inventory`, `change.schema_drift` and `change.description_drift`) run on the
 anonymous listing when the server admits one, labelled `listing: anonymous`, and
 are `not_verifiable` only when it is refused, naming the variable that would
 unlock it. Every string in a result is scrubbed
 of the credential and of credential-shaped text. A server is listed once per run.
-The agreement check for mutation class (B1) has a limit it states rather than
+The agreement check for mutation class (`blast.mutation_class`) has a limit it states rather than
 hides: a tool whose annotation and name agree and both lie passes it, and only a
 behavioural check can do better. `docs/checks.md` is the reference.
 
@@ -284,14 +290,16 @@ write (exit 1, the server named) unless `--allow-unreachable` accepts the gap.
 **The table is live.** Every plan recomputes every declared tool's trait set from
 the current table and the tool's current attributes, and diffs it against the
 `traits_planned` the manifest recorded, so a table edit or a tool that moved is
-a "Trait changes" line — `+A2 on server/tool (rule: ...)`,
-`−B2 on server/tool (mutation changed)` — and the manifest's `trait_table_hash`
+a "Trait changes" line — `+authority.tenant_isolation on server/tool (rule: ...)`,
+`−blast.destructive_gating on server/tool (mutation changed)` — and the manifest's `trait_table_hash`
 (over the table's parsed content) says when the table itself changed. The
 mutation class as detected (the resolved class and an `annotations_hash`) is a
 drift attribute: an annotation flip is `changed`, never a quiet `unchanged`. A
 trait that stops applying **retires** its test (`retired: true`: kept on disk,
 never run, reported `not_applicable`) and restores the same entry if it applies
-again. `itest traits` / `itest recipes` print the table, one tool's decisions,
+again. A P30-era per-tool stub for a trait that is now an engine trait is
+retired the same way and never restored: the engine module is the only thing
+that runs an engine trait. `itest traits` / `itest recipes` print the table, one tool's decisions,
 and the recipes it names, from the manifest and the table alone.
 
 ### Engine checks and generated checks
@@ -313,8 +321,9 @@ binds to (`itest/traits/runtime.py`) is ITest's, so fixing it fixes every check.
 
 **Lifecycle states.** Every check in verify's tool ledger carries a `state`:
 `current` (ITest-owned, generated against the current schema), `hand_edited`
-(ownership hash differs), `stale` (hand-edited *and* generated against a schema
-the tool no longer has), `not_applicable` (retired), `orphan` (the tool is gone),
+(ownership hash differs), `stale` (generated against a schema the tool no longer
+has — hand-edited and frozen, or ITest-owned and not yet regenerated; every sync
+regenerates the owned ones), `not_applicable` (retired), `orphan` (the tool is gone),
 and `recipe_newer` (defined, not yet emitted: nothing records a recipe version).
 VERIFIED is a coverage claim — every planned trait needs a counted check that
 passed — and stale, not-applicable and orphaned checks do not count; any stale
@@ -429,10 +438,11 @@ Shipped:
   Trends and the since-line appear only with `--since <prior manifest>`, never
   as "steady"; `--redact` reuses verify's own scrubber rather than adding a
   second one. The verdict is not an exit code — that stays verify's job. Tests
-  pin the extracted data blocks, not pixels. Four things verify cannot supply
-  today are modelled Optional and listed in `docs/report.md`: the tool ledger
-  (P30/P31), the not-analyzed census (it lives in the plan), the release
-  commit, and which registered test was the anonymous probe — the last is why
+  pin the extracted data blocks, not pixels. Three things verify cannot supply
+  today are modelled Optional and listed in `docs/report.md`: the
+  not-analyzed census (it lives in the plan), the release commit, and which
+  registered test was the anonymous probe (the tool ledger, once on this list,
+  is now emitted by verify as `tools.servers[]`) — the last is why
   the API sweep shows one Status column rather than an
   Unauthenticated/Authenticated pair holding the same neutral value.
 
@@ -448,7 +458,7 @@ Shipped:
   `itest add --server` to register a hand-written test onto a tool point by name.
   No manifest schema bump: `mcp_tool` is a new value of an existing field.
 - The live trait table (`docs/traits.md`): a `kind` column (engine | generated),
-  A3/A4 identity rows and C3 output hygiene (fourteen traits), loader validation
+  `authority.backing_least_privilege` / `authority.delegation` identity rows and `containment.output_hygiene` output hygiene (fourteen traits), loader validation
   (unique ids, known families, kind, tier, parseable `applies_when` over known
   attributes — at load), and `trait_table_hash()` over the parsed table. Every
   sync recomputes every tool's trait set and diffs it against `traits_planned`
@@ -479,38 +489,67 @@ Shipped:
 - Check library (`itest/checks`, `docs/checks.md`): the `CheckResult` contract,
   `run_engine_check` / `run_generated_check` with a registry (unknown id →
   `not_verifiable`), a per-run listing cache, and the scrub rule. Engine checks
-  **A1** refuses anonymous (front door first — a refused anonymous session
+  **`authority.anonymous`** refuses anonymous (front door first — a refused anonymous session
   passes every tool; behind an open one, read tools are called anonymously with
   sentinels and mutating tools are `not_verifiable`, deferred to the active
-  tier; never `critical`), **B1** mutation class by agreement (pinned limit:
-  `lookalike_read` passes), and **D1** inventory with an undeclared list, **D2**
-  schema drift, **D3** description drift. `itest.probes.mcp` gained
-  `list_tools(anonymous=True)` and `McpProbeError.refused` for A1.
-- Three tool recipes — `tool_authn` (A1), `tool_mutation_class` (B1),
-  `tool_provenance` (D1–D3), each `recipe-version: 1` — plus
+  tier; never `critical`), **`blast.mutation_class`** mutation class by agreement (pinned limit:
+  `lookalike_read` passes), and **`change.inventory`** inventory with an undeclared list, **`change.schema_drift`**
+  schema drift, **`change.description_drift`** description drift. `itest.probes.mcp` gained
+  `list_tools(anonymous=True)` and `McpProbeError.refused` for `authority.anonymous`.
+- Three tool recipes — `tool_authn` (`authority.anonymous`), `tool_mutation_class` (`blast.mutation_class`),
+  `tool_provenance` (`change.inventory`, `change.schema_drift` and `change.description_drift`), each `recipe-version: 1` — plus
   `tool_recipe_shape.md`, the template for generated ones; the skill now handles
   `mcp_tool` points (engine traits need nothing written) instead of skipping them.
+
+- Declarations-only projects: with no `--tf-json`, no `*.tf` / `*.tf.json` and
+  a declaration under `.itest/tools/`, plan and sync treat the Terraform side as
+  an empty resource set (terraform absent, failing, or an empty state); Terraform
+  files with an empty state stay the "nothing was applied" error.
+- A self-contained stdio transport: the command runs in the project directory
+  (the one holding `.itest/`), and a bare `python` / `python3` first word is the
+  interpreter ITest runs under. `examples/reference-mcp` ships its environment
+  policy and runs `plan → sync → verify → report` from its own directory with no
+  stub and no edit, pinned by an end-to-end contract test.
+- Owned bindings follow their tool's schema: every sync (a no-op one included)
+  regenerates a binding ITest still owns whose frozen `schema:` moved, and a
+  verify before that sync reports it `stale`, never `current`. A P30 per-tool
+  stub for an engine trait is retired in place on sync; only the engine module
+  runs an engine trait.
+- Readable trait ids (`docs/traits.md`): `<family>.<slug>` identities
+  (`authority.anonymous` … `change.description_drift`), a `code` display label
+  (AUTH-1 … CHANGE-3) and a validated `standards` list per row; manifests,
+  ledgers, declarations and bindings written with the old AN-style ids load
+  mapped (`itest/traits/ids.py`) and the next sync writes the new ids. `itest
+  traits` shows slug, code and standards; the readiness page heads each column
+  with code and slug and shows the standards on hover.
+
+- `itest report --environment`: the report's own verify runs in the
+  environment given, with verify's resolution and refusals. `--out` is the
+  file-path flag on report and redact; `report --output` is a deprecated alias
+  for one release. `testpaths = ["tests"]` keeps the project suite to tests/,
+  and the examples' generated artifacts are gitignored.
 
 Not yet built (do not build without explicit instruction):
 - The remaining tool recipes (`tool_isolation`, `tool_identity`, `tool_gating`,
   `tool_egress`, `tool_audit`, `tool_containment`; `itest recipes` lists which
   exist) and the skill flow that writes a declaration by asking.
-- **B1 observed** (active tier): call a read-classified tool with a sentinel and
+- **mutation class observed** (active tier): call a read-classified tool with a sentinel and
   look at the store afterwards through a read tool named in the declaration. A
   tool that lies *consistently* — `lookalike_read` declares `readOnlyHint=true`,
-  is named like a read, and mutates — passes B1 agreement by design and is this
+  is named like a read, and mutates — passes `blast.mutation_class` agreement by design and is this
   check's fixture.
-- **A1 active** (active tier, non-production only): an anonymous `tools/call`
+- **anonymous-refusal active** (active tier, non-production only): an anonymous `tools/call`
   on each mutating tool behind an open front door, with sentinel arguments —
   `critical` on admission. This is where the MCP probe's proven critical path
-  (P29's unauthenticated-call-admitted rule) belongs; the readonly A1 never says
+  (P29's unauthenticated-call-admitted rule) belongs; the readonly `authority.anonymous` never says
   `critical`.
-- Generated checks A2, A3, A4, B2, B4 (the registry exists and is empty, so
+- Generated checks `authority.tenant_isolation`, `authority.backing_least_privilege`, `authority.delegation`, `blast.destructive_gating`, `blast.audit` (the registry exists and is empty, so
   every generated binding is `not_verifiable`, never pass).
-- Engine checks B3 (egress), C1, C2, C3: the table names them, the library has no
+- Engine checks `blast.egress` (egress), `containment.parameter_scope`, `containment.expression_passthrough`, `containment.output_hygiene`: the table names them, the library has no
   entry for them yet, so each is `not_verifiable` ("no engine check for <id>").
 - `itest explain <trait>`, printing a check's docstring.
-- Regeneration of ITest-owned stubs on recipe change (and so `recipe_newer`:
+- Regeneration of ITest-owned stubs on recipe change — schema-drift
+  regeneration of owned bindings ships; this is the recipe half (and so `recipe_newer`:
   nothing records the recipe version a check was generated from).
 - A declaration reconfirm flag: a way for a reviewer to accept a `changed` or
   `stale` finding in the declaration rather than by editing the check.

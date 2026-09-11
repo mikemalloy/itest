@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
+
+from itest.traits.ids import LEGACY_TRAIT_IDS, migrate_trait_ids
 
 SCHEMA_VERSION = 2
 
@@ -116,6 +118,15 @@ class Manifest(BaseModel):
     points: list[IntegrationPoint] = Field(default_factory=list)
     tests: list[TestEntry] = Field(default_factory=list)
 
+    #: Set by :func:`load_manifest` when the file held an old AN-style trait id:
+    #: what is on disk is not what a save would write, so sync saves it even
+    #: when nothing else moved. Never serialized.
+    _trait_ids_migrated: bool = PrivateAttr(default=False)
+
+    @property
+    def trait_ids_migrated(self) -> bool:
+        return self._trait_ids_migrated
+
     def get_point(self, point_id: str) -> IntegrationPoint | None:
         """Return the point with ``point_id``, or ``None``."""
         for point in self.points:
@@ -164,7 +175,53 @@ def load_manifest(path: str | Path) -> Manifest:
     manifest = Manifest.model_validate(data)
     if isinstance(version, int) and version < SCHEMA_VERSION:
         _migrate(manifest, version)
+    manifest._trait_ids_migrated = _migrate_trait_ids(manifest)
     return manifest
+
+
+#: The parametrized engine test's name, spelled out rather than imported from
+#: stubgen (which imports this module). A test pins the two together.
+_ENGINE_TEST = "test_engine"
+
+
+def _migrate_trait_ids(manifest: Manifest) -> bool:
+    """Read a manifest written with the old AN-style trait ids as the new slugs.
+
+    Once, in memory, on every load; the next save — a sync — writes the new ids.
+    ``traits_planned``, a declared ``traits`` list and each entry's ``trait``
+    move. An engine case's name and id move too: the engine module names no
+    trait, it parametrizes over the manifest, so the case it now runs is
+    ``test_engine[<tool>-<slug>]`` and the entry has to say so. A binding's or a
+    P30 stub's name is a function on disk and is kept; its ``trait`` moves. A
+    manifest with no old id — every Terraform-only one — is untouched. Returns
+    whether anything moved.
+    """
+    moved = False
+    for point in manifest.points:
+        if point.traits_planned is not None:
+            current = migrate_trait_ids(point.traits_planned)
+            moved |= current != point.traits_planned
+            point.traits_planned = current
+        declared = point.attributes.get("traits")
+        if isinstance(declared, list):
+            current = migrate_trait_ids(declared)
+            moved |= current != declared
+            point.attributes["traits"] = current
+    for entry in manifest.tests:
+        old = entry.trait
+        if old not in LEGACY_TRAIT_IDS:
+            continue
+        moved = True
+        new = LEGACY_TRAIT_IDS[old]
+        entry.trait = new
+        case = f"-{old}]"
+        if entry.test_name.startswith(f"{_ENGINE_TEST}[") and entry.test_name.endswith(
+            case
+        ):
+            entry.test_name = entry.test_name[: -len(case)] + f"-{new}]"
+            if entry.id.startswith("e-") and entry.id.endswith(f"-{old.lower()}"):
+                entry.id = entry.id[: -len(old)] + new
+    return moved
 
 
 def default_resource_group(manifest: Manifest, entry: TestEntry) -> str | None:

@@ -51,6 +51,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from itest.core.declarations.schema import NO_TRAITS
 from itest.core.environments import VALID_TIERS
 from itest.core.manifest import IntegrationPoint, Tier
+from itest.traits.ids import migrate_trait_id
 
 #: Where the shipped table lives: a resource of the ``itest.traits`` package,
 #: read through :mod:`importlib.resources` and never by a path relative to this
@@ -79,6 +80,27 @@ KNOWN_ATTRIBUTES = (
     "identity.runs_as",
 )
 
+#: A trait id: ``<family>.<slug>``, lower case. The family half must be the
+#: row's own family, so an id says where it belongs.
+_TRAIT_ID = re.compile(r"^(?P<family>[a-z][a-z0-9_]*)\.[a-z][a-z0-9_]*$")
+
+#: A display code: letters, a hyphen, a number (``AUTH-1``). Never an identity.
+_TRAIT_CODE = re.compile(r"^[A-Z]+-[0-9]+$")
+
+#: The published id families a ``standards`` entry may come from, with what
+#: each looks like. A typo in one is an error; an empty list is fine.
+STANDARDS_PREFIXES = (
+    "ASI (OWASP Top 10 for Agentic Applications, e.g. ASI03)",
+    "LLM (OWASP Top 10 for LLM Applications, e.g. LLM02)",
+    "semgrep- (Semgrep MCP cheatsheet tab and row, e.g. semgrep-server-4)",
+    "CWE- (e.g. CWE-862)",
+    "ACS- (OWASP Agent Control Standard, e.g. ACS-AgBOM-mutation)",
+)
+_STANDARD = re.compile(
+    r"^(ASI[0-9]{2}|LLM[0-9]{2}|semgrep-[a-z]+-[0-9]+|CWE-[0-9]+"
+    r"|ACS-[A-Za-z0-9][A-Za-z0-9-]*)$"
+)
+
 _IN_CLAUSE = re.compile(r"^(?P<field>[\w.]+)\s+in\s+\[(?P<items>[^\]]*)\]$")
 _COMPARISON = re.compile(r"^(?P<field>[\w.]+)\s*(?P<op>==|!=)\s*(?P<value>.+)$")
 _PRESENT = re.compile(r"^(?P<field>[\w.]+)\s+present$")
@@ -94,10 +116,16 @@ class Trait(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    #: ``<family>.<slug>``: the trait's identity everywhere.
     id: str
+    #: A short display label for narrow columns (``AUTH-1``). Never an identity.
+    code: str
     family: str
     name: str
     applies_when: str
+    #: The published ids this trait answers (``ASI03``, ``semgrep-server-4``).
+    #: Empty until there is a confident mapping — never an invented id.
+    standards: list[str] = Field(default_factory=list)
     #: What the generated stub is registered as, and what the environment policy
     #: gates on. An ``active`` trait's stubs live in their own file.
     tier: Tier
@@ -118,6 +146,8 @@ class TraitTable(BaseModel):
     traits: list[Trait] = Field(default_factory=list)
 
     def get(self, trait_id: str) -> Trait | None:
+        """The row for ``trait_id``; an old AN-style id finds its renamed row."""
+        trait_id = migrate_trait_id(trait_id)
         for trait in self.traits:
             if trait.id == trait_id:
                 return trait
@@ -161,10 +191,18 @@ def load_traits(path: Path | None = None) -> TraitTable:
     if not table.traits:
         raise TraitTableError(f"{path} defines no traits.")
     seen: set[str] = set()
+    codes: dict[str, str] = {}
     for trait in table.traits:
         if trait.id in seen:
             raise TraitTableError(f"{path} defines trait {trait.id!r} twice.")
         seen.add(trait.id)
+        if trait.code in codes:
+            raise TraitTableError(
+                f"{path}: traits {codes[trait.code]} and {trait.id} both have code "
+                f"{trait.code!r}. A code is a display label, but two rows sharing "
+                "one would read as the same check."
+            )
+        codes[trait.code] = trait.id
         try:
             for field in referenced_attributes(trait.applies_when):
                 if field not in KNOWN_ATTRIBUTES:
@@ -193,6 +231,34 @@ def _check_rows(path: object, raw: dict) -> None:
         if not isinstance(row, dict):
             continue
         trait_id = row.get("id", "(no id)")
+        match = _TRAIT_ID.match(str(trait_id))
+        if "id" in row and match is None:
+            raise TraitTableError(
+                f"{path}: trait id {trait_id!r} is not <family>.<slug> in lower "
+                "case (e.g. authority.anonymous). An old AN-style id (A1, B2, ...) "
+                "belongs in a manifest being migrated, never in the table."
+            )
+        if match and row.get("family") in families and match["family"] != row["family"]:
+            raise TraitTableError(
+                f"{path}: trait {trait_id} is in family {row['family']!r}, but its "
+                f"id starts with {match['family']!r}. An id starts with its "
+                "family's id."
+            )
+        if "code" in row and not _TRAIT_CODE.match(str(row["code"])):
+            raise TraitTableError(
+                f"{path}: trait {trait_id} has code {row['code']!r}. A code is "
+                "upper-case letters, a hyphen and a number, e.g. AUTH-1."
+            )
+        standards = row.get("standards") or []
+        if isinstance(standards, list):
+            for entry in standards:
+                if not isinstance(entry, str) or not _STANDARD.match(entry):
+                    raise TraitTableError(
+                        f"{path}: trait {trait_id} names standard {entry!r}, which "
+                        "is not a published id this build recognises. Known "
+                        f"prefixes: {'; '.join(STANDARDS_PREFIXES)}. Leave the "
+                        "list empty until a mapping is confident."
+                    )
         if "kind" in row and row["kind"] not in TRAIT_KINDS:
             raise TraitTableError(
                 f"{path}: trait {trait_id} has kind {row['kind']!r}. A kind is "

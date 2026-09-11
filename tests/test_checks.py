@@ -58,7 +58,13 @@ SENTINEL = "sentinel-cannot-exist-0000"
 TOKEN = "zzq-checks-credential-91c2d4-do-not-log"
 ENV = "REFERENCE_MCP_TOKEN"
 
-ENGINE_TRAITS = ("A1", "B1", "D1", "D2", "D3")
+ENGINE_TRAITS = (
+    "authority.anonymous",
+    "blast.mutation_class",
+    "change.inventory",
+    "change.schema_drift",
+    "change.description_drift",
+)
 
 
 # --- fixtures -----------------------------------------------------------------
@@ -169,9 +175,18 @@ def test_the_public_signatures_are_exactly_the_contract() -> None:
 
 def test_the_registry_holds_exactly_the_engine_checks() -> None:
     assert set(checks.ENGINE_CHECKS) == set(ENGINE_TRAITS)
-    assert checks.ENGINE_CHECKS["A1"].__name__ == "check_a1"
-    assert checks.ENGINE_CHECKS["B1"].__name__ == "check_b1"
-    assert checks.ENGINE_CHECKS["D3"].__name__ == "check_d3"
+    assert (
+        checks.ENGINE_CHECKS["authority.anonymous"].__name__
+        == "check_authority__anonymous"
+    )
+    assert (
+        checks.ENGINE_CHECKS["blast.mutation_class"].__name__
+        == "check_blast__mutation_class"
+    )
+    assert (
+        checks.ENGINE_CHECKS["change.description_drift"].__name__
+        == "check_change__description_drift"
+    )
     assert dict(checks.GENERATED_CHECKS) == {}
 
 
@@ -190,10 +205,13 @@ def test_a_generated_trait_has_no_check_yet(
     project: Path, manifest_points: list[Any]
 ) -> None:
     result = run_generated_check(
-        "A2", point(manifest_points, "fetch_record"), stdio_target(), fixtures={}
+        "authority.tenant_isolation",
+        point(manifest_points, "fetch_record"),
+        stdio_target(),
+        fixtures={},
     )
     assert result.status == "not_verifiable"
-    assert result.detail == "no generated check for A2 yet"
+    assert result.detail == "no generated check for authority.tenant_isolation yet"
 
 
 @pytest.mark.parametrize("trait", ENGINE_TRAITS)
@@ -257,7 +275,7 @@ def test_a1_the_guarded_mount_passes_every_tool_at_the_front_door(
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     for p in manifest_points:
         result = run_engine_check(
-            "A1",
+            "authority.anonymous",
             point(manifest_points, p.target),
             http_target(reference.guarded_url),
             authenticated=False,
@@ -274,7 +292,7 @@ def test_a1_a_read_tool_answered_on_the_open_mount_fails(
     project: Path, manifest_points: list[Any], reference: Any
 ) -> None:
     result = run_engine_check(
-        "A1",
+        "authority.anonymous",
         point(manifest_points, "get_guide"),
         http_target(reference.open_url),
         authenticated=False,
@@ -294,7 +312,7 @@ def test_a1_fetch_record_on_the_open_mount_fails(
     anonymous call reached the read tool and its code ran: that is the
     demonstrated admission, and the detail says it was a tool error."""
     result = run_engine_check(
-        "A1",
+        "authority.anonymous",
         point(manifest_points, "fetch_record"),
         http_target(reference.open_url),
         authenticated=False,
@@ -310,7 +328,7 @@ def test_a1_delete_record_on_the_open_mount_is_deferred_to_the_active_tier(
 ) -> None:
     before = {key: dict(value) for key, value in reference.records.items()}
     result = run_engine_check(
-        "A1",
+        "authority.anonymous",
         point(manifest_points, "delete_record"),
         http_target(reference.open_url),
         authenticated=False,
@@ -327,7 +345,7 @@ def test_a1_every_mutating_tool_on_an_open_server_is_deferred(
 ) -> None:
     for name in sorted(MUTATING_TOOLS):
         result = run_engine_check(
-            "A1",
+            "authority.anonymous",
             point(manifest_points, name),
             http_target(reference.open_url),
             authenticated=False,
@@ -349,7 +367,10 @@ def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
 
     monkeypatch.setattr(authority, "call_tool", refused)
     result = run_engine_check(
-        "A1", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "get_guide"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "pass", result.detail
     assert result.detail.startswith("unauthenticated tools/call refused: ")
@@ -364,11 +385,17 @@ def test_a1_over_stdio_without_the_credential(
     tool is deferred to the active tier and is not called."""
     target = stdio_target()
     read = run_engine_check(
-        "A1", point(manifest_points, "search_records"), target, authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "search_records"),
+        target,
+        authenticated=True,
     )
     assert read.status == "fail"
     destructive = run_engine_check(
-        "A1", point(manifest_points, "delete_record"), target, authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "delete_record"),
+        target,
+        authenticated=True,
     )
     assert (destructive.status, destructive.detail) == ("not_verifiable", DEFERRED)
     assert destructive.evidence["called"] is False
@@ -386,7 +413,10 @@ def test_a1_never_produces_critical(
     ):
         for p in manifest_points:
             result = run_engine_check(
-                "A1", point(manifest_points, p.target), target, authenticated=False
+                "authority.anonymous",
+                point(manifest_points, p.target),
+                target,
+                authenticated=False,
             )
             assert result.status != "critical", (p.target, result.detail)
     assert "CRITICAL" not in Path(authority.__file__).read_text(encoding="utf-8")
@@ -426,7 +456,10 @@ def test_a1_an_auth_shaped_tool_error_is_a_refusal_inside_the_tool(
 ) -> None:
     monkeypatch.setattr(authority, "call_tool", _tool_error(message))
     result = run_engine_check(
-        "A1", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "get_guide"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "pass", result.detail
     assert result.detail.startswith("refused inside the tool: ")
@@ -451,7 +484,10 @@ def test_a1_any_other_tool_error_means_the_tool_logic_was_reached(
 ) -> None:
     monkeypatch.setattr(authority, "call_tool", _tool_error(message))
     result = run_engine_check(
-        "A1", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "get_guide"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "fail", result.detail
     assert message in result.detail
@@ -491,7 +527,10 @@ def test_a1_a_transport_error_on_the_call_is_not_verifiable(
 
     monkeypatch.setattr(authority, "call_tool", timed_out)
     result = run_engine_check(
-        "A1", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "get_guide"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "not_verifiable"
     assert "timed out" in result.detail
@@ -503,7 +542,10 @@ def test_a1_an_unreachable_server_is_not_verifiable(
     dead = McpTarget(kind="stdio", command=[sys.executable, "-c", "pass"])
     for name in ("get_guide", "delete_record"):
         result = run_engine_check(
-            "A1", point(manifest_points, name), dead, authenticated=False
+            "authority.anonymous",
+            point(manifest_points, name),
+            dead,
+            authenticated=False,
         )
         assert result.status == "not_verifiable"
         assert result.evidence["anonymous_listing"] == "error"
@@ -515,7 +557,10 @@ def test_a1_without_a_declaration_there_is_no_sentinel(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     result = run_engine_check(
-        "A1", point(manifest_points, "fetch_record"), stdio_target(), authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "fetch_record"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "not_verifiable"
     assert "sentinels.nonexistent_id" in result.detail
@@ -527,7 +572,7 @@ def test_a1_an_unknown_class_is_never_called(
     calls: list[Any] = []
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     result = run_engine_check(
-        "A1",
+        "authority.anonymous",
         point(manifest_points, "get_guide", mutation="unknown"),
         stdio_target(),
         authenticated=True,
@@ -543,7 +588,9 @@ def test_a1_a_tool_hidden_from_the_anonymous_listing_is_not_called(
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     hidden = point(manifest_points, "get_guide")
     hidden["target"] = "hidden_reader"
-    result = run_engine_check("A1", hidden, stdio_target(), authenticated=True)
+    result = run_engine_check(
+        "authority.anonymous", hidden, stdio_target(), authenticated=True
+    )
     assert calls == []
     assert result.status == "not_verifiable"
     assert "not in the anonymous listing" in result.detail
@@ -557,7 +604,7 @@ def test_a1_the_stricter_of_recorded_and_live_class_decides(
     calls: list[Any] = []
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     result = run_engine_check(
-        "A1",
+        "authority.anonymous",
         point(manifest_points, "delete_record", mutation="read"),
         stdio_target(),
         authenticated=True,
@@ -573,7 +620,7 @@ def test_b1_agreement_passes_and_names_its_sources(
     project: Path, manifest_points: list[Any]
 ) -> None:
     result = run_engine_check(
-        "B1",
+        "blast.mutation_class",
         point(manifest_points, "delete_record"),
         stdio_target(),
         authenticated=True,
@@ -588,7 +635,7 @@ def test_b1_a_confirming_declaration_is_named(
     project: Path, manifest_points: list[Any]
 ) -> None:
     result = run_engine_check(
-        "B1",
+        "blast.mutation_class",
         point(manifest_points, "delete_record", mutation_source="confirmed"),
         stdio_target(),
         authenticated=True,
@@ -606,13 +653,13 @@ def test_b1_passes_lookalike_read_by_design(
     the active-tier "B1 observed" recipe. When that ships, this test stays: the
     agreement check's answer does not change, a second check's does."""
     result = run_engine_check(
-        "B1",
+        "blast.mutation_class",
         point(manifest_points, "lookalike_read"),
         stdio_target(),
         authenticated=True,
     )
     assert result.status == "pass"
-    doc = inspect.getdoc(blast_radius.check_b1) or ""
+    doc = inspect.getdoc(blast_radius.check_blast__mutation_class) or ""
     assert "lookalike_read" in doc
     assert "observ" in doc
 
@@ -621,7 +668,7 @@ def test_b1_a_class_that_moved_is_changed(
     project: Path, manifest_points: list[Any]
 ) -> None:
     result = run_engine_check(
-        "B1",
+        "blast.mutation_class",
         point(manifest_points, "create_record", mutation="read"),
         stdio_target(),
         authenticated=True,
@@ -676,7 +723,10 @@ def test_b1_annotation_and_name_disagreeing_unsettled_fails(
     variant: McpTarget,
 ) -> None:
     result = run_engine_check(
-        "B1", variant_point("create_widget", "read"), variant, authenticated=True
+        "blast.mutation_class",
+        variant_point("create_widget", "read"),
+        variant,
+        authenticated=True,
     )
     assert result.status == "fail", result.detail
     assert "read-only" in result.detail
@@ -686,7 +736,7 @@ def test_b1_annotation_and_name_disagreeing_unsettled_fails(
 
 def test_b1_a_declaration_settles_the_disagreement(variant: McpTarget) -> None:
     result = run_engine_check(
-        "B1",
+        "blast.mutation_class",
         variant_point("create_widget", "read", source="confirmed"),
         variant,
         authenticated=True,
@@ -697,7 +747,10 @@ def test_b1_a_declaration_settles_the_disagreement(variant: McpTarget) -> None:
 
 def test_b1_unknown_is_not_verifiable(variant: McpTarget) -> None:
     result = run_engine_check(
-        "B1", variant_point("frobnicate", "unknown"), variant, authenticated=True
+        "blast.mutation_class",
+        variant_point("frobnicate", "unknown"),
+        variant,
+        authenticated=True,
     )
     assert result.status == "not_verifiable"
     assert "unknown" in result.detail
@@ -707,7 +760,7 @@ def test_b1_a_declaration_alone_is_not_verifiable(variant: McpTarget) -> None:
     """The server says nothing and the declaration filled the gap: one statement
     with nothing to agree with. Only observing the tool could check it."""
     result = run_engine_check(
-        "B1",
+        "blast.mutation_class",
         variant_point("frobnicate", "write", source="declared"),
         variant,
         authenticated=True,
@@ -721,9 +774,11 @@ def test_b1_a_tool_the_server_no_longer_lists_is_not_verifiable(
 ) -> None:
     missing = point(manifest_points, "get_guide")
     missing["target"] = "withdrawn_tool"
-    result = run_engine_check("B1", missing, stdio_target(), authenticated=True)
+    result = run_engine_check(
+        "blast.mutation_class", missing, stdio_target(), authenticated=True
+    )
     assert result.status == "not_verifiable"
-    assert "D1" in result.detail
+    assert "change.inventory" in result.detail
 
 
 # --- D1: inventory ------------------------------------------------------------
@@ -731,7 +786,10 @@ def test_b1_a_tool_the_server_no_longer_lists_is_not_verifiable(
 
 def test_d1_a_listed_tool_passes(project: Path, manifest_points: list[Any]) -> None:
     result = run_engine_check(
-        "D1", point(manifest_points, "fetch_record"), stdio_target(), authenticated=True
+        "change.inventory",
+        point(manifest_points, "fetch_record"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "pass"
     assert result.evidence["undeclared"] == []
@@ -742,7 +800,9 @@ def test_d1_an_absent_tool_is_an_orphan(
 ) -> None:
     missing = point(manifest_points, "get_guide")
     missing["target"] = "withdrawn_tool"
-    result = run_engine_check("D1", missing, stdio_target(), authenticated=True)
+    result = run_engine_check(
+        "change.inventory", missing, stdio_target(), authenticated=True
+    )
     assert result.status == "fail"
     assert "not in tools/list; orphan" in result.detail
 
@@ -754,7 +814,10 @@ def test_d1_reports_an_undeclared_tool_on_every_result(
     monkeypatch.chdir(write_project(tmp_path, without_enrich))
     for name in ("fetch_record", "get_guide"):
         result = run_engine_check(
-            "D1", point(manifest_points, name), stdio_target(), authenticated=True
+            "change.inventory",
+            point(manifest_points, name),
+            stdio_target(),
+            authenticated=True,
         )
         assert result.status == "pass"
         assert result.evidence["undeclared"] == ["enrich"]
@@ -765,7 +828,10 @@ def test_d1_without_a_manifest_undeclared_is_unknown_not_empty(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     result = run_engine_check(
-        "D1", point(manifest_points, "fetch_record"), stdio_target(), authenticated=True
+        "change.inventory",
+        point(manifest_points, "fetch_record"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "pass"
     assert result.evidence["undeclared"] is None
@@ -775,7 +841,11 @@ def test_d1_without_a_manifest_undeclared_is_unknown_not_empty(
 
 
 @pytest.mark.parametrize(
-    ("trait", "field"), [("D2", "schema_hash"), ("D3", "description_hash")]
+    ("trait", "field"),
+    [
+        ("change.schema_drift", "schema_hash"),
+        ("change.description_drift", "description_hash"),
+    ],
 )
 def test_d2_d3_a_matching_hash_passes(
     trait: str, field: str, project: Path, manifest_points: list[Any]
@@ -787,7 +857,11 @@ def test_d2_d3_a_matching_hash_passes(
 
 
 @pytest.mark.parametrize(
-    ("trait", "field"), [("D2", "schema_hash"), ("D3", "description_hash")]
+    ("trait", "field"),
+    [
+        ("change.schema_drift", "schema_hash"),
+        ("change.description_drift", "description_hash"),
+    ],
 )
 def test_d2_d3_a_stale_hash_is_changed(
     trait: str, field: str, project: Path, manifest_points: list[Any]
@@ -806,7 +880,7 @@ def test_d2_d3_a_stale_hash_is_changed(
     }
 
 
-@pytest.mark.parametrize("trait", ["D2", "D3"])
+@pytest.mark.parametrize("trait", ["change.schema_drift", "change.description_drift"])
 def test_d2_d3_an_absent_tool_is_not_verifiable(
     trait: str, project: Path, manifest_points: list[Any]
 ) -> None:
@@ -816,7 +890,15 @@ def test_d2_d3_an_absent_tool_is_not_verifiable(
     assert result.status == "not_verifiable"
 
 
-@pytest.mark.parametrize("trait", ["B1", "D1", "D2", "D3"])
+@pytest.mark.parametrize(
+    "trait",
+    [
+        "blast.mutation_class",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
+    ],
+)
 def test_listing_checks_are_not_verifiable_when_the_server_is_not_there(
     trait: str, project: Path, manifest_points: list[Any]
 ) -> None:
@@ -849,7 +931,7 @@ def test_an_authenticated_listing_uses_the_credential(
     project: Path, manifest_points: list[Any], reference: Any
 ) -> None:
     result = run_engine_check(
-        "D1",
+        "change.inventory",
         point(manifest_points, "fetch_record"),
         http_target(reference.guarded_url),
         authenticated=True,
@@ -865,7 +947,7 @@ def test_an_authenticated_listing_without_the_credential_is_not_verifiable(
 ) -> None:
     monkeypatch.delenv(ENV)
     result = run_engine_check(
-        "D2",
+        "change.schema_drift",
         point(manifest_points, "fetch_record"),
         http_target(reference.guarded_url),
         authenticated=True,
@@ -874,7 +956,12 @@ def test_an_authenticated_listing_without_the_credential_is_not_verifiable(
     assert ENV in result.detail
 
 
-LISTING_TRAITS = ("B1", "D1", "D2", "D3")
+LISTING_TRAITS = (
+    "blast.mutation_class",
+    "change.inventory",
+    "change.schema_drift",
+    "change.description_drift",
+)
 
 
 @pytest.mark.parametrize("trait", LISTING_TRAITS)
@@ -901,7 +988,10 @@ def test_a_refused_anonymous_listing_with_no_credential_named_says_so(
 ) -> None:
     target = McpTarget(kind="http", url=reference.guarded_url, allow_private_hosts=True)
     result = run_engine_check(
-        "D1", point(manifest_points, "fetch_record"), target, authenticated=False
+        "change.inventory",
+        point(manifest_points, "fetch_record"),
+        target,
+        authenticated=False,
     )
     assert result.status == "not_verifiable"
     assert "names no credential" in result.detail
@@ -960,14 +1050,21 @@ def test_one_listing_per_server_per_run(
     monkeypatch.setattr(checks._base, "list_tools", counting)
     target = stdio_target()
     for name in ("enrich", "fetch_record", "get_guide"):
-        for trait in ("B1", "D1", "D2", "D3"):
+        for trait in (
+            "blast.mutation_class",
+            "change.inventory",
+            "change.schema_drift",
+            "change.description_drift",
+        ):
             run_engine_check(
                 trait, point(manifest_points, name), target, authenticated=True
             )
     assert calls == [False]
 
     clear_cache()
-    run_engine_check("D1", point(manifest_points, "enrich"), target, authenticated=True)
+    run_engine_check(
+        "change.inventory", point(manifest_points, "enrich"), target, authenticated=True
+    )
     assert calls == [False, False]
 
 
@@ -982,7 +1079,10 @@ def test_a_credential_echoed_by_the_server_is_scrubbed(
     text = _DECLARATION.read_text(encoding="utf-8").replace(SENTINEL, TOKEN)
     monkeypatch.chdir(write_project(tmp_path, manifest_points, declaration_text=text))
     result = run_engine_check(
-        "A1", point(manifest_points, "fetch_record"), stdio_target(), authenticated=True
+        "authority.anonymous",
+        point(manifest_points, "fetch_record"),
+        stdio_target(),
+        authenticated=True,
     )
     assert result.status == "fail"
     assert "***" in result.detail

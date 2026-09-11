@@ -30,12 +30,14 @@ what it always did: ``changed`` (an attribute drifted; the id did not move),
 **The trait table is live.** Every plan evaluates the current table against
 every declared tool's current attributes and compares the answer with the
 ``traits_planned`` the last sync recorded. A tool whose mutation class flipped,
-or a table whose rule was edited, is therefore a diff here — ``+B2 on ...`` /
-``−B2 on ...`` — rather than something only a brand-new tool would ever see.
+or a table whose rule was edited, is therefore a diff here —
+``+blast.destructive_gating on ...`` / ``−blast.destructive_gating on ...`` —
+rather than something only a brand-new tool would ever see.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 from pathlib import Path
@@ -47,6 +49,7 @@ from itest.core import points as point_labels
 from itest.core.detectors.base import detect_all
 from itest.core.manifest import IntegrationPoint, Manifest, TestEntry, load_manifest
 from itest.core.mermaid import generate_mermaid
+from itest.traits.ids import migrate_trait_id
 
 ITEST_DIR = ".itest"
 MANIFEST_NAME = "manifest.yaml"
@@ -180,6 +183,10 @@ def diagram_path(base_dir: Path) -> Path:
 
 PLAN_ROOT_KEYS = ("planned_values", "values")
 
+#: The Terraform side of a declarations-only project: a state root holding no
+#: resources. Every detector reads it as "nothing deployed", which is the truth.
+EMPTY_TERRAFORM: dict = {"values": {"root_module": {"resources": []}}}
+
 
 def _validate_root(document: object, origin: str) -> dict:
     """Ensure the document carries a plan or state root.
@@ -209,8 +216,31 @@ def _validate_root(document: object, origin: str) -> dict:
     )
 
 
+def _declarations_only(base_dir: Path) -> bool:
+    """True when the project has declarations and no Terraform configuration.
+
+    Terraform reads the ``*.tf`` / ``*.tf.json`` files in the directory it runs
+    in, never below it, so that is where configuration is looked for. The
+    declarations package is imported only once no configuration is found, so a
+    Terraform project never loads it here.
+    """
+    if any(base_dir.glob("*.tf")) or any(base_dir.glob("*.tf.json")):
+        return False
+    from itest.core.declarations.loader import declarations_dir
+
+    directory = declarations_dir(base_dir)
+    return directory.is_dir() and any(directory.glob("*.yaml"))
+
+
 def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
-    """Obtain the terraform plan or state JSON, from a file or from terraform."""
+    """Obtain the terraform plan or state JSON, from a file or from terraform.
+
+    A declarations-only project — no ``--tf-json``, no Terraform files, and a
+    declaration under ``.itest/tools/`` — has nothing for Terraform to report,
+    so terraform being absent, failing, or answering with an empty state all
+    mean :data:`EMPTY_TERRAFORM`. With Terraform files present every one of
+    those stays an error: an empty state there means nothing was applied.
+    """
     if tf_json is not None:
         path = Path(tf_json)
         try:
@@ -221,6 +251,16 @@ def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
             raise PlanInputError(f"--tf-json file is not valid JSON: {exc}") from exc
         return _validate_root(document, f"--tf-json file {path}")
 
+    if _declarations_only(base_dir):
+        try:
+            return _terraform_show(base_dir)
+        except PlanInputError:
+            return copy.deepcopy(EMPTY_TERRAFORM)
+    return _terraform_show(base_dir)
+
+
+def _terraform_show(base_dir: Path) -> dict:
+    """Run ``terraform show -json`` in ``base_dir`` and validate its root."""
     try:
         proc = subprocess.run(
             ["terraform", "show", "-json"],
@@ -354,15 +394,16 @@ def trait_from_entry(entry: TestEntry) -> str | None:
 
     Manifests written before ``trait`` existed encode it only in the id sync
     gave the entry, so the first sync after an upgrade can still tell which
-    check each P30 stub is.
+    check each P30 stub is — by its old AN-style id, read as the slug it was
+    renamed to.
     """
     if entry.trait:
-        return entry.trait
+        return migrate_trait_id(entry.trait)
     prefix = f"t-{entry.point_id}-"
     if entry.id.startswith(prefix):
         suffix = entry.id[len(prefix) :]
         if suffix and suffix[0].isalpha() and suffix[1:].isdigit():
-            return suffix.upper()
+            return migrate_trait_id(suffix.upper())
     return None
 
 

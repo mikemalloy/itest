@@ -12,8 +12,10 @@ tool *today*:
 ``current``        ITest-owned (ownership hash matches) and generated against
                    the tool's current schema
 ``hand_edited``    a human changed the file (ownership hash differs)
-``stale``          hand-edited AND generated against a schema the tool no
-                   longer has — nobody has re-read it since the tool moved
+``stale``          generated against a schema the tool no longer has — nobody
+                   has re-read it since the tool moved. Hand-edited, it stays
+                   stale until a human does; ITest-owned, the next sync
+                   regenerates it
 ``not_applicable`` retired: the trait no longer applies
 ``orphan``         the tool is gone; the test is kept, never deleted
 
@@ -76,10 +78,26 @@ def _checks(ledger: dict) -> dict[tuple[str, str], dict]:
 
 READ_TOOLS = ("get_guide", "search_records", "fetch_record", "lookalike_read", "enrich")
 MUTATING_TOOLS = ("create_record", "update_record", "delete_record")
-LISTING_TRAITS = ("B1", "D1", "D2", "D3")
+LISTING_TRAITS = (
+    "blast.mutation_class",
+    "change.inventory",
+    "change.schema_drift",
+    "change.description_drift",
+)
 #: Engine traits in the table that the check library has no check for yet.
-UNIMPLEMENTED_ENGINE = ("B3", "C1", "C2", "C3")
-GENERATED = ("A2", "A3", "A4", "B2", "B4")
+UNIMPLEMENTED_ENGINE = (
+    "blast.egress",
+    "containment.parameter_scope",
+    "containment.expression_passthrough",
+    "containment.output_hygiene",
+)
+GENERATED = (
+    "authority.tenant_isolation",
+    "authority.backing_least_privilege",
+    "authority.delegation",
+    "blast.destructive_gating",
+    "blast.audit",
+)
 
 
 def test_verify_emits_the_tool_ledger_for_a_declared_server(
@@ -95,7 +113,12 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
     assert server["run_at"].endswith("Z")
     assert server["summary"]["declared"] == 8
     assert server["summary"]["live"] == 8
-    assert [f["id"] for f in server["families"]] == ["A", "B", "C", "D"]
+    assert [f["id"] for f in server["families"]] == [
+        "authority",
+        "blast",
+        "containment",
+        "change",
+    ]
 
     manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
     by_name = {t["name"]: t for t in server["tools"]}
@@ -109,18 +132,20 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
 
     checks = _checks(ledger)
     # An engine trait's row is its engine case; a generated trait's, its binding.
-    a1 = checks[("delete_record", "A1")]
-    assert a1["test"] == f"{ENGINE_FILE}::test_engine[delete_record-A1]"
-    b2 = checks[("delete_record", "B2")]
-    assert b2["test"] == f"{ACTIVE_FILE}::test_delete_record__B2"
+    a1 = checks[("delete_record", "authority.anonymous")]
+    assert (
+        a1["test"] == f"{ENGINE_FILE}::test_engine[delete_record-authority.anonymous]"
+    )
+    b2 = checks[("delete_record", "blast.destructive_gating")]
+    assert b2["test"] == f"{ACTIVE_FILE}::test_delete_record__blast__destructive_gating"
     # The engine checks ran for real, against reference-mcp over stdio, with no
     # credential exported. Every status is the library's own CheckResult.
     for tool in READ_TOOLS:
-        check = checks[(tool, "A1")]
+        check = checks[(tool, "authority.anonymous")]
         assert check["status"] == "fail", (tool, check)
         assert "anonymous call" in check["detail"]
     for tool in MUTATING_TOOLS:
-        check = checks[(tool, "A1")]
+        check = checks[(tool, "authority.anonymous")]
         assert check["status"] == "not_verifiable", (tool, check)
         assert check["detail"].startswith(
             "anonymous session admitted; this tool mutates"
@@ -136,7 +161,7 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
         elif trait in GENERATED:
             # The fixtures are unfilled: not run — never pass, never a zero.
             assert check["status"] == "not_run", (tool, trait)
-    assert "fill in b2_fixtures" in b2["detail"]
+    assert "fill in blast__destructive_gating_fixtures" in b2["detail"]
     assert "critical" not in {c["status"] for c in checks.values()}
     assert {c["state"] for c in checks.values()} == {"current"}
     assert server["summary"]["verified"] == 0
@@ -156,12 +181,16 @@ def test_with_the_credential_exported_the_listing_checks_pass(
     for (tool, trait), check in checks.items():
         if trait in LISTING_TRAITS:
             assert check["status"] == "pass", (tool, trait, check["detail"])
-    assert checks[("delete_record", "B1")]["detail"] == (
+    assert checks[("delete_record", "blast.mutation_class")]["detail"] == (
         "destructive: annotation destructiveHint; name delete_*"
     )
-    assert checks[("lookalike_read", "B1")]["status"] == "pass"  # the pinned limit
+    assert (
+        checks[("lookalike_read", "blast.mutation_class")]["status"] == "pass"
+    )  # the pinned limit
     # A1 is unchanged by the credential: it always probes anonymously.
-    assert {checks[(t, "A1")]["status"] for t in READ_TOOLS} == {"fail"}
+    assert {checks[(t, "authority.anonymous")]["status"] for t in READ_TOOLS} == {
+        "fail"
+    }
     assert token not in json.dumps(payload)
 
 
@@ -204,10 +233,12 @@ def _fake_checks(workdir: Path) -> None:
         conftest.read_text(encoding="utf-8")
         + "\n\nimport itest.checks as _checks\n\n\n"
         "def _engine(trait_id, point, target, *, authenticated):\n"
-        '    if (trait_id, point["target"]) == ("A1", "delete_record"):\n'
+        '    if (trait_id, point["target"]) == '
+        '("authority.anonymous", "delete_record"):\n'
         '        return _checks.CheckResult("critical", "anonymous call accepted", '
         "None)\n"
-        '    if (trait_id, point["target"]) == ("D3", "update_record"):\n'
+        '    if (trait_id, point["target"]) == '
+        '("change.description_drift", "update_record"):\n'
         '        return _checks.CheckResult("changed", "description moved", None)\n'
         '    return _checks.CheckResult("pass", f"{trait_id} held", None)\n\n\n'
         "_checks.run_engine_check = _engine\n",
@@ -219,14 +250,19 @@ def test_a_recorded_check_result_is_the_status(workdir: Path) -> None:
     _fake_checks(workdir)
     payload = _verify()
     checks = _checks(payload["tools"])
-    assert checks[("delete_record", "A1")]["status"] == "critical"
-    assert checks[("delete_record", "A1")]["detail"] == "anonymous call accepted"
-    assert checks[("update_record", "D3")]["status"] == "changed"
-    assert checks[("get_guide", "D1")] == {
-        "trait": "D1",
+    assert checks[("delete_record", "authority.anonymous")]["status"] == "critical"
+    assert (
+        checks[("delete_record", "authority.anonymous")]["detail"]
+        == "anonymous call accepted"
+    )
+    assert checks[("update_record", "change.description_drift")]["status"] == "changed"
+    assert checks[("get_guide", "change.inventory")] == {
+        "trait": "change.inventory",
+        "code": "CHANGE-1",
+        "standards": ["ASI04", "LLM03", "semgrep-client-14"],
         "status": "pass",
-        "detail": "D1 held",
-        "test": f"{ENGINE_FILE}::test_engine[get_guide-D1]",
+        "detail": "change.inventory held",
+        "test": f"{ENGINE_FILE}::test_engine[get_guide-change.inventory]",
         "state": "current",
     }
     (server,) = payload["tools"]["servers"]
@@ -244,8 +280,12 @@ def test_a_hand_edited_file_marks_its_checks_hand_edited(workdir: Path) -> None:
     path = workdir / ACTIVE_FILE
     path.write_text(path.read_text(encoding="utf-8") + "# reviewed\n", "utf-8")
     checks = _checks(_verify()["tools"])
-    assert checks[("delete_record", "B2")]["state"] == "hand_edited"
-    assert checks[("delete_record", "A1")]["state"] == "current"  # engine module
+    assert (
+        checks[("delete_record", "blast.destructive_gating")]["state"] == "hand_edited"
+    )
+    assert (
+        checks[("delete_record", "authority.anonymous")]["state"] == "current"
+    )  # engine module
 
 
 def test_hand_edited_against_an_old_schema_is_stale(workdir: Path) -> None:
@@ -260,29 +300,35 @@ def test_hand_edited_against_an_old_schema_is_stale(workdir: Path) -> None:
 
     payload = _verify()
     checks = _checks(payload["tools"])
-    assert checks[("delete_record", "B2")]["state"] == "stale"
-    assert checks[("create_record", "B4")]["state"] == "hand_edited"
+    assert checks[("delete_record", "blast.destructive_gating")]["state"] == "stale"
+    assert checks[("create_record", "blast.audit")]["state"] == "hand_edited"
     (server,) = payload["tools"]["servers"]
     stale = [e for e in server["exceptions"] if e["kind"] == "stale"]
     assert server["exceptions"][: len(stale)] == stale  # named first
     assert {(e["tool"], e["trait"]) for e in stale} == {
-        ("delete_record", "A2"),
-        ("delete_record", "A3"),
-        ("delete_record", "B2"),
-        ("delete_record", "B4"),
+        ("delete_record", "authority.tenant_isolation"),
+        ("delete_record", "authority.backing_least_privilege"),
+        ("delete_record", "blast.destructive_gating"),
+        ("delete_record", "blast.audit"),
     }
 
 
 def test_a_retired_check_is_not_applicable(workdir: Path) -> None:
     manifest_file = workdir / ".itest" / "manifest.yaml"
     manifest = load_manifest(manifest_file)
-    entry = next(t for t in manifest.tests if t.test_name == "test_delete_record__B2")
+    entry = next(
+        t
+        for t in manifest.tests
+        if t.test_name == "test_delete_record__blast__destructive_gating"
+    )
     entry.retired = True
     point = next(p for p in manifest.points if p.id == entry.point_id)
-    point.traits_planned = [t for t in point.traits_planned if t != "B2"]
+    point.traits_planned = [
+        t for t in point.traits_planned if t != "blast.destructive_gating"
+    ]
     save_manifest(manifest, manifest_file)
 
-    check = _checks(_verify()["tools"])[("delete_record", "B2")]
+    check = _checks(_verify()["tools"])[("delete_record", "blast.destructive_gating")]
     assert check["state"] == "not_applicable"
     assert check["status"] == "n/a"
 
@@ -302,7 +348,7 @@ def test_an_orphaned_check_is_named_and_counted(workdir: Path) -> None:
     assert server["summary"]["orphaned"] == 1
     orphans = [e for e in server["exceptions"] if e["kind"] == "orphan"]
     assert {e["tool"] for e in orphans} == {"enrich"}
-    assert "B3" in {e["trait"] for e in orphans}
+    assert "blast.egress" in {e["trait"] for e in orphans}
 
 
 def test_state_is_computed_from_the_manifest_and_the_files(tmp_path: Path) -> None:
@@ -310,8 +356,10 @@ def test_state_is_computed_from_the_manifest_and_the_files(tmp_path: Path) -> No
     table = load_traits()
     point_id = "p1"
     body = stubgen.GENERATED_HEADER + (
-        "\n\ndef test_tool__B2(itest_target, itest_point, b2_fixtures):\n"
-        f'    """itest point: {point_id}  trait: B2  schema: aaaaaaaaaaaa"""\n'
+        "\n\ndef test_tool__blast__destructive_gating("
+        "itest_target, itest_point, blast__destructive_gating_fixtures):\n"
+        f'    """itest point: {point_id}  trait: blast.destructive_gating  '
+        'schema: aaaaaaaaaaaa"""\n'
     )
     path = tmp_path / "t.py"
     path.write_text(body, encoding="utf-8")
@@ -323,17 +371,20 @@ def test_state_is_computed_from_the_manifest_and_the_files(tmp_path: Path) -> No
         return verifier.check_state(
             base_dir=tmp_path,
             path="t.py",
-            test_name="test_tool__B2",
+            test_name="test_tool__blast__destructive_gating",
             ownership_hash=recorded,
             point_schema=schema,
             retired=retired,
             orphaned=orphaned,
         )
 
-    assert table.get("B2").kind == "generated"
+    assert table.get("blast.destructive_gating").kind == "generated"
     assert state(owned, "aaaaaaaaaaaa") == "current"
     assert state("edited", "aaaaaaaaaaaa") == "hand_edited"
     assert state("edited", "bbbbbbbbbbbb") == "stale"
+    # Owning the file does not make a check frozen against an old schema
+    # current: until a sync regenerates it, it is stale.
+    assert state(owned, "bbbbbbbbbbbb") == "stale"
     assert state(owned, "aaaaaaaaaaaa", retired=True) == "not_applicable"
     assert state(owned, "aaaaaaaaaaaa", orphaned=True) == "orphan"
 
@@ -412,3 +463,147 @@ def test_the_rendered_page_tags_state_and_says_what_needs_attention(
     assert blocks["PAGE"]["tools"]["attention"] == [
         "reference-mcp needs attention: 3 hand-edited, 1 stale"
     ]
+
+
+# --- an owned binding whose schema moved -------------------------------------------
+
+
+def _point_id(workdir: Path, tool: str) -> str:
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    return next(p.id for p in manifest.points if p.target == tool)
+
+
+def _frozen_schemas(workdir: Path, point_id: str) -> set[str]:
+    """The ``schema:`` every binding for ``point_id`` was frozen with."""
+    text = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
+    return {
+        line.rsplit("schema: ", 1)[1].strip().rstrip('"')
+        for line in text.splitlines()
+        if f"itest point: {point_id} " in line
+    }
+
+
+def _record_schema(workdir: Path, tool: str, schema: str) -> None:
+    """The manifest now says the tool's schema is ``schema``; no file moves."""
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_file)
+    point = next(p for p in manifest.points if p.target == tool)
+    point.attributes["schema_hash"] = schema
+    save_manifest(manifest, manifest_file)
+
+
+def _refreeze(workdir: Path, point_id: str, schema: str) -> None:
+    """Rewrite one tool's bindings as though generated against ``schema``, and
+    record the result as ITest's (the file stays owned)."""
+    path = workdir / ACTIVE_FILE
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if f"itest point: {point_id} " in line:
+            head = line.rsplit("schema: ", 1)[0]
+            lines[i] = f'{head}schema: {schema}"""\n'
+    path.write_text("".join(lines), encoding="utf-8")
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_file)
+    for test in manifest.tests:
+        if test.path == ACTIVE_FILE:
+            test.ownership_hash = stubgen.file_hash(path)
+    save_manifest(manifest, manifest_file)
+
+
+OLD_SCHEMA = "0123456789ab"
+DELETE_GENERATED = {
+    ("delete_record", t)
+    for t in (
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.destructive_gating",
+        "blast.audit",
+    )
+}
+
+
+def test_an_owned_binding_whose_schema_moved_is_stale_without_a_sync(
+    workdir: Path,
+) -> None:
+    """Nothing regenerated it, so nobody has read it against the tool as it is:
+    ITest owning the file does not make it current."""
+    _record_schema(workdir, "delete_record", OLD_SCHEMA)
+
+    payload = _verify()
+    checks = _checks(payload["tools"])
+    for key in DELETE_GENERATED:
+        assert checks[key]["state"] == "stale", key
+    assert checks[("create_record", "blast.audit")]["state"] == "current"
+    assert (
+        checks[("delete_record", "authority.anonymous")]["state"] == "current"
+    )  # engine module
+    (server,) = payload["tools"]["servers"]
+    stale = [e for e in server["exceptions"] if e["kind"] == "stale"]
+    assert {(e["tool"], e["trait"]) for e in stale} == DELETE_GENERATED
+    assert all("itest sync" in e["message"] for e in stale)
+    assert all("by hand" not in e["message"] for e in stale)
+
+
+def test_sync_regenerates_an_owned_binding_whose_schema_moved(
+    workdir: Path,
+) -> None:
+    """The schema moves (the manifest and the bindings both say the old one,
+    the live server the new); one sync regenerates the owned bindings, and
+    verify finds them current."""
+    point_id = _point_id(workdir, "delete_record")
+    (live,) = _frozen_schemas(workdir, point_id)
+    _record_schema(workdir, "delete_record", OLD_SCHEMA)
+    _refreeze(workdir, point_id, OLD_SCHEMA)
+    assert _frozen_schemas(workdir, point_id) == {OLD_SCHEMA}
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert "regenerated 4 check(s)" in result.output
+    assert _frozen_schemas(workdir, point_id) == {live}
+    # Still ITest's: the recorded hash is the regenerated file's.
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    recorded = {t.ownership_hash for t in manifest.tests if t.path == ACTIVE_FILE}
+    assert recorded == {stubgen.file_hash(workdir / ACTIVE_FILE)}
+
+    checks = _checks(_verify()["tools"])
+    for key in DELETE_GENERATED:
+        assert checks[key]["state"] == "current", key
+
+
+def test_a_no_op_sync_still_regenerates_an_owned_binding_left_behind(
+    workdir: Path,
+) -> None:
+    """The manifest already records the live schema (an older sync moved it and
+    did not regenerate), so the plan is a no-op — and the binding is still
+    regenerated, because a file ITest owns is ITest's to bring up to date."""
+    point_id = _point_id(workdir, "delete_record")
+    (live,) = _frozen_schemas(workdir, point_id)
+    _refreeze(workdir, point_id, OLD_SCHEMA)
+    assert (
+        _checks(_verify()["tools"])[("delete_record", "blast.destructive_gating")][
+            "state"
+        ]
+        == "stale"
+    )
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert _frozen_schemas(workdir, point_id) == {live}
+    checks = _checks(_verify()["tools"])
+    for key in DELETE_GENERATED:
+        assert checks[key]["state"] == "current", key
+
+
+def test_sync_never_regenerates_a_hand_edited_binding(workdir: Path) -> None:
+    """A human edited it: frozen and reported, never rewritten."""
+    path = workdir / ACTIVE_FILE
+    path.write_text(path.read_text(encoding="utf-8") + "# reviewed\n", "utf-8")
+    point_id = _point_id(workdir, "delete_record")
+    _record_schema(workdir, "delete_record", OLD_SCHEMA)
+    edited = path.read_text(encoding="utf-8")
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert "regenerated" not in result.output
+    assert path.read_text(encoding="utf-8") == edited
+    assert OLD_SCHEMA not in _frozen_schemas(workdir, point_id)

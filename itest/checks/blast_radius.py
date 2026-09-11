@@ -1,8 +1,9 @@
 """Family B, Blast radius: what does calling this tool do?
 
-B1 here is the **agreement** check — readonly, from the listing, never calling
-the tool. Its active-tier sibling, "B1 observed" (call a read-classified tool
-with a sentinel and look at the store afterwards), is not built yet.
+``blast.mutation_class`` (BLAST-1) here is the **agreement** check — readonly,
+from the listing, never calling the tool. Its active-tier sibling, "mutation
+class observed" (call a read-classified tool with a sentinel and look at the
+store afterwards), is not built yet.
 """
 
 from __future__ import annotations
@@ -55,9 +56,11 @@ def _says(cls: str) -> str:
     return "read-only" if cls == "read" else cls
 
 
-@engine_check("B1")
-def check_b1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckResult:
-    """B1 mutation class (agreement): do the statements about this tool agree?
+@engine_check("blast.mutation_class")
+def check_blast__mutation_class(
+    point: dict, target: McpTarget, *, authenticated: bool
+) -> CheckResult:
+    """blast.mutation_class (BLAST-1, agreement): do the statements agree?
 
     Compares three statements without calling the tool: the manifest's
     ``mutation`` / ``mutation_source``, a fresh ``classify_mutation`` of the live
@@ -79,7 +82,8 @@ def check_b1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     passes it: ``lookalike_read`` in ``examples/reference-mcp/`` is annotated
     read-only, named like a read, and mutates. An annotation lie is visible only
     by observing behaviour — calling a read-classified tool and looking at the
-    store — which is the active-tier "B1 observed" check, not this one.
+    store — which is the active-tier "mutation class observed" check, not this
+    one.
 
     Standards: OWASP Agentic Top 10 ASI02 (Tool Misuse); the OWASP Agent Control
     Standard's AgBOM mutation attribute. Semgrep MCP security cheatsheet: no row
@@ -100,7 +104,7 @@ def check_b1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     if info is None:
         return not_verifiable(
             f"{tool!r} is not in tools/list, so its class cannot be read "
-            "(D1 reports the orphan)",
+            "(change.inventory reports the orphan)",
             base,
         )
 

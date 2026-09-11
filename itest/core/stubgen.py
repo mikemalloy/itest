@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 from itest.core import points
 from itest.core.manifest import IntegrationPoint
+from itest.traits.ids import trait_ident
 
 if TYPE_CHECKING:  # a type, not a dependency: stubgen imports no trait machinery
     from itest.core.declarations.traits import Trait
@@ -130,8 +131,15 @@ def engine_test_name(point: IntegrationPoint, trait_id: str) -> str:
 
 
 def tool_function_name(point: IntegrationPoint, trait_id: str) -> str:
-    """``test_delete_record__B2``: the tool, then the trait it checks."""
-    return f"test_{_slug(point.target)}__{trait_id}"
+    """``test_delete_record__blast__destructive_gating``: the tool, then the
+    trait it checks, its dot written the one way (``trait_ident``)."""
+    return f"test_{_slug(point.target)}__{trait_ident(trait_id)}"
+
+
+def fixture_name(trait_id: str) -> str:
+    """``blast__destructive_gating_fixtures``: what a generated trait's binding
+    asks the server's conftest for."""
+    return f"{trait_ident(trait_id)}_fixtures"
 
 
 def stub_file_path(base_dir: Path, file_rel: str) -> Path:
@@ -194,7 +202,7 @@ def render_generated_stub(point: IntegrationPoint, func_name: str, trait: Trait)
     generated against, which is how verify tells a hand-edited check is stale).
     Add to it, never rename it. The body is the binding and nothing more.
     """
-    fixture = f"{trait.id.lower()}_fixtures"
+    fixture = fixture_name(trait.id)
     schema = point.attributes.get("schema_hash")
     return (
         f"\n\ndef {func_name}(itest_target, itest_point, {fixture}):\n"
@@ -278,7 +286,7 @@ def render_conftest(server: str, generated: list[Trait]) -> str:
         "from itest.traits.runtime import itest_point, itest_target  # noqa: F401",
     ]
     for trait in generated:
-        name = f"{trait.id.lower()}_fixtures"
+        name = fixture_name(trait.id)
         out += [
             "",
             "",

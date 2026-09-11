@@ -27,6 +27,13 @@ The file name **is** the server name: `server: reference-mcp` must live in
 path is the address — it is half of every point id and a fragment of every
 generated test name.
 
+A project can be **declarations only**. With no Terraform files (`*.tf`,
+`*.tf.json`) in the project directory and no `--tf-json`, `itest plan` and
+`itest sync` treat the Terraform side as an empty resource set — whether
+terraform is not installed, fails, or reports an empty state — and plan the
+declared servers. A directory that *has* Terraform files and an empty state is
+still refused: there, it means nothing was applied.
+
 ## The worked example
 
 The committed declaration for `examples/reference-mcp/` is the reference for the
@@ -38,7 +45,7 @@ server: reference-mcp
 
 transport:
   kind: stdio                                    # stdio | http
-  command: [python, examples/reference-mcp/server.py]
+  command: [python, server.py]                   # launched in the project directory
   url_env: REFERENCE_MCP_URL                     # a NAME, never a URL
 
 auth:
@@ -84,6 +91,19 @@ tools:
 ```
 
 ## The rules, and why each one is there
+
+### A stdio command runs in the project directory
+
+`transport.command` is launched with the **project directory** — the one that
+holds the declaration's `.itest/` — as its working directory. A relative path
+in it (`server.py`) therefore names a file in that project, whether `itest` is
+run from the project, from a parent directory with the project as its base, or
+from a pytest subprocess verify started. It never resolves against the
+caller's working directory or a repository root. A bare `python` or `python3`
+as the first word is the interpreter ITest itself runs under — the one its
+dependencies were installed into, and the one verify's pytest run uses — never
+whichever `python` is first on `PATH`, so `.venv/bin/itest` works without
+activating the virtualenv. Any other first word is passed through untouched.
 
 ### A URL and a credential are names, never values
 
@@ -197,7 +217,7 @@ every tool's trait set from the current table and the tool's current
 attributes, and compares it with the set the manifest recorded
 (`traits_planned`). A trait that newly applies gains a check. A trait that
 stops applying has its check retired: kept on disk, never run, and reported as
-`not_applicable`. The plan lists each change (`+A2 on server/tool (rule: ...)`).
+`not_applicable`. The plan lists each change (`+authority.tenant_isolation on server/tool (rule: ...)`).
 Engine traits run from one parametrized module per server. Generated traits get
 one thin binding per tool, fed by fixtures in a `conftest.py` that is yours.
 [docs/traits.md](traits.md) covers the table, what a sync does when it changes,

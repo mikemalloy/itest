@@ -1,6 +1,6 @@
 recipe-version: 1
 
-# Recipe: `tool_authn` — A1, refuses anonymous
+# Recipe: `tool_authn` — `authority.anonymous`, refuses anonymous
 
 **This is an engine check, tier `readonly`.** ITest runs it itself, from the
 manifest's `mcp_tool` point and the server's live tool list. There is no test
@@ -11,13 +11,13 @@ one anonymous `tools/call` of a read tool when that session is admitted — so i
 runs only where the readonly tier runs, and never against a host the declaration
 did not name.
 
-The check lives in `itest/checks/authority.py` (`check_a1`); `docs/checks.md` is
-the library's reference. This file is the policy: what A1 proves, what it does
+The check lives in `itest/checks/authority.py` (`check_authority__anonymous`); `docs/checks.md` is
+the library's reference. This file is the policy: what `authority.anonymous` proves, what it does
 not, and what a reviewer does with each answer.
 
 ## 1. What the check proves
 
-A1 asks one question of every declared tool: **does the server turn away a
+`authority.anonymous` asks one question of every declared tool: **does the server turn away a
 caller who brings no credential?** It judges only what it observed.
 
 It always probes anonymously. Over HTTP no `Authorization` header is sent; over
@@ -32,11 +32,11 @@ is the common good case — authentication in front of the transport, where the
 MCP spec puts it — and no tool is called at all.
 
 **Step 2 — behind an open front door, per tool.** If the anonymous session is
-admitted, what A1 does depends on the tool's mutation class: the stricter of the
+admitted, what `authority.anonymous` does depends on the tool's mutation class: the stricter of the
 class the manifest records and the class the live listing gives now, so a stale
-or edited manifest can never talk A1 into calling a mutating tool.
+or edited manifest can never talk `authority.anonymous` into calling a mutating tool.
 
-| class | what A1 does |
+| class | what `authority.anonymous` does |
 |---|---|
 | `read`, `informational` | **Calls it once**, anonymously, with sentinel arguments (§3). Refused — by the transport or inside the tool — is a pass; answered is a fail. |
 | `write`, `destructive` | **Does not call it.** `not_verifiable`: the tool's own guard can only be proven by an active-tier call on a non-production environment. |
@@ -48,15 +48,15 @@ or edited manifest can never talk A1 into calling a mutating tool.
   readonly check cannot call a write tool, and a listing is not a call. So a
   write or destructive tool on a server that admits anonymous sessions is
   `not_verifiable` — never `critical`, which is reserved for a *demonstrated*
-  admission. Proving it takes **A1 active**: an anonymous call with sentinel
+  admission. Proving it takes **anonymous-refusal active**: an anonymous call with sentinel
   arguments, active tier only, non-production only, `critical` on admission. It
   is not built.
-- **Not that an authenticated caller is admitted.** A1 is the refusal half. The
+- **Not that an authenticated caller is admitted.** `authority.anonymous` is the refusal half. The
   happy path is the server's own tests' job, or a future generated check.
 - **Not tenant isolation.** A caller with *a* credential reading another
-  tenant's data is A2, a generated check that needs a second identity.
+  tenant's data is `authority.tenant_isolation`, a generated check that needs a second identity.
 - **Not, with certainty, what a tool error means.** When an anonymous call
-  reaches a read tool and it answers with a tool error, A1 reads the error's
+  reaches a read tool and it answers with a tool error, `authority.anonymous` reads the error's
   text. An **auth-shaped** error — it contains `unauthorized`,
   `unauthenticated`, `forbidden`, `permission`, `not allowed`, `401` or `403`,
   case-insensitive, with the tool's own name removed — is the tool refusing the
@@ -78,7 +78,7 @@ parameters only:
 | string | the declaration's `sentinels.nonexistent_id` |
 | integer, number | `0` |
 | boolean | `false` (which is also what refuses a `confirm`-style gate) |
-| anything else | nothing — A1 reports `not_verifiable` and names the parameter |
+| anything else | nothing — `authority.anonymous` reports `not_verifiable` and names the parameter |
 
 Nothing optional is ever sent. The sentinel comes from
 `.itest/tools/<server>.yaml` at the project root; a tool that needs a string
@@ -91,10 +91,10 @@ with a guessed value.
 |---|---|
 | `pass` | The server refused the anonymous session (front door); or it admitted the session and refused the anonymous call on this read tool — at the transport, or inside the tool with an auth-shaped error ("refused inside the tool: …"). The guard held. |
 | `fail` | A read or informational tool **answered** an anonymous caller — "anonymous call succeeded on a read tool" — or answered with a tool error that is not auth-shaped, so its logic ran for an anonymous caller. Anyone who can reach the server can read through it: data exposure, not mutation. |
-| `not_verifiable` | The anonymous session could not be attempted; or the session was admitted and the tool mutates (deferred to A1 active), its class is unknown, it is hidden from the anonymous listing, no sentinel could be built, or the call failed in transport. The detail says which. It is never a pass. |
+| `not_verifiable` | The anonymous session could not be attempted; or the session was admitted and the tool mutates (deferred to anonymous-refusal active), its class is unknown, it is hidden from the anonymous listing, no sentinel could be built, or the call failed in transport. The detail says which. It is never a pass. |
 
-A1 never returns `critical` — that needs a demonstrated admission on a mutating
-tool, which is A1 active's to show — and never `changed`: whether a server
+`authority.anonymous` never returns `critical` — that needs a demonstrated admission on a mutating
+tool, which is anonymous-refusal active's to show — and never `changed`: whether a server
 refuses anonymous callers is a fact about now, not a drift from a recording.
 
 ## 5. Evidence fields
@@ -105,7 +105,7 @@ refuses anonymous callers is a fact about now, not a drift from a recording.
 | `anonymous_listing` | The front door: `refused`, `admitted`, or `error`. Recorded on every result. |
 | `anonymous_listing_detail` | What the server said (e.g. the HTTP 401), or how many tools it listed anonymously. |
 | `anonymous_tool_count` | Tools listed to the anonymous caller, when admitted. |
-| `mutation` | The class A1 acted on — the stricter of `recorded_mutation` and `live_mutation`. |
+| `mutation` | The class `authority.anonymous` acted on — the stricter of `recorded_mutation` and `live_mutation`. |
 | `recorded_mutation`, `live_mutation` | What the manifest says; what the anonymous listing says now (`null` when it was not read). |
 | `called` | Whether a `tools/call` was sent. Always `false` for write, destructive and unknown tools, and for every tool behind a refused front door. |
 | `arguments` | The sentinel arguments sent, or `null`. |
@@ -128,7 +128,7 @@ server echoes it.
 
 ## 7. How to generate the test
 
-**Nothing to generate.** A1 is an engine check: it runs from the manifest during
+**Nothing to generate.** `authority.anonymous` is an engine check: it runs from the manifest during
 `itest verify`, and no per-tool file exists or should be written. To see whether
 it applies to a tool:
 
@@ -136,9 +136,9 @@ it applies to a tool:
 itest traits --for reference-mcp/delete_record
 ```
 
-(A1's `applies_when` is `always`.) `itest traits` reads the tool's attributes
-from the manifest, so run it after `itest sync`; the rule itself is the A1 row
-of `itest/traits/traits.yaml`. If a stub for A1 ever appears in a test file, it
+(`authority.anonymous`'s `applies_when` is `always`.) `itest traits` reads the tool's attributes
+from the manifest, so run it after `itest sync`; the rule itself is the `authority.anonymous` row
+of `itest/traits/traits.yaml`. If a stub for `authority.anonymous` ever appears in a test file, it
 predates the engine check; do not implement it by hand.
 
 ## 8. What the reviewer does with a failure
@@ -146,7 +146,7 @@ predates the engine check; do not implement it by hand.
 - **`fail`** — an anonymous caller read through the tool. Decide whether it is
   *meant* to be public. If it is not, put authentication in front of the
   transport, so the front door refuses and every tool passes. If it is, that is a
-  person's claim: write it in the declaration's per-tool `notes`, and expect A1
+  person's claim: write it in the declaration's per-tool `notes`, and expect `authority.anonymous`
   to keep saying `fail` — a public read is still a read anyone can make. A `fail`
   quoting a tool error means the tool's logic ran for the anonymous caller. If
   the quoted error is really the tool refusing in words the heuristic does not
@@ -158,7 +158,7 @@ predates the engine check; do not implement it by hand.
 - **`not_verifiable` on a mutating tool** ("anonymous session admitted; this tool
   mutates…") — the server lets anonymous callers in, and nothing readonly can show
   whether this tool stops them. Treat the open front door as the finding: close
-  it and the tool passes at the door. Until then, the question belongs to A1
+  it and the tool passes at the door. Until then, the question belongs to `authority.anonymous`
   active on a non-production environment. Never declare the tool `read` to get it
   called — the live class wins over the manifest's anyway.
 - **other `not_verifiable`** — read the detail. An error at the front door is an
@@ -173,6 +173,6 @@ refuses anonymous sessions, so every tool passes at the front door and nothing
 is called. Its deliberately **open mount** (`/open/mcp`) admits them:
 `get_guide` and `fetch_record` (whose 404 tool error is not auth-shaped, so the
 tool ran for the anonymous caller) are `fail`, and `delete_record`, `create_record` and `update_record` are
-`not_verifiable`, deferred to A1 active. `tests/test_checks.py` pins each
-outcome, proves A1 never says `critical`, and proves by spying on `call_tool`
+`not_verifiable`, deferred to anonymous-refusal active. `tests/test_checks.py` pins each
+outcome, proves `authority.anonymous` never says `critical`, and proves by spying on `call_tool`
 that no write, destructive or unknown tool is ever called.

@@ -150,7 +150,7 @@
             "previous": "Update fields on a record."
           },
           "tag": "changed",
-          "title": "update_record \u2014 D3 (reference-mcp)"
+          "title": "update_record \u2014 change.description_drift \u00b7 CHANGE-3 (reference-mcp)"
         }
       ],
       "exceptionsHead": "Needs a human \u2014 named, not hidden",
@@ -354,10 +354,48 @@
       "count": 1,
       "g": "Destructive",
       "headers": [
-        "A1",
-        "B1",
-        "D2",
-        "D3"
+        {
+          "code": "AUTH-1",
+          "label": "authority.anonymous \u00b7 AUTH-1",
+          "slug": "authority.anonymous",
+          "standards": [
+            "ASI03",
+            "LLM02",
+            "semgrep-server-4"
+          ],
+          "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4"
+        },
+        {
+          "code": "BLAST-1",
+          "label": "blast.mutation_class \u00b7 BLAST-1",
+          "slug": "blast.mutation_class",
+          "standards": [
+            "ASI02",
+            "LLM06"
+          ],
+          "title": "blast.mutation_class \u00b7 BLAST-1 \u2014 ASI02, LLM06"
+        },
+        {
+          "code": "CHANGE-2",
+          "label": "change.schema_drift \u00b7 CHANGE-2",
+          "slug": "change.schema_drift",
+          "standards": [
+            "ASI04",
+            "LLM03"
+          ],
+          "title": "change.schema_drift \u00b7 CHANGE-2 \u2014 ASI04, LLM03"
+        },
+        {
+          "code": "CHANGE-3",
+          "label": "change.description_drift \u00b7 CHANGE-3",
+          "slug": "change.description_drift",
+          "standards": [
+            "ASI04",
+            "LLM01",
+            "semgrep-client-12"
+          ],
+          "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, LLM01, semgrep-client-12"
+        }
       ],
       "rows": [
         {
@@ -397,8 +435,28 @@
       "count": 1,
       "g": "Writes",
       "headers": [
-        "A1",
-        "D3"
+        {
+          "code": "AUTH-1",
+          "label": "authority.anonymous \u00b7 AUTH-1",
+          "slug": "authority.anonymous",
+          "standards": [
+            "ASI03",
+            "LLM02",
+            "semgrep-server-4"
+          ],
+          "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4"
+        },
+        {
+          "code": "CHANGE-3",
+          "label": "change.description_drift \u00b7 CHANGE-3",
+          "slug": "change.description_drift",
+          "standards": [
+            "ASI04",
+            "LLM01",
+            "semgrep-client-12"
+          ],
+          "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, LLM01, semgrep-client-12"
+        }
       ],
       "rows": [
         {

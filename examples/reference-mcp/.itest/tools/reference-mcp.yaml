@@ -13,9 +13,13 @@ server: reference-mcp
 
 transport:
   # The default way this server is probed: a subprocess speaking JSON-RPC on
-  # stdin/stdout, launched from the repo root.
+  # stdin/stdout. It is launched in the project directory (the one holding
+  # .itest/, i.e. examples/reference-mcp), so `server.py` is the file beside
+  # it whatever directory ITest runs from. A bare `python` is the interpreter
+  # ITest runs under (install the example's dependencies there:
+  # `pip install -e '.[examples]'`), not whichever python is first on PATH.
   kind: stdio
-  command: [python, examples/reference-mcp/server.py]
+  command: [python, server.py]
   # The same server also serves streamable HTTP (`server.py --http`). The URL
   # is named, never written: export REFERENCE_MCP_URL to probe that variant.
   url_env: REFERENCE_MCP_URL
@@ -24,8 +28,8 @@ auth:
   scheme: bearer
   credential_env: REFERENCE_MCP_TOKEN
   # A second tenant's credential. Its presence is what makes the tenant
-  # isolation trait (A2) applicable at all: with one identity there is nothing
-  # to cross. Leave it out and that check is not generated, rather than
+  # isolation trait (authority.tenant_isolation) applicable at all: with one
+  # identity there is nothing to cross. Leave it out and that check is not generated, rather than
   # generated and quietly passing.
   second_tenant_env: REFERENCE_MCP_TOKEN_TENANT_B
 
@@ -40,8 +44,8 @@ identity:
 
 audit:
   # Where a mutation is recorded. Its presence is what makes the audit trait
-  # (B4) applicable; a server with nowhere to write an audit record gets no
-  # audit check rather than a check that asserts nothing.
+  # (blast.audit) applicable; a server with nowhere to write an audit record
+  # gets no audit check rather than a check that asserts nothing.
   sink: stderr-json
 
 approval:
@@ -82,7 +86,7 @@ tools:
     # The one declared egress edge: it describes an external data provider.
     # (The reference implementation calls nothing — an example that phoned home
     # would make the suite depend on the network.) Declaring it is what makes
-    # the egress trait (B3) applicable to this tool and no other.
+    # the egress trait (blast.egress) applicable to this tool and no other.
     egress:
       to: enrichment-provider.example
       data: [email]
@@ -92,4 +96,4 @@ tools:
   # in the tool listing disagrees with anything else, so detection here is
   # correct to call it a read and the cross-check has nothing to flag. Catching
   # it needs a call and a look at the store afterwards — a behavioural check
-  # (P31's B1 recipe), not a declaration. Do not "fix" this by declaring it.
+  # (the active-tier "mutation class observed" check), not a declaration. Do not "fix" this by declaring it.

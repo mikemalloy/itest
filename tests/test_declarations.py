@@ -99,10 +99,8 @@ def test_the_example_declaration_round_trips(checkout: Path) -> None:
 
     assert declaration.server == "reference-mcp"
     assert declaration.transport.kind == "stdio"
-    assert declaration.transport.command == [
-        "python",
-        "examples/reference-mcp/server.py",
-    ]
+    # Launched in the project directory, so the server is the file beside it.
+    assert declaration.transport.command == ["python", "server.py"]
     assert declaration.transport.url_env == "REFERENCE_MCP_URL"
 
     assert declaration.auth.scheme == "bearer"
@@ -393,7 +391,12 @@ def test_none_of_these_cannot_sit_beside_a_trait(tmp_path: Path) -> None:
         tmp_path,
         "reference-mcp",
         _minimal(
-            tools={"get_guide": {"traits": ["none-of-these", "A1"], "notes": "why"}}
+            tools={
+                "get_guide": {
+                    "traits": ["none-of-these", "authority.anonymous"],
+                    "notes": "why",
+                }
+            }
         ),
     )
     with pytest.raises(DeclarationError) as excinfo:
@@ -516,13 +519,19 @@ def test_a_trait_listed_twice_for_one_tool_is_refused(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "reference-mcp",
-        _minimal(tools={"enrich": {"traits": ["B3", "D1", "B3"]}}),
+        _minimal(
+            tools={
+                "enrich": {
+                    "traits": ["blast.egress", "change.inventory", "blast.egress"]
+                }
+            }
+        ),
     )
     with pytest.raises(DeclarationError) as excinfo:
         load_declarations(tmp_path)
     message = str(excinfo.value)
     assert "tools.enrich.traits" in message
-    assert "B3" in message
+    assert "blast.egress" in message
     assert "more than once" in message
 
 
