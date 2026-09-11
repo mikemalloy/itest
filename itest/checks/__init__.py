@@ -19,9 +19,13 @@ The whole public surface::
 unknown trait or an unusable server: each returns ``not_verifiable`` with the
 reason, because a check that could not run must never read as one that passed.
 
-Engine checks today: A1 (:mod:`.authority`), B1 agreement (:mod:`.blast_radius`),
-D1–D3 (:mod:`.change`). The generated registry is empty until the A2/B2/B4
-recipes ship. ``docs/checks.md`` is the reference.
+Engine checks today: ``authority.anonymous`` (:mod:`.authority`),
+``blast.mutation_class`` agreement (:mod:`.blast_radius`), and
+``change.inventory`` / ``change.schema_drift`` / ``change.description_drift``
+(:mod:`.change`). The generated registry is empty until the
+``authority.tenant_isolation`` / ``blast.destructive_gating`` / ``blast.audit``
+recipes ship. Both registries are keyed by trait slug; an old AN-style id is
+mapped to its slug first. ``docs/checks.md`` is the reference.
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from itest.checks._base import (
     scrub_result,
 )
 from itest.probes.mcp import McpTarget
+from itest.traits.ids import migrate_trait_id
 
 __all__ = [
     "ENGINE_CHECKS",
@@ -61,6 +66,8 @@ def run_engine_check(
     never an exception. The result is scrubbed here as well as in each check,
     so a check registered by any route cannot return an unscrubbed string.
     """
+    # A binding generated before the rename still names the old id.
+    trait_id = migrate_trait_id(trait_id)
     check = ENGINE_CHECKS.get(trait_id)
     if check is None:
         return not_verifiable(f"no engine check for {trait_id}")
@@ -76,6 +83,7 @@ def run_generated_check(
     generated check for <id> yet"). The signature exists now so the thin
     bindings sync writes import cleanly before the checks behind them ship.
     """
+    trait_id = migrate_trait_id(trait_id)
     check = GENERATED_CHECKS.get(trait_id)
     if check is None:
         return not_verifiable(f"no generated check for {trait_id} yet")

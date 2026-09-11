@@ -46,6 +46,7 @@ from itest.cli import app
 from itest.core.declarations.tools import tool_point_id
 from itest.core.declarations.traits import load_traits, trait_table_hash
 from itest.core.manifest import load_manifest, save_manifest
+from itest.traits.ids import LEGACY_TRAIT_IDS, trait_ident
 
 P30 = REPO_ROOT / "tests" / "fixtures" / "p30-manifests"
 
@@ -77,27 +78,104 @@ def _plan_json(*extra: str) -> dict:
 #: nowhere), declares a second tenant (A2 on everything non-informational) and
 #: an audit sink (B4 on writes), and only `enrich` declares egress (B3).
 EXPECTED_TRAITS = {
-    "get_guide": ["A1", "A3", "B1", "D1", "D2", "D3"],
-    "search_records": [
-        "A1", "A2", "A3", "B1", "C1", "C2", "C3", "D1", "D2", "D3",
+    "get_guide": [
+        "authority.anonymous",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ],
-    "fetch_record": ["A1", "A2", "A3", "B1", "C1", "C2", "C3", "D1", "D2", "D3"],
+    "search_records": [
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
+    ],
+    "fetch_record": [
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
+    ],
     "create_record": [
-        "A1", "A2", "A3", "B1", "B4", "C1", "C2", "C3", "D1", "D2", "D3",
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "blast.audit",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ],
     "update_record": [
-        "A1", "A2", "A3", "B1", "B4", "C1", "C2", "C3", "D1", "D2", "D3",
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "blast.audit",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ],
     "delete_record": [
-        "A1", "A2", "A3", "B1", "B2", "B4", "C1", "C2", "C3", "D1", "D2", "D3",
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "blast.destructive_gating",
+        "blast.audit",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ],
     "lookalike_read": [
-        "A1", "A2", "A3", "B1", "C1", "C2", "C3", "D1", "D2", "D3",
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ],
     "enrich": [
-        "A1", "A2", "A3", "B1", "B3", "C1", "C2", "C3", "D1", "D2", "D3",
+        "authority.anonymous",
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "blast.egress",
+        "containment.parameter_scope",
+        "containment.expression_passthrough",
+        "containment.output_hygiene",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
     ],
-}  # fmt: skip
+}
 
 
 def test_the_reference_declaration_produces_the_pinned_trait_set(
@@ -112,9 +190,15 @@ def test_only_generated_traits_get_a_per_tool_stub(workdir: Path) -> None:
     """Engine traits are run by the engine from the manifest: no per-tool code
     exists for them, so a sync writes a stub only for A2/A3/A4/B2/B4."""
     assert _sync().exit_code == 0
-    generated = {"A2", "A3", "A4", "B2", "B4"}
+    generated = {
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "authority.delegation",
+        "blast.destructive_gating",
+        "blast.audit",
+    }
     expected = {
-        f"test_{tool}__{trait}"
+        f"test_{tool}__{trait_ident(trait)}"
         for tool, traits in EXPECTED_TRAITS.items()
         for trait in traits
         if trait in generated
@@ -156,7 +240,7 @@ def test_editing_the_table_gains_a_check_on_an_existing_tool(
     assert _sync().exit_code == 0
     before_hash = _manifest(workdir).trait_table_hash
     stubs_before = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
-    assert "A2" not in _planned(workdir)["get_guide"]
+    assert "authority.tenant_isolation" not in _planned(workdir)["get_guide"]
 
     _edit_table(tmp_path, monkeypatch, A2="always")
     after_hash = trait_table_hash()
@@ -168,7 +252,7 @@ def test_editing_the_table_gains_a_check_on_an_existing_tool(
             "point_id": tool_point_id("reference-mcp", "get_guide"),
             "server": "reference-mcp",
             "tool": "get_guide",
-            "trait": "A2",
+            "trait": "authority.tenant_isolation",
             "kind": "generated",
             "change": "gained",
             "reason": "rule: always",
@@ -176,7 +260,9 @@ def test_editing_the_table_gains_a_check_on_an_existing_tool(
     ]
     human = _plan().output
     assert "Trait changes (1):" in human
-    assert "+A2 on reference-mcp/get_guide (rule: always)" in human
+    assert (
+        "+authority.tenant_isolation on reference-mcp/get_guide (rule: always)" in human
+    )
     assert (
         f"trait table changed ({before_hash} → {after_hash}): "
         "1 tools gained checks, 0 tools retired checks." in human
@@ -189,13 +275,15 @@ def test_editing_the_table_gains_a_check_on_an_existing_tool(
     text = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
     # Appended, never rewritten.
     assert text.startswith(stubs_before)
-    assert "test_get_guide__A2" in _functions(workdir / ACTIVE_FILE)
+    assert "test_get_guide__authority__tenant_isolation" in _functions(
+        workdir / ACTIVE_FILE
+    )
     manifest = _manifest(workdir)
-    assert "A2" in _planned(workdir)["get_guide"]
+    assert "authority.tenant_isolation" in _planned(workdir)["get_guide"]
     assert manifest.trait_table_hash == after_hash
     # The stub's docstring records the schema it was generated against.
     guide = next(p for p in manifest.points if p.target == "get_guide")
-    block = text.split("def test_get_guide__A2(")[1]
+    block = text.split("def test_get_guide__authority__tenant_isolation(")[1]
     assert f"schema: {guide.attributes['schema_hash']}" in block
     assert _sync().output.count("No changes to apply") == 1
 
@@ -214,7 +302,7 @@ def test_a_newly_applicable_engine_trait_writes_nothing(
     payload = _plan_json()
     gained = {(c["tool"], c["trait"], c["kind"]) for c in payload["trait_changes"]}
     assert gained == {
-        (tool, "B3", "engine") for tool in EXPECTED_TRAITS if tool != "enrich"
+        (tool, "blast.egress", "engine") for tool in EXPECTED_TRAITS if tool != "enrich"
     }
 
     result = _sync()
@@ -224,7 +312,7 @@ def test_a_newly_applicable_engine_trait_writes_nothing(
     assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8") == stubs_before
     assert (workdir / ENGINE_FILE).read_text(encoding="utf-8") == engine_before
     assert not (workdir / READONLY_FILE).exists()
-    assert all("B3" in traits for traits in _planned(workdir).values())
+    assert all("blast.egress" in traits for traits in _planned(workdir).values())
 
 
 # --- a trait that stops applying is retired, never deleted ----------------------
@@ -236,7 +324,9 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
     assert _sync().exit_code == 0
     stubs_before = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
     entry_before = next(
-        t for t in _manifest(workdir).tests if t.test_name == "test_delete_record__B2"
+        t
+        for t in _manifest(workdir).tests
+        if t.test_name == "test_delete_record__blast__destructive_gating"
     )
 
     # The edited table lives in its own MonkeyPatch context: leaving it restores
@@ -246,9 +336,12 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
         payload = _plan_json()
         assert [
             (c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]
-        ] == [("delete_record", "B2", "retired")]
+        ] == [("delete_record", "blast.destructive_gating", "retired")]
         human = _plan().output
-        assert "−B2 on reference-mcp/delete_record (rule: mutation == nothing)" in human
+        assert (
+            "−blast.destructive_gating on reference-mcp/delete_record "
+            "(rule: mutation == nothing)" in human
+        )
         assert "0 tools gained checks, 1 tools retired checks." in human
 
         result = _sync()
@@ -259,11 +352,11 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
         entry = next(
             t
             for t in _manifest(workdir).tests
-            if t.test_name == "test_delete_record__B2"
+            if t.test_name == "test_delete_record__blast__destructive_gating"
         )
         assert entry.retired is True
         assert entry.id == entry_before.id
-        assert "B2" not in _planned(workdir)["delete_record"]
+        assert "blast.destructive_gating" not in _planned(workdir)["delete_record"]
 
         # Not run: verify leaves it out of collection and says why.
         result = runner.invoke(
@@ -283,14 +376,16 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
     # function, no second stub appended.
     payload = _plan_json()
     assert [(c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]] == [
-        ("delete_record", "B2", "gained")
+        ("delete_record", "blast.destructive_gating", "gained")
     ]
     result = _sync()
     assert result.exit_code == 0, result.output
     assert "added 0 stub(s)" in result.output
     assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8") == stubs_before
     entry = next(
-        t for t in _manifest(workdir).tests if t.test_name == "test_delete_record__B2"
+        t
+        for t in _manifest(workdir).tests
+        if t.test_name == "test_delete_record__blast__destructive_gating"
     )
     assert entry.retired is False
     assert entry.id == entry_before.id
@@ -311,7 +406,18 @@ def test_a_declared_none_of_these_beats_any_table(
     assert _sync().exit_code == 0
     assert _planned(workdir)["get_guide"] == []
 
-    _edit_table(tmp_path, monkeypatch, **{tid: "always" for tid in ("A2", "B2", "C1")})
+    _edit_table(
+        tmp_path,
+        monkeypatch,
+        **{
+            tid: "always"
+            for tid in (
+                "authority.tenant_isolation",
+                "blast.destructive_gating",
+                "containment.parameter_scope",
+            )
+        },
+    )
     payload = _plan_json()
     assert not [c for c in payload["trait_changes"] if c["tool"] == "get_guide"]
     assert _sync().exit_code == 0
@@ -360,9 +466,12 @@ def test_a_tool_that_stops_being_destructive_retires_its_gating_checks(
         for c in payload["trait_changes"]
         if c["change"] == "retired"
     }
-    assert ("delete_record", "B2", "mutation changed") in retired
+    assert ("delete_record", "blast.destructive_gating", "mutation changed") in retired
     human = _plan().output
-    assert "−B2 on reference-mcp/delete_record (mutation changed)" in human
+    assert (
+        "−blast.destructive_gating on reference-mcp/delete_record (mutation changed)"
+        in human
+    )
     assert "mutation: destructive → " in human
 
 
@@ -393,8 +502,13 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
     payload = _plan_json()
     changes = {(c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]}
     # The table grew A3 and C3 since P30; nothing was retired.
-    assert changes == {(tool, "A3", "gained") for tool in EXPECTED_TRAITS} | {
-        (tool, "C3", "gained") for tool in EXPECTED_TRAITS if tool != "get_guide"
+    assert changes == {
+        (tool, "authority.backing_least_privilege", "gained")
+        for tool in EXPECTED_TRAITS
+    } | {
+        (tool, "containment.output_hygiene", "gained")
+        for tool in EXPECTED_TRAITS
+        if tool != "get_guide"
     }
     assert payload["new_points"] == [] and payload["changed_points"] == []
 
@@ -412,7 +526,8 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
     assert legacy_ids <= {t.id for t in manifest.tests}
     for entry in manifest.tests:
         if entry.id in legacy_ids:
-            assert entry.trait == entry.test_name.split("_")[1].upper()
+            legacy = entry.test_name.split("_")[1].upper()
+            assert entry.trait == LEGACY_TRAIT_IDS[legacy]
             assert entry.retired is (kinds[entry.trait] == "engine")
     # The new A3 bindings went to the server's own directory, beside its
     # conftest; nothing P30 wrote was touched.
@@ -447,7 +562,7 @@ def test_a_p30_per_tool_engine_stub_is_retired_and_never_run(workdir: Path) -> N
     assert stub.retired is True
     assert stub.status != "orphaned"
     assert stub_file.read_text(encoding="utf-8") == before  # nothing deleted
-    engine = by_name["test_engine[get_guide-A1]"]
+    engine = by_name["test_engine[get_guide-authority.anonymous]"]
     assert engine.path == ENGINE_FILE
     assert engine.retired is False
 
@@ -467,8 +582,8 @@ def test_a_p30_per_tool_engine_stub_is_retired_and_never_run(workdir: Path) -> N
         for tool in server["tools"]
         for check in tool["checks"]
     }
-    assert checks[("get_guide", "A1")]["test"] == (
-        f"{ENGINE_FILE}::test_engine[get_guide-A1]"
+    assert checks[("get_guide", "authority.anonymous")]["test"] == (
+        f"{ENGINE_FILE}::test_engine[get_guide-authority.anonymous]"
     )
 
     again = _sync()

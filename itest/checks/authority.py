@@ -1,8 +1,9 @@
 """Family A, Authority: who may call this tool?
 
-A1 is the one engine check here. The rest of the family (A2 tenant isolation,
-A3, A4) needs a second identity or other facts only a person can supply, and
-will be generated checks.
+``authority.anonymous`` (AUTH-1) is the one engine check here. The rest of the
+family (``authority.tenant_isolation``, ``authority.backing_least_privilege``,
+``authority.delegation``) needs a second identity or other facts only a person
+can supply, and will be generated checks.
 """
 
 from __future__ import annotations
@@ -31,9 +32,9 @@ from itest.probes.mcp import (
     classify_mutation,
 )
 
-#: The only classes A1 will call. Everything else — write, destructive, and
-#: ``unknown``, which may be either — is never called: A1 is a readonly-tier
-#: check.
+#: The only classes authority.anonymous will call. Everything else — write,
+#: destructive, and ``unknown``, which may be either — is never called: this
+#: is a readonly-tier check.
 CALLABLE_CLASSES = frozenset({"read", "informational"})
 
 #: The front door held: the whole server passes, and no tool is called.
@@ -100,7 +101,8 @@ def sentinel_arguments(schema: dict[str, Any] | None, sentinel: str) -> dict:
         else:
             raise NoSentinel(
                 f"required parameter {name!r} is of type {declared!r}, which has "
-                "no sentinel form; A1 sends only values that cannot exist"
+                "no sentinel form; authority.anonymous sends only values that "
+                "cannot exist"
             )
     return arguments
 
@@ -122,11 +124,14 @@ def _stricter(recorded: str, live: str | None) -> str:
     return max(recorded, live, key=lambda cls: _RANK.get(cls, _RANK["unknown"]))
 
 
-@engine_check("A1")
-def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckResult:
-    """A1 refuses anonymous: does the server turn away a caller with no credential?
+@engine_check("authority.anonymous")
+def check_authority__anonymous(
+    point: dict, target: McpTarget, *, authenticated: bool
+) -> CheckResult:
+    """authority.anonymous (AUTH-1): does the server turn away a caller with no
+    credential?
 
-    A1 judges only what it observed. It always probes **anonymously** — no
+    It judges only what it observed. It always probes **anonymously** — no
     credential, and over stdio the credential variable is stripped from the
     subprocess environment. ``authenticated`` does not change what it does.
 
@@ -140,7 +145,7 @@ def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
       transport error); the detail says why.
 
     **2. Behind an open front door, per tool.** The class used is the stricter of
-    the manifest's and the live listing's, so a stale manifest cannot talk A1
+    the manifest's and the live listing's, so a stale manifest cannot talk it
     into calling a mutating tool.
 
     - A **read or informational** tool gets one anonymous ``tools/call`` with
@@ -160,8 +165,8 @@ def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     - An **unknown** tool, or one hidden from the anonymous listing, is not
       called: ``not_verifiable``.
 
-    A1 never returns ``critical``: that status means a *demonstrated* anonymous
-    admission on a mutating tool, which only the active-tier A1 can show.
+    It never returns ``critical``: that status means a *demonstrated* anonymous
+    admission on a mutating tool, which only the active-tier check can show.
 
     Standards: OWASP Agentic Top 10 ASI03 (Identity and Privilege Abuse); the
     Semgrep MCP security cheatsheet, server tab, row 4.
@@ -218,8 +223,8 @@ def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     if info is None:
         return not_verifiable(
             f"anonymous session admitted, but {tool!r} is not in the anonymous "
-            "listing; it was not called (D1 reports a tool the server no longer "
-            "lists)",
+            "listing; it was not called (change.inventory reports a tool the server "
+            "no longer lists)",
             evidence,
         )
 

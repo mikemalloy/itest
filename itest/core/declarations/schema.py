@@ -30,6 +30,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from itest.traits.ids import migrate_trait_id
+
 #: What calling a tool does. The vocabulary the MCP probe's classifier returns,
 #: minus its ``unknown``: a declaration states a belief, and "I don't know" is
 #: spelled ``detect``.
@@ -53,8 +55,9 @@ _SERVER_NAME = re.compile(r"^[a-z0-9-]+$")
 #: ``/`` or a space is a URL or a token that has been pasted where a name goes.
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-#: A trait id as the traits table spells them: a family letter and a number.
-_TRAIT_ID = re.compile(r"^[A-Z][0-9]+$")
+#: A trait id as the traits table spells them: ``<family>.<slug>``. An old
+#: AN-style id (``A1``) is accepted and read as the slug it was renamed to.
+_TRAIT_ID = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 
 
 def _env_name(value: str | None, field: str) -> str | None:
@@ -264,6 +267,7 @@ class ToolOverride(Strict):
                 "traits is an empty list. Omit the key to inherit the table, or "
                 f"write [{NO_TRAITS}] with notes to say the tool needs none."
             )
+        value = [migrate_trait_id(entry) for entry in value]
         if NO_TRAITS in value and len(value) > 1:
             raise ValueError(
                 f"traits '{NO_TRAITS}' cannot sit beside a trait id: either the "
@@ -272,8 +276,8 @@ class ToolOverride(Strict):
         for entry in value:
             if entry != NO_TRAITS and not _TRAIT_ID.match(entry):
                 raise ValueError(
-                    f"traits entry {entry!r} is not a trait id (a family letter "
-                    f"and a number, e.g. A1) or '{NO_TRAITS}'."
+                    f"traits entry {entry!r} is not a trait id (a family and a "
+                    f"slug, e.g. authority.anonymous) or '{NO_TRAITS}'."
                 )
         repeated = sorted({entry for entry in value if value.count(entry) > 1})
         if repeated:

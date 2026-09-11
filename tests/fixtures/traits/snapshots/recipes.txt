@@ -1,13 +1,13 @@
 Recipes the trait table references, in recipes:
 
-  present  recipes/tool_authn.md           A1
-  missing  recipes/tool_isolation.md       A2
-  missing  recipes/tool_identity.md        A3, A4
-  missing  recipes/tool_mutation_class.md  B1
-  missing  recipes/tool_gating.md          B2
-  missing  recipes/tool_egress.md          B3
-  missing  recipes/tool_audit.md           B4
-  missing  recipes/tool_containment.md     C1, C2, C3
-  missing  recipes/tool_provenance.md      D1, D2, D3
+  present  recipes/tool_authn.md           authority.anonymous
+  missing  recipes/tool_isolation.md       authority.tenant_isolation
+  missing  recipes/tool_identity.md        authority.backing_least_privilege, authority.delegation
+  missing  recipes/tool_mutation_class.md  blast.mutation_class
+  missing  recipes/tool_gating.md          blast.destructive_gating
+  missing  recipes/tool_egress.md          blast.egress
+  missing  recipes/tool_audit.md           blast.audit
+  missing  recipes/tool_containment.md     containment.parameter_scope, containment.expression_passthrough, containment.output_hygiene
+  missing  recipes/tool_provenance.md      change.inventory, change.schema_drift, change.description_drift
 
 9 recipe(s): 1 present, 8 missing.

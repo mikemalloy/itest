@@ -161,9 +161,14 @@ def sync(
         # schema the manifest has since moved past is ITest's to regenerate.
         # And a per-tool stub for a trait the engine module now runs is
         # retired even when no plan moved.
+        # First of all, a manifest read with old trait ids is written back
+        # with the new ones.
+        migrated = syncer.persist_migration(base_dir)
         regenerated = syncer.regenerate(base_dir)
         superseded = syncer.retire_superseded(base_dir)
         reclassified = syncer.reconcile(base_dir)
+        if migrated:
+            echo("Rewrote the manifest with the current trait ids.")
         if regenerated:
             echo(
                 f"Regenerated {regenerated} check(s) against their tool's "
@@ -173,7 +178,7 @@ def sync(
             echo(f"Retired {superseded} per-tool stub(s) the engine module supersedes.")
         if reclassified:
             echo(f"Reclassified {reclassified} test(s) from their bodies.")
-        if not (regenerated or superseded or reclassified):
+        if not (migrated or regenerated or superseded or reclassified):
             echo("No changes to apply. Manifest is up to date.")
         return
 

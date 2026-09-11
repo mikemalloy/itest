@@ -29,6 +29,7 @@ from itest.core.manifest import (
     load_manifest,
     save_manifest,
 )
+from itest.traits.ids import LEGACY_BY_TRAIT, trait_ident
 
 JUNIT_NAME = "itest-results.xml"
 
@@ -605,15 +606,24 @@ def _short_detail(outcome: str, detail: str, raw: dict, environment: str | None)
 
 
 def _tool_from_test_name(entry: TestEntry) -> str:
-    """The tool a test covers, read back from its name (for an orphan)."""
+    """The tool a test covers, read back from its name (for an orphan).
+
+    Three shapes: an engine case (``test_engine[<tool>-<trait>]``), a binding
+    (``test_<tool>__<trait ident>``, or ``test_<tool>__B2`` from before the
+    rename) and a P30 per-trait stub (``test_a1_<tool>``).
+    """
     name = entry.test_name
     if name.startswith(f"{stubgen.ENGINE_TEST}[") and name.endswith("]"):
         return name[len(stubgen.ENGINE_TEST) + 1 : -1].rsplit("-", 1)[0]
+    trait = entry.trait or ""
+    legacy = LEGACY_BY_TRAIT.get(trait, "")
+    for suffix in (f"__{trait_ident(trait)}", f"__{legacy}"):
+        if suffix != "__" and name.endswith(suffix):
+            return name.removeprefix("test_")[: -len(suffix)]
+    if legacy and name.startswith(f"test_{legacy.lower()}_"):
+        return name[len(f"test_{legacy.lower()}_") :]
     if "__" in name:
         return name.removeprefix("test_").rsplit("__", 1)[0]
-    trait = (entry.trait or "").lower()
-    if trait and name.startswith(f"test_{trait}_"):
-        return name[len(f"test_{trait}_") :]
     return f"point {entry.point_id}"
 
 
@@ -649,10 +659,19 @@ def _tool_checks(
     checks: list[dict] = []
     exceptions: list[dict] = []
 
+    def labels(trait_id: str) -> dict:
+        """The trait's display code and the standards it answers, from the table."""
+        trait = table.get(trait_id)
+        return {
+            "code": trait.code if trait else None,
+            "standards": list(trait.standards) if trait else [],
+        }
+
     def row(trait_id: str, entry: TestEntry | None) -> dict:
         if entry is None:
             return {
                 "trait": trait_id,
+                **labels(trait_id),
                 "status": "not_run",
                 "detail": "no test is registered for this check; run `itest sync`",
                 "test": "",
@@ -675,6 +694,7 @@ def _tool_checks(
         )
         result = {
             "trait": trait_id,
+            **labels(trait_id),
             "status": status,
             "detail": text,
             "test": entry.canonical,

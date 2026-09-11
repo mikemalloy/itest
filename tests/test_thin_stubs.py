@@ -43,6 +43,7 @@ from itest.core.declarations.tools import tool_point_id
 from itest.core.declarations.traits import load_traits
 from itest.core.manifest import load_manifest, save_manifest
 from itest.traits import runtime
+from itest.traits.ids import trait_ident
 
 
 @pytest.fixture
@@ -87,16 +88,21 @@ def test_a_generated_stub_is_exactly_the_binding(workdir: Path) -> None:
     schema = point.attributes["schema_hash"]
     text = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
     block = stubgen.render_generated_stub(
-        point, "test_delete_record__B2", load_traits().get("B2")
+        point,
+        "test_delete_record__blast__destructive_gating",
+        load_traits().get("blast.destructive_gating"),
     )
     assert block in text
     assert block == (
-        "\n\ndef test_delete_record__B2(itest_target, itest_point, b2_fixtures):\n"
-        f'    """itest point: {point.id}  trait: B2  schema: {schema}"""\n'
+        "\n\ndef test_delete_record__blast__destructive_gating("
+        "itest_target, itest_point, blast__destructive_gating_fixtures):\n"
+        f'    """itest point: {point.id}  trait: blast.destructive_gating  '
+        f'schema: {schema}"""\n'
         "    from itest.checks import run_generated_check\n"
         "\n"
         "    result = run_generated_check(\n"
-        '        "B2", itest_point, itest_target, fixtures=b2_fixtures\n'
+        '        "blast.destructive_gating", itest_point, itest_target, '
+        "fixtures=blast__destructive_gating_fixtures\n"
         "    )\n"
         '    assert result.status == "pass", result.detail\n'
     )
@@ -108,8 +114,8 @@ def test_a_generated_stub_is_exactly_the_binding(workdir: Path) -> None:
 def test_generated_bindings_name_the_tool_then_the_trait(workdir: Path) -> None:
     assert _sync().exit_code == 0
     active = _functions(workdir / ACTIVE_FILE)
-    assert "test_get_guide__A3" in active
-    assert "test_delete_record__B2" in active
+    assert "test_get_guide__authority__backing_least_privilege" in active
+    assert "test_delete_record__blast__destructive_gating" in active
     assert len(active) == 19
 
 
@@ -161,15 +167,15 @@ def test_a_tool_added_to_the_manifest_is_picked_up_without_regeneration(
             update={
                 "id": tool_point_id("reference-mcp", "brand_new"),
                 "target": "brand_new",
-                "traits_planned": ["A1", "D1"],
+                "traits_planned": ["authority.anonymous", "change.inventory"],
             }
         )
     )
     save_manifest(manifest, manifest_file)
 
     collected = _collect(workdir, ENGINE_FILE)
-    assert f"{ENGINE_FILE}::test_engine[brand_new-A1]" in collected
-    assert f"{ENGINE_FILE}::test_engine[brand_new-D1]" in collected
+    assert f"{ENGINE_FILE}::test_engine[brand_new-authority.anonymous]" in collected
+    assert f"{ENGINE_FILE}::test_engine[brand_new-change.inventory]" in collected
     assert (workdir / ENGINE_FILE).read_text(encoding="utf-8") == engine_before
 
 
@@ -224,13 +230,20 @@ def test_the_conftest_is_written_once_and_never_rewritten(
     text = conftest.read_text(encoding="utf-8")
     assert "yours" in text.lower()
     # One fixture per generated trait in the table, each a clear placeholder.
-    for trait in ("a2", "a3", "a4", "b2", "b4"):
-        assert f"def {trait}_fixtures(" in text
+    for trait in (
+        "authority.tenant_isolation",
+        "authority.backing_least_privilege",
+        "authority.delegation",
+        "blast.destructive_gating",
+        "blast.audit",
+    ):
+        assert f"def {trait_ident(trait)}_fixtures(" in text
     assert "from itest.traits.runtime import itest_point, itest_target" in text
 
     mine = text.replace(
-        "def a2_fixtures(itest_point):",
-        "def a2_fixtures(itest_point):  # filled in by a human",
+        "def authority__tenant_isolation_fixtures(itest_point):",
+        "def authority__tenant_isolation_fixtures(itest_point):"
+        "  # filled in by a human",
     )
     conftest.write_text(mine, encoding="utf-8")
     _edit_table(tmp_path, monkeypatch, A2="always")  # an applied sync
@@ -273,7 +286,7 @@ def test_the_generated_suite_runs_and_nothing_is_an_error(
     assert report["errored"] == 0
     failed = sorted(t["canonical"] for t in report["tests"] if t["outcome"] == "failed")
     assert failed == sorted(
-        f"{ENGINE_FILE}::test_engine[{tool}-A1]"
+        f"{ENGINE_FILE}::test_engine[{tool}-authority.anonymous]"
         for tool in (
             "get_guide",
             "search_records",
@@ -295,7 +308,12 @@ def test_the_generated_suite_runs_and_nothing_is_an_error(
             "lookalike_read",
             "enrich",
         )
-        for trait in ("B1", "D1", "D2", "D3")
+        for trait in (
+            "blast.mutation_class",
+            "change.inventory",
+            "change.schema_drift",
+            "change.description_drift",
+        )
     }
     others = {
         t["outcome"]
@@ -320,7 +338,9 @@ def test_run_engine_case_returns_the_check_result(monkeypatch) -> None:
         return CheckResult("pass", "ok", {"n": 1})
 
     monkeypatch.setattr(itest.checks, "run_engine_check", fake)
-    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="A1")
+    case = runtime.EngineCase(
+        point={"target": "t", "id": "x"}, trait="authority.anonymous"
+    )
     recorded = []
     result = runtime.run_engine_case(
         case,
@@ -329,7 +349,7 @@ def test_run_engine_case_returns_the_check_result(monkeypatch) -> None:
         record=lambda name, value: recorded.append((name, value)),
     )
     assert result == CheckResult("pass", "ok", {"n": 1})
-    assert calls == [("A1", "t", "TARGET", True)]
+    assert calls == [("authority.anonymous", "t", "TARGET", True)]
     assert recorded == [
         ("itest_check", {"status": "pass", "detail": "ok", "evidence": {"n": 1}})
     ]
@@ -339,7 +359,9 @@ def test_an_unimplemented_engine_check_skips(monkeypatch) -> None:
     """The library answers a trait it has no check for with not_verifiable ("no
     engine check for <id>"), which the runtime records and skips: not run, never
     an error and never a pass. C3 is in the table and not in the library."""
-    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="C3")
+    case = runtime.EngineCase(
+        point={"target": "t", "id": "x"}, trait="containment.output_hygiene"
+    )
     recorded = []
     with pytest.raises(pytest.skip.Exception) as excinfo:
         runtime.run_engine_case(
@@ -348,7 +370,9 @@ def test_an_unimplemented_engine_check_skips(monkeypatch) -> None:
             authenticated=False,
             record=lambda name, value: recorded.append((name, value)),
         )
-    assert "not_verifiable: no engine check for C3" in str(excinfo.value)
+    assert "not_verifiable: no engine check for containment.output_hygiene" in str(
+        excinfo.value
+    )
     assert recorded[0][1]["status"] == "not_verifiable"
 
 
@@ -367,7 +391,9 @@ def test_a_finding_that_is_not_a_failure_is_recorded_then_skipped(
         "run_engine_check",
         lambda *a, **k: CheckResult(status, "description moved", None),
     )
-    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="D3")
+    case = runtime.EngineCase(
+        point={"target": "t", "id": "x"}, trait="change.description_drift"
+    )
     recorded = []
     with pytest.raises(pytest.skip.Exception) as excinfo:
         runtime.run_engine_case(
@@ -388,7 +414,9 @@ def test_a_failing_check_still_fails(monkeypatch) -> None:
         "run_engine_check",
         lambda *a, **k: CheckResult("critical", "anonymous call accepted", None),
     )
-    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="A1")
+    case = runtime.EngineCase(
+        point={"target": "t", "id": "x"}, trait="authority.anonymous"
+    )
     result = runtime.run_engine_case(case, "TARGET", authenticated=False)
     assert result.status == "critical"
 
@@ -411,8 +439,18 @@ def test_one_passive_engine_module_collects_every_non_active_tier(
             str(workdir / ENGINE_FILE), "reference-mcp", "passive"
         )
     }
-    assert {"get_guide-D1", "get_guide-A1", "delete_record-D1"} <= ids
-    assert not {i for i in ids if i.endswith(("-C1", "-C2"))}  # active stays apart
+    assert {
+        "get_guide-change.inventory",
+        "get_guide-authority.anonymous",
+        "delete_record-change.inventory",
+    } <= ids
+    assert not {
+        i
+        for i in ids
+        if i.endswith(
+            ("-containment.parameter_scope", "-containment.expression_passthrough")
+        )
+    }  # active stays apart
 
     entries = [t for t in _manifest(workdir).tests if t.path == ENGINE_FILE]
     assert {t.tier for t in entries} == {"static", "readonly"}

@@ -70,7 +70,9 @@ def test_traits_prints_the_table(tmp_path: Path, monkeypatch) -> None:
         f"Trait table {trait_table_hash()}: 14 traits in 4 families "
         "(9 engine, 5 generated)."
     )
-    b2 = next(line for line in lines if line.lstrip().startswith("B2 "))
+    b2 = next(
+        line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
+    )
     for column in (
         "Blast radius",
         "destructive gating",
@@ -93,8 +95,8 @@ def test_traits_json_is_the_table(tmp_path: Path, monkeypatch) -> None:
     assert payload["families"] == table.families
     assert [t["id"] for t in payload["traits"]] == table.ids
     assert payload["traits"][0] == {
-        "id": "A1",
-        "family": "A",
+        "id": "authority.anonymous",
+        "family": "authority",
         "family_name": "Authority",
         "name": "refuses anonymous",
         "kind": "engine",
@@ -117,9 +119,20 @@ def test_traits_for_a_tool_decides_every_trait(synced: Path) -> None:
     )
     assert f"id={point_id}" in out
     assert "12 of 14 traits apply" in out
-    assert "APPLIES          B2  destructive gating" in out
+    lines = out.splitlines()
+    assert any(
+        line.lstrip().startswith("APPLIES")
+        and "blast.destructive_gating" in line
+        and "destructive gating" in line
+        for line in lines
+    )
     assert "rule: mutation == destructive" in out
-    assert "does not apply   A4  caller identity passthrough" in out
+    assert any(
+        line.lstrip().startswith("does not apply")
+        and "authority.delegation" in line
+        and "caller identity passthrough" in line
+        for line in lines
+    )
     assert "rule: identity.runs_as == passthrough" in out
     snapshot("for-delete-record", out)
 
@@ -155,8 +168,15 @@ def test_traits_for_json(synced: Path) -> None:
     assert payload["trait_table_hash"] == trait_table_hash()
     assert payload["table_changed_since_sync"] is False
     applies = {t["id"]: t["applies"] for t in payload["traits"]}
-    assert [k for k, v in applies.items() if v] == ["A1", "A3", "B1", "D1", "D2", "D3"]
-    a2 = next(t for t in payload["traits"] if t["id"] == "A2")
+    assert [k for k, v in applies.items() if v] == [
+        "authority.anonymous",
+        "authority.backing_least_privilege",
+        "blast.mutation_class",
+        "change.inventory",
+        "change.schema_drift",
+        "change.description_drift",
+    ]
+    a2 = next(t for t in payload["traits"] if t["id"] == "authority.tenant_isolation")
     assert a2["reason"] == (
         "rule: auth.second_tenant_env present and mutation != informational"
     )
@@ -214,10 +234,13 @@ def test_recipes_lists_every_recipe_the_table_names(
     lines = result.output.splitlines()
     assert lines[0] == "Recipes the trait table references, in recipes:"
     authn = next(line for line in lines if "tool_authn.md" in line)
-    assert "present" in authn and "A1" in authn
+    assert "present" in authn and "authority.anonymous" in authn
     containment = next(line for line in lines if "tool_containment.md" in line)
     assert "missing" in containment
-    assert "C1, C2, C3" in containment
+    assert (
+        "containment.parameter_scope, containment.expression_passthrough, "
+        "containment.output_hygiene"
+    ) in containment
     assert lines[-1] == "9 recipe(s): 1 present, 8 missing."
     snapshot("recipes", result.output)
 
@@ -233,7 +256,7 @@ def test_recipes_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "recipe": "tool_identity.md",
         "path": "recipes/tool_identity.md",
         "exists": False,
-        "traits": ["A3", "A4"],
+        "traits": ["authority.backing_least_privilege", "authority.delegation"],
     }
 
 

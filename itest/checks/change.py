@@ -22,9 +22,11 @@ from itest.checks._base import (
 from itest.probes.mcp import McpTarget
 
 
-@engine_check("D1")
-def check_d1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckResult:
-    """D1 inventory: does the server still list the tool the manifest records?
+@engine_check("change.inventory")
+def check_change__inventory(
+    point: dict, target: McpTarget, *, authenticated: bool
+) -> CheckResult:
+    """change.inventory (CHANGE-1): is the tool the manifest records still listed?
 
     Reads one live ``tools/list`` (cached per server per run) and never calls a
     tool.
@@ -35,11 +37,11 @@ def check_d1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     - ``not_verifiable`` — the listing could not be taken (unreachable, refused,
       no credential for an authenticated listing).
 
-    Every D1 result for a server carries ``evidence.undeclared``: live tools with
-    no manifest point — tools an agent can call that nobody reviewed. It is the
-    same list on each result (reported once per server, repeated so any one row
-    shows it), ``[]`` when there are none, and ``None`` when there is no manifest
-    to compare against.
+    Every change.inventory result for a server carries ``evidence.undeclared``:
+    live tools with no manifest point — tools an agent can call that nobody
+    reviewed. It is the same list on each result (reported once per server,
+    repeated so any one row shows it), ``[]`` when there are none, and ``None``
+    when there is no manifest to compare against.
 
     Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain); the Semgrep
     MCP security cheatsheet, client tab, row 14 (name collisions — a newly
@@ -84,7 +86,7 @@ def _hash_check(
     if info is None:
         return not_verifiable(
             f"{tool!r} is not in tools/list, so its {what} cannot be compared "
-            "(D1 reports the orphan)",
+            "(change.inventory reports the orphan)",
             base,
         )
     if not recorded:
@@ -100,9 +102,11 @@ def _hash_check(
     )
 
 
-@engine_check("D2")
-def check_d2(point: dict, target: McpTarget, *, authenticated: bool) -> CheckResult:
-    """D2 schema drift: is the tool's input schema the one the manifest recorded?
+@engine_check("change.schema_drift")
+def check_change__schema_drift(
+    point: dict, target: McpTarget, *, authenticated: bool
+) -> CheckResult:
+    """change.schema_drift (CHANGE-2): is the input schema the one recorded?
 
     Compares the point's ``schema_hash`` with the live listing's (a hash of the
     input schema over canonical JSON, so key order cannot move it). Never calls a
@@ -111,8 +115,8 @@ def check_d2(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     - ``pass`` — the hashes match.
     - ``changed`` — they differ; evidence carries both. The tool now accepts
       something different from what was reviewed. Sync turns this into drift.
-    - ``not_verifiable`` — no listing, the tool is not listed (D1 reports it), or
-      the manifest recorded no hash.
+    - ``not_verifiable`` — no listing, the tool is not listed (change.inventory
+      reports it), or the manifest recorded no hash.
 
     Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain) — a tool whose
     contract moves under a pinned review; the Semgrep MCP security cheatsheet,
@@ -121,9 +125,11 @@ def check_d2(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     return _hash_check("schema_hash", "input schema", point, target, authenticated)
 
 
-@engine_check("D3")
-def check_d3(point: dict, target: McpTarget, *, authenticated: bool) -> CheckResult:
-    """D3 description drift: does the tool still say what it said when reviewed?
+@engine_check("change.description_drift")
+def check_change__description_drift(
+    point: dict, target: McpTarget, *, authenticated: bool
+) -> CheckResult:
+    """change.description_drift (CHANGE-3): does the tool still say the same?
 
     Compares the point's ``description_hash`` with the live listing's. A
     description is text a model reads and acts on, so a reworded one is a change
@@ -133,8 +139,8 @@ def check_d3(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     - ``pass`` — the hashes match.
     - ``changed`` — they differ; evidence carries both hashes (the manifest keeps
       only the hash, so the previous text is not available to show).
-    - ``not_verifiable`` — no listing, the tool is not listed (D1 reports it), or
-      the manifest recorded no hash.
+    - ``not_verifiable`` — no listing, the tool is not listed (change.inventory
+      reports it), or the manifest recorded no hash.
 
     Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain); OWASP LLM Top
     10 LLM01 (prompt injection, via the description); the Semgrep MCP security

@@ -40,6 +40,7 @@ from itest.core.manifest import (
     save_manifest,
 )
 from itest.core.planner import Changeset
+from itest.traits.ids import LEGACY_BY_TRAIT
 
 if TYPE_CHECKING:  # types only: sync imports no trait machinery up front
     from itest.core.declarations.traits import Trait
@@ -241,6 +242,23 @@ def reconcile(base_dir: Path) -> int:
     return changed
 
 
+def persist_migration(base_dir: Path) -> bool:
+    """Write back a manifest that was read with old AN-style trait ids.
+
+    Loading maps the old ids to the new ones in memory; this is the "rewrite on
+    the next sync" half, for the sync whose plan is otherwise a no-op. Returns
+    whether the file was rewritten.
+    """
+    manifest_file = planner.manifest_path(base_dir)
+    if not manifest_file.exists():
+        return False
+    manifest = load_manifest(manifest_file)
+    if not manifest.trait_ids_migrated:
+        return False
+    save_manifest(manifest, manifest_file)
+    return True
+
+
 def regenerate(base_dir: Path) -> int:
     """Regenerate owned bindings when the changeset itself is a no-op.
 
@@ -376,7 +394,7 @@ def _status_from_body(path: Path, test_name: str) -> Literal["stub", "implemente
             and n.name == test_name
         ]
 
-    # A parametrized case (`test_engine[tool-A1]`) is its function's body.
+    # A parametrized case (`test_engine[tool-<trait>]`) is its function's body.
     test_name = test_name.split("[", 1)[0]
     # Module-level first (a top-level def is what sync generates and what a
     # canonical `path::name` addresses); fall back to any nested definition.
@@ -492,16 +510,22 @@ def _superseded(test: TestEntry, kinds: dict[str, str]) -> bool:
     """A per-tool stub sync wrote for a trait the engine module now runs.
 
     Before the engine module existed, sync wrote one stub per (tool, trait) for
-    every trait, engine ones included (entry id ``t-<point>-<trait>``). Such a
-    stub would run as a skip beside the engine case that actually checks the
-    trait, so it is retired in place. Only sync's own per-tool stubs match: an
-    engine case (``e-`` id) and a test a human registered keep running.
+    every trait, engine ones included (entry id ``t-<point>-<trait>``, with the
+    trait's old AN-style id). Such a stub would run as a skip beside the engine
+    case that actually checks the trait, so it is retired in place. Only sync's
+    own per-tool stubs match: an engine case (``e-`` id) and a test a human
+    registered keep running.
     """
+    if test.trait is None:
+        return False
+    legacy = LEGACY_BY_TRAIT.get(test.trait)
+    sync_ids = {f"t-{test.point_id}-{test.trait.lower()}"}
+    if legacy:
+        sync_ids.add(f"t-{test.point_id}-{legacy.lower()}")
     return (
-        test.trait is not None
-        and kinds.get(test.trait) == "engine"
+        kinds.get(test.trait) == "engine"
         and not _is_engine_case(test)
-        and test.id == f"t-{test.point_id}-{test.trait.lower()}"
+        and test.id in sync_ids
     )
 
 

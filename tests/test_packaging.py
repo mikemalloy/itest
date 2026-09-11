@@ -122,7 +122,10 @@ def test_the_trait_table_is_read_through_importlib_resources(
     monkeypatch.setattr(
         traits_module, "resources", _fake_files("itest.traits", tmp_path)
     )
-    assert traits_module.load_traits().get("A1").name == "served by resources"
+    assert (
+        traits_module.load_traits().get("authority.anonymous").name
+        == "served by resources"
+    )
 
 
 def test_the_report_template_is_read_through_importlib_resources(

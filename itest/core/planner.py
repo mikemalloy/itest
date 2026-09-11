@@ -30,8 +30,9 @@ what it always did: ``changed`` (an attribute drifted; the id did not move),
 **The trait table is live.** Every plan evaluates the current table against
 every declared tool's current attributes and compares the answer with the
 ``traits_planned`` the last sync recorded. A tool whose mutation class flipped,
-or a table whose rule was edited, is therefore a diff here — ``+B2 on ...`` /
-``−B2 on ...`` — rather than something only a brand-new tool would ever see.
+or a table whose rule was edited, is therefore a diff here —
+``+blast.destructive_gating on ...`` / ``−blast.destructive_gating on ...`` —
+rather than something only a brand-new tool would ever see.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ from itest.core import points as point_labels
 from itest.core.detectors.base import detect_all
 from itest.core.manifest import IntegrationPoint, Manifest, TestEntry, load_manifest
 from itest.core.mermaid import generate_mermaid
+from itest.traits.ids import migrate_trait_id
 
 ITEST_DIR = ".itest"
 MANIFEST_NAME = "manifest.yaml"
@@ -392,15 +394,16 @@ def trait_from_entry(entry: TestEntry) -> str | None:
 
     Manifests written before ``trait`` existed encode it only in the id sync
     gave the entry, so the first sync after an upgrade can still tell which
-    check each P30 stub is.
+    check each P30 stub is — by its old AN-style id, read as the slug it was
+    renamed to.
     """
     if entry.trait:
-        return entry.trait
+        return migrate_trait_id(entry.trait)
     prefix = f"t-{entry.point_id}-"
     if entry.id.startswith(prefix):
         suffix = entry.id[len(prefix) :]
         if suffix and suffix[0].isalpha() and suffix[1:].isdigit():
-            return suffix.upper()
+            return migrate_trait_id(suffix.upper())
     return None
 
 

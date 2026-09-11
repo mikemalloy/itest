@@ -71,9 +71,14 @@ def test_tool_ledger_fixture_loads_through_the_model() -> None:
     server = ledger.servers[0]
     assert server.summary.declared == 6
     assert server.summary.changed == 1
-    assert [f.id for f in server.families] == ["A", "B", "C", "D"]
+    assert [f.id for f in server.families] == [
+        "authority",
+        "blast",
+        "containment",
+        "change",
+    ]
     assert [t.name for t in server.tools] == ["delete_record", "update_record"]
-    assert server.tools[0].checks[0].trait == "A1"
+    assert server.tools[0].checks[0].trait == "authority.anonymous"
     assert server.tools[1].checks[1].change.previous == "Update fields on a record."
     assert server.exceptions[0].kind == "changed"
 
@@ -444,8 +449,16 @@ def test_tool_ledger_renders_groups_rows_and_exceptions(alex_s7) -> None:
     assert set(groups) == {"Destructive", "Writes"}
     assert [r["n"] for r in groups["Destructive"]["rows"]] == ["delete_record"]
     # Columns are the traits actually checked, not a fixed set.
-    assert groups["Destructive"]["headers"] == ["A1", "B1", "D2", "D3"]
-    assert groups["Writes"]["headers"] == ["A1", "D3"]
+    assert [h["slug"] for h in groups["Destructive"]["headers"]] == [
+        "authority.anonymous",
+        "blast.mutation_class",
+        "change.schema_drift",
+        "change.description_drift",
+    ]
+    assert [h["slug"] for h in groups["Writes"]["headers"]] == [
+        "authority.anonymous",
+        "change.description_drift",
+    ]
     changed = groups["Writes"]["rows"][0]
     assert changed["flag"] is True
     assert {c["txt"] for c in changed["cells"]} == {"PASS", "CHANGED"}

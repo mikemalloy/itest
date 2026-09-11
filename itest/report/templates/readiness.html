@@ -241,6 +241,7 @@
   .tag.wild{color:var(--warn);background:var(--warn-soft);border-color:transparent}
   .tag.ext{color:var(--muted);background:var(--surface-2)}
   .tag.mech{color:var(--accent);background:var(--accent-soft);border-color:transparent}
+  .th-trait small{display:block;font-size:10px;line-height:1.25;color:var(--faint);text-transform:none;letter-spacing:0;word-break:break-all;margin-top:2px}
   .tag.state{color:var(--warn);background:var(--warn-soft);border-color:transparent;font-weight:400}
   .meta-row.attention span{color:var(--warn)}
   .row .ev{text-align:right;font-family:"IBM Plex Mono";font-size:11.5px}
@@ -441,7 +442,8 @@ el("toolsMeta").textContent = PAGE.posture.toolsMeta;
   const groups = TOOLS.map(g => {
     const cols = `minmax(200px,1.4fr) 104px repeat(${g.headers.length}, 104px)`;
     const head = `<div class="thead" style="grid-template-columns:${cols}"><span>Tool</span><span>Reads as</span>${
-      g.headers.map(h => `<span>${esc(h)}</span>`).join("")}</div>`;
+      g.headers.map(h => `<span class="th-trait" title="${esc(h.title)}">${esc(h.code || h.slug)}${
+        h.code ? `<small>${esc(h.slug)}</small>` : ""}</span>`).join("")}</div>`;
     const rows = g.rows.map(r => `
       <div class="trow${r.flag ? " flag" : ""}" style="grid-template-columns:${cols}">
         <span class="path">${esc(r.n)}</span>
