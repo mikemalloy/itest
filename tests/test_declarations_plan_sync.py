@@ -47,8 +47,14 @@ EXAMPLE = (
 )
 ALEX = REPO_ROOT / "tests" / "fixtures" / "alex" / "alex-s6.json"
 
-READONLY_FILE = "itest_tests/test_tools_reference_mcp.py"
-ACTIVE_FILE = "itest_tests/test_tools_reference_mcp_active.py"
+#: Everything sync writes for one declared server lives in its own directory,
+#: because the human-owned conftest.py beside the bindings is per server.
+SERVER_DIR = "itest_tests/tools_reference_mcp"
+READONLY_FILE = f"{SERVER_DIR}/test_reference_mcp__generated.py"
+ACTIVE_FILE = f"{SERVER_DIR}/test_reference_mcp__generated_active.py"
+ENGINE_FILE = f"{SERVER_DIR}/test_reference_mcp__engine.py"
+ENGINE_ACTIVE_FILE = f"{SERVER_DIR}/test_reference_mcp__engine_active.py"
+CONFTEST_FILE = f"{SERVER_DIR}/conftest.py"
 
 #: The reference server's tools. Pinned in tests/test_reference_mcp.py.
 EXPECTED_TOOLS = {
@@ -394,7 +400,7 @@ def test_a_read_tool_that_turns_destructive_is_not_missed(workdir: Path) -> None
 
     result = _sync()
     assert result.exit_code == 0, result.output
-    assert "test_b2_fetch_record" in _functions(workdir / ACTIVE_FILE)
+    assert "test_fetch_record__B2" in _functions(workdir / ACTIVE_FILE)
     after = next(
         p
         for p in load_manifest(workdir / ".itest" / "manifest.yaml").points
@@ -444,10 +450,10 @@ def test_an_override_for_a_tool_the_server_does_not_list_is_orphaned(
 #: are active-tier; the engine traits are recorded in `traits_planned` and run
 #: by the engine from the manifest, with no per-tool code.
 DELETE_STUBS = {
-    "test_a2_delete_record",
-    "test_a3_delete_record",
-    "test_b2_delete_record",
-    "test_b4_delete_record",
+    "test_delete_record__A2",
+    "test_delete_record__A3",
+    "test_delete_record__B2",
+    "test_delete_record__B4",
 }
 DELETE_ENGINE = ["A1", "B1", "C1", "C2", "C3", "D1", "D2", "D3"]
 
@@ -476,7 +482,9 @@ def test_sync_generates_one_stub_per_tool_and_applicable_generated_trait(
     # containment check, no gating, no egress, no audit. The identity check
     # still applies: the server acts as a service identity for every tool.
     assert planned["get_guide"] == ["A1", "A3", "B1", "D1", "D2", "D3"]
-    assert {f for f in active if f.endswith("_get_guide")} == {"test_a3_get_guide"}
+    assert {f for f in active if f.startswith("test_get_guide__")} == {
+        "test_get_guide__A3"
+    }
     # B3 is the one egress check, and only `enrich` declares an egress edge.
     assert [t for t, traits in planned.items() if "B3" in traits] == ["enrich"]
 
@@ -496,24 +504,26 @@ def test_the_active_tier_lives_in_its_own_file(
         by_path.setdefault(test.path, set()).add(test.tier)
     assert by_path[READONLY_FILE] == {"readonly"}
     assert by_path[ACTIVE_FILE] == {"active"}
-    assert _functions(workdir / READONLY_FILE) == {"test_b3_enrich"}
+    assert _functions(workdir / READONLY_FILE) == {"test_enrich__B3"}
 
 
 def test_a_stub_records_its_point_id_and_its_trait_id(workdir: Path) -> None:
     """P31's recipes and P32's ledger both find a check by its trait id, so the
-    docstring carries both halves of the address."""
+    frozen docstring carries the address: the point, the trait, and the schema
+    hash the binding was generated against."""
     assert _sync().exit_code == 0
     text = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
-    point_id = tool_point_id("reference-mcp", "delete_record")
-    block = text.split("def test_b2_delete_record():")[1]
-    assert f"Integration point {point_id}" in block
-    assert "trait=B2" in block
-    assert "family=B" in block
-    assert "tier=active" in block
-    assert "recipe: tool_gating.md" in block
-    assert "mutation=destructive (detected)" in block
-    assert ".itest/tools/reference-mcp.yaml" in block
-    assert 'pytest.skip("stub: implement this integration test")' in block
+    point = next(
+        p
+        for p in load_manifest(workdir / ".itest" / "manifest.yaml").points
+        if p.target == "delete_record"
+    )
+    assert point.id == tool_point_id("reference-mcp", "delete_record")
+    block = text.split("def test_delete_record__B2(")[1]
+    assert (
+        f'"""itest point: {point.id}  trait: B2  '
+        f'schema: {point.attributes["schema_hash"]}"""' in block
+    )
 
 
 def test_a_second_sync_adds_nothing(workdir: Path) -> None:
@@ -563,8 +573,8 @@ def test_editing_one_applies_when_line_changes_the_generated_suite(
 
     assert _sync().exit_code == 0
     active = _functions(workdir / ACTIVE_FILE)
-    assert {f for f in active if f.startswith("test_a2_")} == {
-        f"test_a2_{name}" for name in EXPECTED_TOOLS
+    assert {f for f in active if f.endswith("__A2")} == {
+        f"test_{name}__A2" for name in EXPECTED_TOOLS
     }
     assert len(active) == 19 + 1
     assert all("B3" in traits for traits in _traits_planned(workdir).values())
@@ -581,7 +591,7 @@ def test_a_tool_with_active_false_gets_no_active_stubs(workdir: Path) -> None:
     )
     assert _sync().exit_code == 0
     active = _functions(workdir / ACTIVE_FILE)
-    assert not {f for f in active if f.endswith("_delete_record")}
+    assert not {f for f in active if f.startswith("test_delete_record__")}
     # The readonly (engine) traits still apply; only the active ones went.
     assert _traits_planned(workdir)["delete_record"] == [
         "A1",
@@ -605,7 +615,7 @@ def test_none_of_these_withholds_every_check_for_a_tool(workdir: Path) -> None:
     )
     assert _sync().exit_code == 0
     generated = _functions(workdir / READONLY_FILE) | _functions(workdir / ACTIVE_FILE)
-    assert not {f for f in generated if f.endswith("_get_guide")}
+    assert not {f for f in generated if f.startswith("test_get_guide__")}
     assert _traits_planned(workdir)["get_guide"] == []
     # The point still exists: the tool is inventory whether or not it is checked.
     manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
@@ -616,7 +626,9 @@ def test_a_hand_picked_trait_list_replaces_the_table(workdir: Path) -> None:
     _declare(workdir, tools={"enrich": {"traits": ["A2", "B3", "D1"]}})
     assert _sync().exit_code == 0
     generated = _functions(workdir / READONLY_FILE) | _functions(workdir / ACTIVE_FILE)
-    assert {f for f in generated if f.endswith("_enrich")} == {"test_a2_enrich"}
+    assert {f for f in generated if f.startswith("test_enrich__")} == {
+        "test_enrich__A2"
+    }
     assert _traits_planned(workdir)["enrich"] == ["A2", "B3", "D1"]
 
 
@@ -898,17 +910,19 @@ def test_verify_gates_the_active_tool_checks_off_the_safe_floor(
     workdir: Path,
 ) -> None:
     """The reason the active tier got its own file. A policy exists and nothing is
-    bound, so the floor is static+readonly: every active check is withheld at
-    collection time and said so. Every per-tool stub is a generated trait's, and
-    every shipped generated trait is active, so each tool is fully gated."""
+    bound, so the floor is static+readonly: every active check — the active
+    engine module and every generated binding — is withheld at collection time
+    and said so, while the readonly engine checks still run."""
     assert _sync().exit_code == 0
     result = runner.invoke(app, ["verify"])
     assert result.exit_code == 0, result.output
     assert "8 integration points" in result.output
-    assert ", 8 gated." in result.output
-    assert "Ran 0 tests" in result.output
+    assert "33 gated test(s) withheld by this environment" in result.output
+    assert "Ran 48 tests" in result.output
     assert "No environment bound: running the safe floor" in result.output
-    assert result.output.count("[GATED] reference-mcp -> ") == 8
+    # Every point still reports the coverage it has: a skipped check (the
+    # engine library is not implemented yet) is not a pass.
+    assert result.output.count("[STUB] reference-mcp -> ") == 8
 
 
 def test_verify_runs_the_active_checks_when_the_environment_allows_them(
@@ -918,4 +932,4 @@ def test_verify_runs_the_active_checks_when_the_environment_allows_them(
     result = runner.invoke(app, ["verify", "--environment", "staging"])
     assert result.exit_code == 0, result.output
     assert "gated" not in result.output
-    assert "Ran 19 tests" in result.output
+    assert "Ran 81 tests" in result.output

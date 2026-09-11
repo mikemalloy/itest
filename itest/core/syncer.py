@@ -62,6 +62,9 @@ class SyncResult(BaseModel):
     #: Per-trait tests whose trait stopped applying, and ones that came back.
     retired_checks: int = 0
     restored_checks: int = 0
+    #: Engine cases newly registered: (tool, engine trait) pairs the engine
+    #: module now runs. No code is written for them.
+    registered_engine_checks: int = 0
     human_modified_files: int = 0
 
     def summary(self) -> str:
@@ -89,12 +92,18 @@ class SyncResult(BaseModel):
             if self.restored_checks
             else ""
         )
+        engine = (
+            f"registered {self.registered_engine_checks} engine check(s), "
+            if self.registered_engine_checks
+            else ""
+        )
         return (
             f"Applied: added {self.added_stubs} stub(s), "
             f"flagged {self.flagged_orphans} orphan(s), "
             f"{resurrected}"
             f"{reclassified}"
             f"{recorded}"
+            f"{engine}"
             f"{retired}"
             f"{restored}"
             f"{self.human_modified_files} human-modified file(s) preserved."
@@ -171,6 +180,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
     flagged = _flag_orphans(manifest, changeset)
     _record_entry_traits(manifest)
     retired, restored = _apply_trait_lifecycle(manifest, changeset)
+    engine = _write_tool_support(manifest, changeset, base_dir)
     added, human_modified_files = _generate_stubs(manifest, changeset, base_dir)
     # Last, so it reads the stubs this run just wrote as well as the ones a
     # human implemented since the previous run.
@@ -187,6 +197,7 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         recorded_changes=len(changeset.changed_points),
         retired_checks=retired,
         restored_checks=restored,
+        registered_engine_checks=engine,
         human_modified_files=human_modified_files,
     )
 
@@ -266,6 +277,8 @@ def _status_from_body(path: Path, test_name: str) -> Literal["stub", "implemente
             and n.name == test_name
         ]
 
+    # A parametrized case (`test_engine[tool-A1]`) is its function's body.
+    test_name = test_name.split("[", 1)[0]
     # Module-level first (a top-level def is what sync generates and what a
     # canonical `path::name` addresses); fall back to any nested definition.
     matches = named(tree.body) or named(ast.walk(tree))
@@ -351,7 +364,11 @@ class _PendingStub(NamedTuple):
     def render(self, func_name: str) -> str:
         if self.trait is None:
             return stubgen.render_stub(self.point, func_name)
-        return stubgen.render_tool_stub(self.point, func_name, self.trait)
+        return stubgen.render_generated_stub(self.point, func_name, self.trait)
+
+    @property
+    def header(self) -> str:
+        return stubgen.FILE_HEADER if self.trait is None else stubgen.GENERATED_HEADER
 
 
 def _record_entry_traits(manifest: Manifest) -> None:
@@ -411,7 +428,13 @@ def _plan_stubs(manifest: Manifest, changeset: Changeset) -> list[_PendingStub]:
     from itest.core.declarations.traits import TraitTableError, load_traits
 
     table = load_traits()
-    covered = {(t.point_id, t.trait) for t in manifest.tests if t.trait is not None}
+    # A binding (or a P30 per-trait stub) covers a generated trait; an engine
+    # case never does — it is a different mechanism for a different kind.
+    covered = {
+        (t.point_id, t.trait)
+        for t in manifest.tests
+        if t.trait is not None and not _is_engine_case(t)
+    }
     for point in tools:
         for trait_id in changeset.traits_planned[point.id]:
             trait = table.get(trait_id)
@@ -432,6 +455,101 @@ def _plan_stubs(manifest: Manifest, changeset: Changeset) -> list[_PendingStub]:
                 )
             )
     return pending
+
+
+def _is_engine_case(test: TestEntry) -> bool:
+    return test.test_name.startswith(f"{stubgen.ENGINE_TEST}[")
+
+
+def _write_tool_support(
+    manifest: Manifest, changeset: Changeset, base_dir: Path
+) -> int:
+    """Each observed server's engine modules and its conftest; register cases.
+
+    An **engine module** (one per server and tier that has an engine trait) is
+    ITest-owned: written when absent, rewritten when it no longer matches the
+    template *and* still matches its recorded ownership hash, and otherwise —
+    a human edited it — left frozen, which ``_generate_stubs`` then reports.
+    Every (tool, engine trait) it will run is registered in the manifest under
+    the parametrized node name, so verify maps each result to its point.
+
+    The **conftest** is human-owned from birth: written if absent, never
+    rewritten, never registered, never hashed.
+
+    Returns the number of engine cases newly registered.
+    """
+    if not changeset.traits_planned:
+        return 0
+    from itest.core.declarations.traits import load_traits
+
+    table = load_traits()
+    tools = [p for p in changeset.detected_points if p.id in changeset.traits_planned]
+
+    cases: dict[tuple[str, str], list[tuple[IntegrationPoint, str]]] = {}
+    for point in tools:
+        for trait_id in changeset.traits_planned[point.id]:
+            trait = table.get(trait_id)
+            if trait is not None and trait.kind == "engine":
+                cases.setdefault((point.source, trait.tier), []).append(
+                    (point, trait_id)
+                )
+
+    registered = 0
+    for (server, tier), pairs in sorted(cases.items()):
+        file_rel = stubgen.engine_module_for(server, tier)
+        file_abs = stubgen.stub_file_path(base_dir, file_rel)
+        expected = stubgen.render_engine_module(server, tier)
+        recorded = {t.ownership_hash for t in manifest.tests if t.path == file_rel}
+        # ITest's while it is absent, unrecorded, or still what ITest wrote.
+        owned = (
+            not file_abs.exists()
+            or not recorded
+            or stubgen.file_hash(file_abs) in recorded
+        )
+        if owned and (
+            not file_abs.exists() or file_abs.read_text(encoding="utf-8") != expected
+        ):
+            file_abs.parent.mkdir(parents=True, exist_ok=True)
+            file_abs.write_text(expected, encoding="utf-8")
+        current = stubgen.file_hash(file_abs)
+        # A frozen (hand-edited) module keeps its recorded hash, so it goes on
+        # being reported; an ITest-owned one records what is now on disk.
+        ownership = current if owned else next(iter(recorded))
+
+        names = {t.test_name for t in manifest.tests if t.path == file_rel}
+        for point, trait_id in pairs:
+            name = stubgen.engine_test_name(point, trait_id)
+            if name in names:
+                continue
+            manifest.tests.append(
+                TestEntry(
+                    id=f"e-{point.id}-{trait_id.lower()}",
+                    point_id=point.id,
+                    path=file_rel,
+                    test_name=name,
+                    trait=trait_id,
+                    ownership_hash=ownership,
+                    status="implemented",
+                    tier=table.get(trait_id).tier,
+                    resource_group=point.target,
+                )
+            )
+            names.add(name)
+            registered += 1
+        if owned:
+            for test in manifest.tests:
+                if test.path == file_rel:
+                    test.ownership_hash = current
+
+    generated = [t for t in table.traits if t.kind == "generated"]
+    for server in sorted({p.source for p in tools}):
+        conftest = stubgen.stub_file_path(base_dir, stubgen.conftest_for(server))
+        if not conftest.exists():
+            conftest.parent.mkdir(parents=True, exist_ok=True)
+            conftest.write_text(
+                stubgen.render_conftest(server, generated), encoding="utf-8"
+            )
+    return registered
 
 
 def _generate_stubs(
@@ -486,7 +604,7 @@ def _generate_stubs(
             pending.append((stub, name))
 
         # Append-only: existing functions (including human edits) are kept.
-        stubgen.append_stubs(file_abs, blocks)
+        stubgen.append_stubs(file_abs, blocks, header=new_stubs[0].header)
         final_hash = stubgen.file_hash(file_abs)
 
         for stub, name in pending:
@@ -498,7 +616,10 @@ def _generate_stubs(
                     test_name=name,
                     trait=stub.trait.id if stub.trait is not None else None,
                     ownership_hash=final_hash,
-                    status="stub",
+                    # A binding carries no skip line: its body is complete,
+                    # and what it still lacks (a fixture, the check library)
+                    # shows up as a skip at run time, not as a stub status.
+                    status="stub" if stub.trait is None else "implemented",
                     tier=stub.tier,
                     resource_group=point_targets.get(stub.point.id),
                 )

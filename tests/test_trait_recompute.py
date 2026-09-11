@@ -29,6 +29,8 @@ import yaml
 from test_declarations_plan_sync import (
     ACTIVE_FILE,
     ALEX,
+    ENGINE_FILE,
+    READONLY_FILE,
     REPO_ROOT,
     SERVER_PATH,
     _declare,
@@ -112,15 +114,18 @@ def test_only_generated_traits_get_a_per_tool_stub(workdir: Path) -> None:
     assert _sync().exit_code == 0
     generated = {"A2", "A3", "A4", "B2", "B4"}
     expected = {
-        f"test_{trait.lower()}_{tool}"
+        f"test_{tool}__{trait}"
         for tool, traits in EXPECTED_TRAITS.items()
         for trait in traits
         if trait in generated
     }
     assert _functions(workdir / ACTIVE_FILE) == expected
-    entries = [t for t in _manifest(workdir).tests]
-    assert {t.trait for t in entries} <= generated
+    entries = _manifest(workdir).tests
     assert all(t.trait is not None for t in entries)
+    bindings = {t.trait for t in entries if t.path == ACTIVE_FILE}
+    engine = {t.trait for t in entries if t.path != ACTIVE_FILE}
+    assert bindings <= generated
+    assert not engine & generated  # the engine module runs only engine traits
 
 
 # --- unchanged is a no-op -----------------------------------------------------
@@ -184,13 +189,13 @@ def test_editing_the_table_gains_a_check_on_an_existing_tool(
     text = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
     # Appended, never rewritten.
     assert text.startswith(stubs_before)
-    assert "test_a2_get_guide" in _functions(workdir / ACTIVE_FILE)
+    assert "test_get_guide__A2" in _functions(workdir / ACTIVE_FILE)
     manifest = _manifest(workdir)
     assert "A2" in _planned(workdir)["get_guide"]
     assert manifest.trait_table_hash == after_hash
     # The stub's docstring records the schema it was generated against.
     guide = next(p for p in manifest.points if p.target == "get_guide")
-    block = text.split("def test_a2_get_guide(")[1]
+    block = text.split("def test_get_guide__A2(")[1]
     assert f"schema: {guide.attributes['schema_hash']}" in block
     assert _sync().output.count("No changes to apply") == 1
 
@@ -199,9 +204,11 @@ def test_a_newly_applicable_engine_trait_writes_nothing(
     workdir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """B3 is an engine trait: widen it to every tool and seven tools gain it in
-    traits_planned, and not one line of code is written."""
+    traits_planned, and not one line of code is written — the engine module
+    picks the new cases up from the manifest."""
     assert _sync().exit_code == 0
     stubs_before = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
+    engine_before = (workdir / ENGINE_FILE).read_text(encoding="utf-8")
 
     _edit_table(tmp_path, monkeypatch, B3="always")
     payload = _plan_json()
@@ -213,8 +220,10 @@ def test_a_newly_applicable_engine_trait_writes_nothing(
     result = _sync()
     assert result.exit_code == 0, result.output
     assert "added 0 stub(s)" in result.output
+    assert "registered 7 engine check(s)" in result.output
     assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8") == stubs_before
-    assert not (workdir / "itest_tests" / "test_tools_reference_mcp.py").exists()
+    assert (workdir / ENGINE_FILE).read_text(encoding="utf-8") == engine_before
+    assert not (workdir / READONLY_FILE).exists()
     assert all("B3" in traits for traits in _planned(workdir).values())
 
 
@@ -227,7 +236,7 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
     assert _sync().exit_code == 0
     stubs_before = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
     entry_before = next(
-        t for t in _manifest(workdir).tests if t.test_name == "test_b2_delete_record"
+        t for t in _manifest(workdir).tests if t.test_name == "test_delete_record__B2"
     )
 
     _edit_table(tmp_path, monkeypatch, B2="mutation == nothing")
@@ -245,7 +254,7 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
     # Not deleted: the file is byte-identical and the entry is still registered.
     assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8") == stubs_before
     entry = next(
-        t for t in _manifest(workdir).tests if t.test_name == "test_b2_delete_record"
+        t for t in _manifest(workdir).tests if t.test_name == "test_delete_record__B2"
     )
     assert entry.retired is True
     assert entry.id == entry_before.id
@@ -275,7 +284,7 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
     assert "added 0 stub(s)" in result.output
     assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8") == stubs_before
     entry = next(
-        t for t in _manifest(workdir).tests if t.test_name == "test_b2_delete_record"
+        t for t in _manifest(workdir).tests if t.test_name == "test_delete_record__B2"
     )
     assert entry.retired is False
     assert entry.id == entry_before.id
@@ -367,9 +376,13 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
     assert legacy.trait_table_hash is None
     assert all(p.traits_planned is None for p in legacy.points)
     assert len(legacy.tests) == 66
-    readonly = workdir / "itest_tests" / "test_tools_reference_mcp.py"
-    readonly_before = readonly.read_text(encoding="utf-8")
-    active_before = (workdir / ACTIVE_FILE).read_text(encoding="utf-8")
+    legacy_files = {
+        path: (workdir / path).read_text(encoding="utf-8")
+        for path in (
+            "itest_tests/test_tools_reference_mcp.py",
+            "itest_tests/test_tools_reference_mcp_active.py",
+        )
+    }
 
     payload = _plan_json()
     changes = {(c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]}
@@ -385,15 +398,19 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
     manifest = _manifest(workdir)
     assert manifest.trait_table_hash == trait_table_hash()
     assert _planned(workdir) == EXPECTED_TRAITS
-    # Every P30 entry is still registered, and learned which trait it covers.
+    # Every P30 entry is still registered, live, and learned which trait it
+    # covers from the id P30 gave it.
     legacy_ids = {t.id for t in legacy.tests}
     assert legacy_ids <= {t.id for t in manifest.tests}
     for entry in manifest.tests:
-        assert entry.trait == entry.test_name.split("_")[1].upper()
-        assert entry.retired is False
-    # Nothing P30 wrote was rewritten; the readonly file was not touched.
-    assert readonly.read_text(encoding="utf-8") == readonly_before
-    assert (workdir / ACTIVE_FILE).read_text(encoding="utf-8").startswith(active_before)
+        if entry.id in legacy_ids:
+            assert entry.trait == entry.test_name.split("_")[1].upper()
+            assert entry.retired is False
+    # The new A3 bindings went to the server's own directory, beside its
+    # conftest; nothing P30 wrote was touched.
+    assert len(_functions(workdir / ACTIVE_FILE)) == 8
+    for path, text in legacy_files.items():
+        assert (workdir / path).read_text(encoding="utf-8") == text
 
 
 def test_a_declaration_free_p30_manifest_round_trips_byte_for_byte(
