@@ -74,7 +74,18 @@ def _checks(ledger: dict) -> dict[tuple[str, str], dict]:
 # --- verify emits the ledger -------------------------------------------------------
 
 
-def test_verify_emits_the_tool_ledger_for_a_declared_server(workdir: Path) -> None:
+READ_TOOLS = ("get_guide", "search_records", "fetch_record", "lookalike_read", "enrich")
+MUTATING_TOOLS = ("create_record", "update_record", "delete_record")
+LISTING_TRAITS = ("B1", "D1", "D2", "D3")
+#: Engine traits in the table that the check library has no check for yet.
+UNIMPLEMENTED_ENGINE = ("B3", "C1", "C2", "C3")
+GENERATED = ("A2", "A3", "A4", "B2", "B4")
+
+
+def test_verify_emits_the_tool_ledger_for_a_declared_server(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     payload = _verify()
     ledger = payload["tools"]
     (server,) = ledger["servers"]
@@ -102,18 +113,63 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(workdir: Path) -> No
     assert a1["test"] == f"{ENGINE_FILE}::test_engine[delete_record-A1]"
     b2 = checks[("delete_record", "B2")]
     assert b2["test"] == f"{ACTIVE_FILE}::test_delete_record__B2"
-    # Nothing ran for real yet: the engine library is 31A's and the fixtures are
-    # unfilled. "not run" is what it says — never pass, never a zero.
-    assert {c["status"] for c in checks.values()} == {"not_run"}
-    assert "not implemented in itest.checks" in a1["detail"]
+    # The engine checks ran for real, against reference-mcp over stdio, with no
+    # credential exported. Every status is the library's own CheckResult.
+    for tool in READ_TOOLS:
+        check = checks[(tool, "A1")]
+        assert check["status"] == "fail", (tool, check)
+        assert "anonymous call" in check["detail"]
+    for tool in MUTATING_TOOLS:
+        check = checks[(tool, "A1")]
+        assert check["status"] == "not_verifiable", (tool, check)
+        assert check["detail"].startswith(
+            "anonymous session admitted; this tool mutates"
+        )
+    for (tool, trait), check in checks.items():
+        if trait in LISTING_TRAITS:
+            # An authenticated listing is asked for (a credential is named) and
+            # the credential is unset: not_verifiable, never quietly anonymous.
+            assert check["status"] == "not_verifiable", (tool, trait)
+            assert "REFERENCE_MCP_TOKEN is unset" in check["detail"]
+        elif trait in UNIMPLEMENTED_ENGINE:
+            assert check["status"] == "not_verifiable", (tool, trait)
+            assert check["detail"] == f"no engine check for {trait}"
+        elif trait in GENERATED:
+            # The fixtures are unfilled: not run — never pass, never a zero.
+            assert check["status"] == "not_run", (tool, trait)
     assert "fill in b2_fixtures" in b2["detail"]
+    assert "critical" not in {c["status"] for c in checks.values()}
     assert {c["state"] for c in checks.values()} == {"current"}
     assert server["summary"]["verified"] == 0
+    assert server["summary"]["critical"] == 0
+
+
+def test_with_the_credential_exported_the_listing_checks_pass(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The way a user supplies it: the named variable, exported. B1 and D1-D3
+    then take the authenticated listing and pass on every tool, and the token
+    never reaches the ledger."""
+    token = "ledger-token-6d1e-do-not-log"
+    monkeypatch.setenv("REFERENCE_MCP_TOKEN", token)
+    payload = _verify()
+    checks = _checks(payload["tools"])
+    for (tool, trait), check in checks.items():
+        if trait in LISTING_TRAITS:
+            assert check["status"] == "pass", (tool, trait, check["detail"])
+    assert checks[("delete_record", "B1")]["detail"] == (
+        "destructive: annotation destructiveHint; name delete_*"
+    )
+    assert checks[("lookalike_read", "B1")]["status"] == "pass"  # the pinned limit
+    # A1 is unchanged by the credential: it always probes anonymously.
+    assert {checks[(t, "A1")]["status"] for t in READ_TOOLS} == {"fail"}
+    assert token not in json.dumps(payload)
 
 
 def test_the_emitted_ledger_validates_through_the_model_and_renders(
-    workdir: Path,
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     payload = _verify()
     ledger = report_model.ToolLedger.model_validate(payload["tools"])
     assert ledger.declared == 8
@@ -122,7 +178,9 @@ def test_the_emitted_ledger_validates_through_the_model_and_renders(
     html = report_render.render(page)
     blocks = report_render.extract_blocks(html)
     assert blocks["TOOLS"]  # the grouped tool table is drawn from real data
-    assert page.verdict.word == "AT RISK"  # nothing verified is not VERIFIED
+    # Real A1 failures on the read tools block the release; nothing verified
+    # could never have been VERIFIED either way.
+    assert page.verdict.word == "BLOCKED"
 
 
 def test_a_declaration_free_verify_emits_no_tools_key(

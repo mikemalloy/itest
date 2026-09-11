@@ -253,18 +253,37 @@ def test_ownership_hashes_cover_stubs_and_the_engine_module_not_conftest(
         assert hashes == {stubgen.file_hash(workdir / path)}
 
 
-def test_the_generated_suite_runs_and_nothing_is_an_error(workdir: Path) -> None:
-    """Before 31A lands, every engine check skips (the contract stub raises) and
-    every generated binding skips (its fixture is an unfilled placeholder): the
-    suite runs clean, and nothing pretends to have passed."""
+def test_the_generated_suite_runs_and_nothing_is_an_error(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The engine checks now run for real against reference-mcp over stdio. That
+    transport has no guard, so A1 fails exactly the five read tools (an anonymous
+    call answered); the three mutating tools' A1 is not_verifiable (deferred to
+    the active tier) and skips. With no credential exported, the listing checks
+    are not_verifiable and skip; the traits the library has no check for skip;
+    every generated binding skips on its unfilled fixture. Nothing is an error,
+    and nothing pretends to have passed."""
+    monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     assert _sync().exit_code == 0
     result = runner.invoke(
         app, ["verify", "--environment", "staging", "--output", "json"]
     )
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output  # the real A1 findings
     report = json.loads(result.output)
-    outcomes = {t["outcome"] for t in report["tests"]}
-    assert outcomes == {"skipped"}
+    assert report["errored"] == 0
+    failed = sorted(t["canonical"] for t in report["tests"] if t["outcome"] == "failed")
+    assert failed == sorted(
+        f"{ENGINE_FILE}::test_engine[{tool}-A1]"
+        for tool in (
+            "get_guide",
+            "search_records",
+            "fetch_record",
+            "lookalike_read",
+            "enrich",
+        )
+    )
+    others = {t["outcome"] for t in report["tests"] if t["outcome"] != "failed"}
+    assert others == {"skipped"}
     assert len(report["tests"]) == 81
     assert report["unregistered"] == []
 
@@ -298,10 +317,20 @@ def test_run_engine_case_returns_the_check_result(monkeypatch) -> None:
 
 
 def test_an_unimplemented_engine_check_skips(monkeypatch) -> None:
-    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="A1")
+    """The library answers a trait it has no check for with not_verifiable ("no
+    engine check for <id>"), which the runtime records and skips: not run, never
+    an error and never a pass. C3 is in the table and not in the library."""
+    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="C3")
+    recorded = []
     with pytest.raises(pytest.skip.Exception) as excinfo:
-        runtime.run_engine_case(case, "TARGET", authenticated=False)
-    assert "A1" in str(excinfo.value)
+        runtime.run_engine_case(
+            case,
+            "TARGET",
+            authenticated=False,
+            record=lambda name, value: recorded.append((name, value)),
+        )
+    assert "not_verifiable: no engine check for C3" in str(excinfo.value)
+    assert recorded[0][1]["status"] == "not_verifiable"
 
 
 @pytest.mark.parametrize("status", ["changed", "not_verifiable"])
