@@ -69,6 +69,25 @@ actually hold when I knock?).
 Then skip them. Never improvise a recipe for a type you have no instructions
 for — a guessed assertion that passes is worse than no test.
 
+**`mcp_tool` points are handled, not skipped.** A declared MCP tool gets one
+check per trait the trait table (`itest/traits/traits.yaml`) applies to it, and
+the trait decides what you do:
+
+- **Engine traits** — A1, B1, D1, D2, D3 today. There is **nothing to write**:
+  ITest runs these itself from the manifest during `itest verify`. Say so, point
+  the user at the recipe that explains the result
+  ([`tool_authn`](references/recipes/tool_authn.md),
+  [`tool_mutation_class`](references/recipes/tool_mutation_class.md),
+  [`tool_provenance`](references/recipes/tool_provenance.md)), and move on. Do
+  not hand-write a test for an engine trait, and leave any stub for one alone.
+- **Generated traits** — A2, B2, B4 as their recipes ship. Follow
+  [`tool_recipe_shape.md`](references/recipes/tool_recipe_shape.md): ask the
+  trait's facts in the batched interview (step 3), and write only the human-owned
+  `<trait>_facts` fixture into `conftest.py`, after the review gate (step 5). The
+  binding is sync's; never write logic into it.
+- **A trait whose recipe does not exist yet** — say so and skip it, exactly as
+  for a type with no recipe.
+
 Read the recipe for each type you are about to implement **before** generating
 anything. `event_edge` in particular dispatches on its `mechanism` attribute,
 and its five mechanisms take completely different assertions; `lb_edge`

@@ -483,3 +483,28 @@ def test_lb_recipe_notes_the_api_constraints() -> None:
         "camelCase",  # ECS vs elbv2 key casing
     ):
         assert constraint in text, constraint
+
+
+# --------------------------------------------------------------------------
+# Tool points
+# --------------------------------------------------------------------------
+
+
+def test_skill_handles_tool_points_rather_than_skipping_them() -> None:
+    """mcp_tool points used to fall into "no recipe, skip". Engine traits need
+    nothing written; generated traits follow the recipe shape."""
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert "mcp_tool" in text
+    assert "tool_recipe_shape.md" in text
+    for recipe in sorted(ENGINE_RECIPES):
+        assert recipe in text, f"SKILL.md does not name {recipe}"
+    assert "nothing to write" in text.lower()
+
+
+def test_conftest_md_lists_the_tool_fixtures() -> None:
+    """The two shared fixtures the recipe shape introduces are listed in the
+    conftest reference, after the template (appended, not spliced in)."""
+    text = CONFTEST_MD.read_text(encoding="utf-8")
+    tail = text[text.index(TEMPLATE_END) :]
+    for fixture in ("itest_target", "itest_point"):
+        assert f"`{fixture}`" in tail, f"conftest.md does not list {fixture}"
