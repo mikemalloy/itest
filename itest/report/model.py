@@ -584,7 +584,7 @@ def build(
     implemented_points = {
         t.point_id
         for t in manifest.tests
-        if t.status == "implemented" and not t.disabled
+        if t.status == "implemented" and not t.disabled and not t.retired
     }
     statuses = [p["status"] for p in verify_points]
     stuck = any(

@@ -51,7 +51,9 @@ class VerifyConfigError(Exception):
 
 class TestResult(BaseModel):
     canonical: str
-    outcome: str  # passed | failed | skipped | error | missing | gated
+    #: passed | failed | skipped | error | missing | gated | not_applicable
+    #: (``not_applicable``: a retired check — its trait no longer applies).
+    outcome: str
     point_id: str | None = None
     detail: str = ""
 
@@ -136,7 +138,10 @@ def _gated_canonicals(
     return {
         t.canonical
         for t in manifest.tests
-        if t.status != "orphaned" and not t.disabled and not resolution.allows(t.tier)
+        if t.status != "orphaned"
+        and not t.disabled
+        and not t.retired
+        and not resolution.allows(t.tier)
     }
 
 
@@ -150,6 +155,15 @@ def _disabled_canonicals(manifest: Manifest) -> set[str]:
     return {
         t.canonical for t in manifest.tests if t.disabled and t.status != "orphaned"
     }
+
+
+def _retired_canonicals(manifest: Manifest) -> set[str]:
+    """Canonical addresses of retired checks: kept on disk, never run.
+
+    A retired test's trait no longer applies to its tool. It is removed from
+    collection exactly as a disabled one is, and reported as ``not_applicable``.
+    """
+    return {t.canonical for t in manifest.tests if t.retired and t.status != "orphaned"}
 
 
 def _gating_args(manifest: Manifest, excluded: set[str]) -> tuple[list[str], set[str]]:
@@ -314,7 +328,8 @@ def run_verify(
     # Gated (tier-disallowed) and disabled tests are both kept out of collection.
     # Gated is tracked separately below because a fully-gated point still
     # reports [GATED]; a disabled test simply does not run.
-    excluded = gated | _disabled_canonicals(manifest)
+    retired = _retired_canonicals(manifest)
+    excluded = gated | _disabled_canonicals(manifest) | retired
 
     gating_args, ignored_files = _gating_args(manifest, excluded)
     # The distinct file paths the manifest registers. Orphaned entries name a
@@ -348,6 +363,9 @@ def run_verify(
         if test.canonical in gated:
             resolved[test.canonical] = ("gated", "")
             continue
+        if test.canonical in retired:
+            resolved[test.canonical] = ("not_applicable", "")
+            continue
         raw = outcomes.get(test.canonical)
         if raw:
             resolved[test.canonical] = (raw["outcome"], raw["detail"])
@@ -379,7 +397,7 @@ def run_verify(
         live = [
             t
             for t in manifest.tests_for_point(point.id)
-            if t.status != "orphaned" and not t.disabled
+            if t.status != "orphaned" and not t.disabled and not t.retired
         ]
         allowed = [t for t in live if t.canonical not in gated]
         # A point with live coverage, all of it gated, is itself gated: the
@@ -500,7 +518,7 @@ def render_human(report: VerifyReport, redacted: bool = False) -> str:
     if report.gated:
         rollup += f", {report.gated} gated"
     out.append(rollup + ".")
-    ran = sum(1 for t in report.tests if t.outcome != "gated")
+    ran = sum(1 for t in report.tests if t.outcome not in ("gated", "not_applicable"))
     out.append(f"Ran {ran} tests in {report.elapsed_seconds:.2f}s")
     # A fully-gated point announces itself as [GATED]. A gated test on a
     # point that still ran its other tests has no marker of its own — the

@@ -532,7 +532,14 @@ def test_the_drift_attributes_are_defined_once() -> None:
     from itest.core import planner
     from itest.core.declarations import tools
 
-    assert planner.DRIFT_ATTRIBUTES == ("schema_hash", "description_hash")
+    # The mutation class as detected — the resolved class and the annotations
+    # it was read from — is drift too: an annotation flip is `changed`.
+    assert planner.DRIFT_ATTRIBUTES == (
+        "schema_hash",
+        "description_hash",
+        "mutation",
+        "annotations_hash",
+    )
     assert not hasattr(tools, "DRIFT_ATTRIBUTES")
 
 

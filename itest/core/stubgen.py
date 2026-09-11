@@ -118,7 +118,8 @@ def render_tool_stub(point: IntegrationPoint, func_name: str, trait: Trait) -> s
     It carries BOTH halves: the point id (which tool — stable across a reworded
     description) and the trait id (which check). P31's recipes and P32's ledger
     both find a check by its trait id, so these lines are frozen: add to them,
-    never rename them.
+    never rename them. ``schema:`` is the input-schema hash the stub was
+    generated against, which is what lets verify call a hand-edited check stale.
     """
     attrs = point.attributes
     egress = attrs.get("egress")
@@ -135,6 +136,7 @@ def render_tool_stub(point: IntegrationPoint, func_name: str, trait: Trait) -> s
         f"    check: {trait.name}\n"
         f"    recipe: {trait.recipe}\n"
         f"    declared in: {point.hcl_address}\n"
+        f"    schema: {attrs.get('schema_hash')}\n"
         f'    """\n'
         f"    {STUB_SKIP_LINE}\n"
     )
