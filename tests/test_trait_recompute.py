@@ -269,8 +269,11 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
         result = runner.invoke(
             app, ["verify", "--environment", "staging", "--output", "json"]
         )
-        assert result.exit_code == 0, result.output
+        # 1, not 2: A1's real findings on reference-mcp's stdio read tools fail;
+        # nothing errors.
+        assert result.exit_code == 1, result.output
         report = json.loads(result.output)
+        assert report["errored"] == 0
         outcomes = {t["canonical"]: t["outcome"] for t in report["tests"]}
         assert outcomes[entry.canonical] == "not_applicable"
         ran = [o for o in outcomes.values() if o not in ("gated", "not_applicable")]

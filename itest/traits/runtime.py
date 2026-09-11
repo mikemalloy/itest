@@ -14,12 +14,15 @@ list of cases, and the call into ``itest.checks``.
 - :func:`itest_target` is how to reach the point's server, built from its
   declaration. A server that cannot be reached skips the check rather than
   erroring it.
+- :func:`itest_authenticated` is whether the point's server credential actually
+  resolves (the shell, then ``.itest/.env``). Named but unset is an anonymous
+  run, and the check library then works from the anonymous listing.
 - :func:`run_engine_case` calls ``itest.checks.run_engine_check`` and records
   the ``CheckResult`` on the test (``record_property``), which is how verify's
-  ledger reports the check's own status. A check the library does not implement
-  yet skips: it was not run, and must not read as an error or a pass. So does a
-  ``changed`` or ``not_verifiable`` result, after it is recorded: a finding
-  that waits on a human is not a failing check.
+  ledger reports the check's own status. A ``changed`` or ``not_verifiable``
+  result skips after it is recorded — including a trait the library has no
+  check for ("no engine check for <id>"): a finding that waits on a human, or a
+  check not run, is not a failing check.
 """
 
 from __future__ import annotations
@@ -142,10 +145,21 @@ def itest_target(itest_point, request):
     return target
 
 
+def credential_resolves(target, root: Path) -> bool:
+    """Whether ``target``'s named credential resolves — shell first, then the
+    project's gitignored ``.itest/.env``. A name alone is not a credential."""
+    from itest.probes.credential import resolve_credential
+
+    if not target.credential_env:
+        return False
+    return resolve_credential(target.credential_env, root) is not None
+
+
 @pytest.fixture
-def itest_authenticated(itest_target) -> bool:
-    """Whether an authenticated call is possible: the server names a credential."""
-    return itest_target.credential_env is not None
+def itest_authenticated(itest_target, request) -> bool:
+    """Whether an authenticated call is possible: the server's credential resolves."""
+    root = project_root(Path(str(request.node.path)).parent)
+    return credential_resolves(itest_target, root)
 
 
 def run_engine_case(case: EngineCase, target, *, authenticated: bool, record=None):
@@ -156,14 +170,9 @@ def run_engine_case(case: EngineCase, target, *, authenticated: bool, record=Non
     """
     import itest.checks as checks
 
-    try:
-        result = checks.run_engine_check(
-            case.trait, case.point, target, authenticated=authenticated
-        )
-    except NotImplementedError as exc:
-        pytest.skip(
-            f"engine check {case.trait} is not implemented in itest.checks yet ({exc})"
-        )
+    result = checks.run_engine_check(
+        case.trait, case.point, target, authenticated=authenticated
+    )
     if record is not None:
         record(
             "itest_check",

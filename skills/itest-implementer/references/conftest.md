@@ -312,3 +312,15 @@ A new recipe that asserts against a service ITest does not yet cover adds one
 fixture here, in the same shape, and never a second `conftest.py`. Keep every
 client read-only: the guardrails in SKILL.md forbid a generated test from
 mutating anything.
+
+## Tool-point fixtures
+
+Generated tool-trait bindings (see
+[`recipes/tool_recipe_shape.md`](recipes/tool_recipe_shape.md), which shows the
+code) take two more shared fixtures from this same `conftest.py`:
+
+- **`itest_target`** — `f(server)` → the `McpTarget` the server's declaration
+  describes, with its url and credential resolved by env-var name, never written
+  here.
+- **`itest_point`** — `f(point_id)` → the manifest's `mcp_tool` point as the plain
+  dict the check library takes (`id`, `type`, `server`, `target`, `attributes`).

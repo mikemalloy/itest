@@ -909,22 +909,29 @@ def test_the_duplicated_point_type_constant_cannot_drift(workdir: Path) -> None:
 
 
 def test_verify_gates_the_active_tool_checks_off_the_safe_floor(
-    workdir: Path,
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The reason the active tier got its own file. A policy exists and nothing is
     bound, so the floor is static+readonly: every active check — the active
     engine module and every generated binding — is withheld at collection time
-    and said so, while the readonly engine checks still run."""
+    and said so, while the readonly engine checks still run — for real."""
+    monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     assert _sync().exit_code == 0
     result = runner.invoke(app, ["verify"])
-    assert result.exit_code == 0, result.output
+    # reference-mcp over stdio has no guard: A1 fails its five read tools.
+    assert result.exit_code == 1, result.output
     assert "8 integration points" in result.output
     assert "33 gated test(s) withheld by this environment" in result.output
     assert "Ran 48 tests" in result.output
     assert "No environment bound: running the safe floor" in result.output
-    # Every point still reports the coverage it has: a skipped check (the
-    # engine library is not implemented yet) is not a pass.
-    assert result.output.count("[STUB] reference-mcp -> ") == 8
+    # Every point reports the coverage it has. The read tools fail A1. The
+    # mutating tools pass on the listing checks (B1, D1-D3, run on the anonymous
+    # listing); their A1 is deferred to the active tier and skips, which is not
+    # a pass and is not a fail.
+    assert result.output.count("[FAIL] reference-mcp -> ") == 5
+    assert result.output.count("[PASS] reference-mcp -> ") == 3
+    for tool in ("create_record", "update_record", "delete_record"):
+        assert f"[PASS] reference-mcp -> {tool} " in result.output
 
 
 def test_verify_runs_the_active_checks_when_the_environment_allows_them(
@@ -932,6 +939,7 @@ def test_verify_runs_the_active_checks_when_the_environment_allows_them(
 ) -> None:
     assert _sync().exit_code == 0
     result = runner.invoke(app, ["verify", "--environment", "staging"])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output  # A1's real findings, not errors
+    assert "0 errored" in result.output
     assert "gated" not in result.output
     assert "Ran 81 tests" in result.output

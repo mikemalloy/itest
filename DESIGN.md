@@ -211,6 +211,42 @@ read-only analysis path has no accidental route to sending a request.
   typed `ProbeTimeout` carrying the elapsed time. A non-2xx status (401, 403,
   404, a recorded 3xx) is a normal result, not an exception — a hang and a
   refusal must never look alike to the caller.
+- **A private host is refused before any request.** Loopback, link-local (the
+  metadata endpoint included), RFC1918 and IPv6 unique-local — `ipaddress`'s own
+  ranges, never hand-written prefixes — whether written as a literal or reached
+  by a name that resolves to one. Any private answer refuses, because the
+  connection could land on whichever one the OS picks. The MCP transport imports
+  the same check; `allow_private_hosts=True` is the one opt-in, for a deliberate
+  local target.
+
+**Checks.** `itest/checks` runs one trait's check for one declared tool, and sits
+on the probes rather than beside them: it reads the manifest's point and the live
+tool list, and calls a tool only through `itest.probes.mcp`. Most traits are
+**engine checks** — ITest runs them from the manifest, so no per-tool file exists
+to go stale — and a few are **generated checks**, a one-line binding with a
+human-owned fixture, for facts only a person can supply. The contract is small on
+purpose (`CheckResult`, `run_engine_check`, `run_generated_check`) and **honest
+by construction**: anything a check cannot establish — an unreachable server, a
+tool error, a missing sentinel, an unknown trait — is `not_verifiable` with the
+reason, never a pass and never an exception. An engine check has no per-tool
+file; most are readonly tier, and **C1 and C2 are active tier** — they will call
+tools with sentinel injection arguments, which is safe only on a non-production
+environment — so they run only where the committed policy allows `active`. The
+engine checks shipped today are readonly and **judge only what they observed**:
+none passes `allow_mutating`, so A1 proves the
+front door (an anonymous session refused passes every tool on the server) and
+calls only read tools behind an open one; a write or destructive tool there is
+`not_verifiable`, never `critical`, because a listing is not a call and
+`critical` means a demonstrated admission. The class used is the stricter of the
+recorded and the live one. With no credential resolving — a stdio server like
+reference-mcp is the normal case — the listing checks (B1, D1–D3) run on the
+anonymous listing when the server admits one, labelled `listing: anonymous`, and
+are `not_verifiable` only when it is refused, naming the variable that would
+unlock it. Every string in a result is scrubbed
+of the credential and of credential-shaped text. A server is listed once per run.
+The agreement check for mutation class (B1) has a limit it states rather than
+hides: a tool whose annotation and name agree and both lie passes it, and only a
+behavioural check can do better. `docs/checks.md` is the reference.
 
 ## Declarations (Ring 3)
 
@@ -429,31 +465,56 @@ Shipped:
 - Thin binding stubs for generated traits, one parametrized engine module per
   server for the active tier and one for every other tier, and a human-owned conftest written once
   (`itest_tests/tools_<server>/`); `itest/traits/runtime.py` is what they bind
-  to, and `itest/checks/` holds the agreed contract stub until 31A's library
-  replaces it.
+  to, and it calls the check library in `itest/checks/`.
 - Packaging: `traits.yaml` and the readiness template ship in the wheel and are
   read through `importlib.resources`.
 - MCP probe SSRF guard: `McpTarget` refuses a loopback / link-local / metadata
   host and any non-http(s) scheme before the transport is built, reusing the HTTP
   probe's own check, with `allow_private_hosts=True` for a deliberate local
   target.
+- Private-host guard covers RFC1918 (10/8, 172.16/12, 192.168/16) and IPv6
+  unique-local (fc00::/7), via `ipaddress.is_private`, and resolves a hostname
+  and refuses it if any answer is private. Shared by the HTTP probe and the MCP
+  transport.
+- Check library (`itest/checks`, `docs/checks.md`): the `CheckResult` contract,
+  `run_engine_check` / `run_generated_check` with a registry (unknown id →
+  `not_verifiable`), a per-run listing cache, and the scrub rule. Engine checks
+  **A1** refuses anonymous (front door first — a refused anonymous session
+  passes every tool; behind an open one, read tools are called anonymously with
+  sentinels and mutating tools are `not_verifiable`, deferred to the active
+  tier; never `critical`), **B1** mutation class by agreement (pinned limit:
+  `lookalike_read` passes), and **D1** inventory with an undeclared list, **D2**
+  schema drift, **D3** description drift. `itest.probes.mcp` gained
+  `list_tools(anonymous=True)` and `McpProbeError.refused` for A1.
+- Three tool recipes — `tool_authn` (A1), `tool_mutation_class` (B1),
+  `tool_provenance` (D1–D3), each `recipe-version: 1` — plus
+  `tool_recipe_shape.md`, the template for generated ones; the skill now handles
+  `mcp_tool` points (engine traits need nothing written) instead of skipping them.
 
 Not yet built (do not build without explicit instruction):
-- Tool recipes and the declaration interview (P31/31A): the recipe files the
-  trait table names (`itest recipes` lists which exist) and the skill flow that
-  writes a declaration by asking. Until the engine-check library lands, every
-  engine check skips as not implemented and every generated binding skips on
-  its unfilled fixture — reported `not_run`, never pass.
+- The remaining tool recipes (`tool_isolation`, `tool_identity`, `tool_gating`,
+  `tool_egress`, `tool_audit`, `tool_containment`; `itest recipes` lists which
+  exist) and the skill flow that writes a declaration by asking.
+- **B1 observed** (active tier): call a read-classified tool with a sentinel and
+  look at the store afterwards through a read tool named in the declaration. A
+  tool that lies *consistently* — `lookalike_read` declares `readOnlyHint=true`,
+  is named like a read, and mutates — passes B1 agreement by design and is this
+  check's fixture.
+- **A1 active** (active tier, non-production only): an anonymous `tools/call`
+  on each mutating tool behind an open front door, with sentinel arguments —
+  `critical` on admission. This is where the MCP probe's proven critical path
+  (P29's unauthenticated-call-admitted rule) belongs; the readonly A1 never says
+  `critical`.
+- Generated checks A2, A3, A4, B2, B4 (the registry exists and is empty, so
+  every generated binding is `not_verifiable`, never pass).
+- Engine checks B3 (egress), C1, C2, C3: the table names them, the library has no
+  entry for them yet, so each is `not_verifiable` ("no engine check for <id>").
+- `itest explain <trait>`, printing a check's docstring.
 - Regeneration of ITest-owned stubs on recipe change (and so `recipe_newer`:
   nothing records the recipe version a check was generated from).
 - A declaration reconfirm flag: a way for a reviewer to accept a `changed` or
   `stale` finding in the declaration rather than by editing the check.
 - The PR loop: sync opening a pull request for the checks it adds or retires.
-- Behavioural mutation checks. A tool that lies *consistently* —
-  `lookalike_read` declares `readOnlyHint=true`, is named like a read, and
-  mutates — cannot be caught by any reading of `tools/list`, so the cross-check
-  correctly has nothing to flag. Catching it takes a call and a look at the store
-  afterwards, which is a recipe's job.
 - DNS and endpoint-availability detectors
 - EKS. Explicitly out of scope: a Kubernetes Service, Ingress, or Deployment
   is not in Terraform state, so there is nothing for a detector to read. The

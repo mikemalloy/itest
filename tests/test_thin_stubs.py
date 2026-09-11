@@ -253,18 +253,56 @@ def test_ownership_hashes_cover_stubs_and_the_engine_module_not_conftest(
         assert hashes == {stubgen.file_hash(workdir / path)}
 
 
-def test_the_generated_suite_runs_and_nothing_is_an_error(workdir: Path) -> None:
-    """Before 31A lands, every engine check skips (the contract stub raises) and
-    every generated binding skips (its fixture is an unfilled placeholder): the
-    suite runs clean, and nothing pretends to have passed."""
+def test_the_generated_suite_runs_and_nothing_is_an_error(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The engine checks now run for real against reference-mcp over stdio. That
+    transport has no guard, so A1 fails exactly the five read tools (an anonymous
+    call answered); the three mutating tools' A1 is not_verifiable (deferred to
+    the active tier) and skips. With no credential exported the run is
+    anonymous, and B1/D1-D3 pass on the anonymous listing for every tool; the
+    traits the library has no check for skip; every generated binding skips on
+    its unfilled fixture. Nothing is an error, and nothing else passes."""
+    monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     assert _sync().exit_code == 0
     result = runner.invoke(
         app, ["verify", "--environment", "staging", "--output", "json"]
     )
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output  # the real A1 findings
     report = json.loads(result.output)
-    outcomes = {t["outcome"] for t in report["tests"]}
-    assert outcomes == {"skipped"}
+    assert report["errored"] == 0
+    failed = sorted(t["canonical"] for t in report["tests"] if t["outcome"] == "failed")
+    assert failed == sorted(
+        f"{ENGINE_FILE}::test_engine[{tool}-A1]"
+        for tool in (
+            "get_guide",
+            "search_records",
+            "fetch_record",
+            "lookalike_read",
+            "enrich",
+        )
+    )
+    passed = {t["canonical"] for t in report["tests"] if t["outcome"] == "passed"}
+    assert passed == {
+        f"{ENGINE_FILE}::test_engine[{tool}-{trait}]"
+        for tool in (
+            "get_guide",
+            "search_records",
+            "fetch_record",
+            "create_record",
+            "update_record",
+            "delete_record",
+            "lookalike_read",
+            "enrich",
+        )
+        for trait in ("B1", "D1", "D2", "D3")
+    }
+    others = {
+        t["outcome"]
+        for t in report["tests"]
+        if t["outcome"] not in ("failed", "passed")
+    }
+    assert others == {"skipped"}
     assert len(report["tests"]) == 81
     assert report["unregistered"] == []
 
@@ -298,10 +336,20 @@ def test_run_engine_case_returns_the_check_result(monkeypatch) -> None:
 
 
 def test_an_unimplemented_engine_check_skips(monkeypatch) -> None:
-    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="A1")
+    """The library answers a trait it has no check for with not_verifiable ("no
+    engine check for <id>"), which the runtime records and skips: not run, never
+    an error and never a pass. C3 is in the table and not in the library."""
+    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="C3")
+    recorded = []
     with pytest.raises(pytest.skip.Exception) as excinfo:
-        runtime.run_engine_case(case, "TARGET", authenticated=False)
-    assert "A1" in str(excinfo.value)
+        runtime.run_engine_case(
+            case,
+            "TARGET",
+            authenticated=False,
+            record=lambda name, value: recorded.append((name, value)),
+        )
+    assert "not_verifiable: no engine check for C3" in str(excinfo.value)
+    assert recorded[0][1]["status"] == "not_verifiable"
 
 
 @pytest.mark.parametrize("status", ["changed", "not_verifiable"])
@@ -369,3 +417,29 @@ def test_one_passive_engine_module_collects_every_non_active_tier(
     entries = [t for t in _manifest(workdir).tests if t.path == ENGINE_FILE]
     assert {t.tier for t in entries} == {"static", "readonly"}
     assert {t.test_name for t in entries} == {f"test_engine[{i}]" for i in ids}
+
+
+def test_authenticated_means_a_credential_resolves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime passes authenticated=True only when the named credential
+    actually resolves (shell, then .itest/.env). A named but unset credential is
+    an anonymous run — reference-mcp over stdio is the normal case — and the
+    library then runs the listing checks on the anonymous listing."""
+    from itest.probes.mcp import McpTarget
+
+    name = "ITEST_RUNTIME_RESOLVE_TOKEN"
+    monkeypatch.setenv(name, "")  # recorded, so the test restores it either way
+    monkeypatch.delenv(name)
+    named = McpTarget(kind="stdio", command=["unused"], credential_env=name)
+
+    assert runtime.credential_resolves(named, tmp_path) is False
+    monkeypatch.setenv(name, "from-the-shell")
+    assert runtime.credential_resolves(named, tmp_path) is True
+    monkeypatch.delenv(name)
+    (tmp_path / ".itest").mkdir()
+    (tmp_path / ".itest" / ".env").write_text(f"{name}=from-the-file\n")
+    assert runtime.credential_resolves(named, tmp_path) is True
+
+    unnamed = McpTarget(kind="stdio", command=["unused"])
+    assert runtime.credential_resolves(unnamed, tmp_path) is False

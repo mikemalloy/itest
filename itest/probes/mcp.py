@@ -105,7 +105,15 @@ class McpProbeError(Exception):
     or protocol failure reaching :func:`list_tools` (which returns a list, so it
     has no status to report one through). Its message is always scrubbed of the
     credential before it is raised.
+
+    ``refused`` is ``True`` only when the server itself declined — an HTTP 401 or
+    403 on the listing — so a caller can tell "the guard held" from "the server
+    was not there" without parsing the message.
     """
+
+    def __init__(self, message: str, *, refused: bool = False) -> None:
+        super().__init__(message)
+        self.refused = refused
 
 
 @dataclass(frozen=True)
@@ -459,7 +467,9 @@ def _describe(exc: BaseException, statuses: list[int]) -> tuple[str, str]:
 # --- the public operations ----------------------------------------------------
 
 
-def list_tools(target: McpTarget, *, base_dir: Path | None = None) -> list[ToolInfo]:
+def list_tools(
+    target: McpTarget, *, base_dir: Path | None = None, anonymous: bool = False
+) -> list[ToolInfo]:
     """Enumerate a server's tools.
 
     Uses the target's credential when one is named and resolvable, and connects
@@ -467,12 +477,18 @@ def list_tools(target: McpTarget, *, base_dir: Path | None = None) -> list[ToolI
     itself a reasonable thing to ask, and an open server answering it is a
     finding worth being able to observe.
 
+    ``anonymous=True`` asks that question on purpose: no credential is supplied
+    even when one is resolvable. The target's ``credential_env`` is still
+    honoured as a name to *strip*, so a stdio subprocess does not inherit an
+    ambient token from this process's environment — clearing the name instead
+    would quietly hand it over.
+
     Raises :class:`McpProbeError` on any failure, scrubbed of the credential. It
     never returns an empty list to mean "could not connect": an empty list is a
     server with no tools, which is a different fact.
     """
     credential = None
-    if target.credential_env:
+    if target.credential_env and not anonymous:
         credential = resolve_credential(target.credential_env, base_dir)
     client, statuses = _client(target, credential)
 
@@ -492,7 +508,8 @@ def list_tools(target: McpTarget, *, base_dir: Path | None = None) -> list[ToolI
         _, detail = _describe(exc, statuses)
         if any(code in (401, 403) for code in statuses):
             raise McpProbeError(
-                _scrub(f"the server refused the tool listing: {detail}", credential)
+                _scrub(f"the server refused the tool listing: {detail}", credential),
+                refused=True,
             ) from None
         raise McpProbeError(
             _scrub(f"could not list tools: {detail}", credential)

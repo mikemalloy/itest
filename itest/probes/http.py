@@ -23,17 +23,24 @@ dangerous way available, and every rule here follows from that:
   from a refusal, and the caller must be able to tell them apart.
 - **Only http/https, and no SSRF hosts.** The base URL is derived from
   ``terraform show -json`` — untrusted input. A ``file://`` scheme would read a
-  local file, and a loopback / link-local / metadata host
-  (``169.254.169.254``, ``::1``, ``127.0.0.0/8``, ``169.254.0.0/16``) is the
-  classic SSRF target on a CI runner or cloud instance. Both are refused with a
-  typed :class:`ProbeBlocked` *before any request is made*. A deliberate local
-  target — the reference app under ``examples/``, or the probe's own acceptance
-  server — opts in with ``allow_private_hosts=True``.
+  local file, and a private host is the classic SSRF target on a CI runner or
+  cloud instance: loopback (``127.0.0.0/8``, ``::1``), link-local
+  (``169.254.0.0/16`` with the ``169.254.169.254`` metadata endpoint,
+  ``fe80::/10``), the RFC1918 ranges (``10/8``, ``172.16/12``, ``192.168/16``)
+  where a runner's internal services live, and IPv6 unique-local
+  (``fc00::/7``). The ranges are :mod:`ipaddress`'s own, never hand-written
+  prefixes. A hostname is resolved and refused if *any* address it resolves to
+  is private, so a DNS name cannot smuggle in what the literal could not. Both
+  refusals raise a typed :class:`ProbeBlocked` *before any request is made*. A
+  deliberate local target — the reference app under ``examples/``, or the
+  probe's own acceptance server — opts in with ``allow_private_hosts=True``,
+  which also skips resolution.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -70,8 +77,9 @@ class ProbeBlocked(Exception):
     """Raised, before any request, for a URL the probe refuses to send.
 
     Two reasons: a scheme other than http/https (a ``file://`` read is not a
-    probe), or a loopback / link-local / metadata host that a base URL from
-    untrusted state must not be able to steer the probe at. The latter is
+    probe), or a private host — loopback, link-local / metadata, RFC1918 or
+    unique-local, literal or resolved — that a base URL from untrusted state
+    must not be able to steer the probe at. The latter is
     overridable with ``allow_private_hosts=True`` for a deliberate local target.
     """
 
@@ -102,17 +110,63 @@ def _check_url(url: str, allow_private_hosts: bool) -> None:
             "a deliberate local target."
         )
     try:
-        ip = ipaddress.ip_address(host)
+        literal = ipaddress.ip_address(host)
     except ValueError:
-        return  # a normal DNS name — not an SSRF literal
-    # is_loopback covers 127.0.0.0/8 and ::1; is_link_local covers 169.254.0.0/16
-    # (including the 169.254.169.254 metadata endpoint) and fe80::/10.
-    if ip.is_loopback or ip.is_link_local:
+        literal = None
+    if literal is not None:
+        if _is_private(literal):
+            raise ProbeBlocked(
+                f"probe refuses private host {host!r} in {url!r} (loopback, "
+                "link-local/metadata, RFC1918 or unique-local). This is the classic "
+                "SSRF target; pass allow_private_hosts=True only for a deliberate "
+                "local target such as the reference app."
+            )
+        return
+
+    # A DNS name: resolve it and check every answer. Any private answer refuses,
+    # because the connection could land on whichever one the OS picks.
+    private = [address for address in _resolve(host) if _is_private(address)]
+    if private:
         raise ProbeBlocked(
-            f"probe refuses loopback/link-local/metadata host {host!r} in {url!r}. "
-            "This is the classic SSRF target; pass allow_private_hosts=True only "
-            "for a deliberate local target such as the reference app."
+            f"probe refuses host {host!r} in {url!r}: it resolves to the private "
+            f"address {str(private[0])!r} (loopback, link-local/metadata, RFC1918 "
+            "or unique-local). Pass allow_private_hosts=True only for a "
+            "deliberate local target."
         )
+
+
+def _is_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Loopback, link-local (metadata included), RFC1918, or IPv6 unique-local.
+
+    ``is_private`` is :mod:`ipaddress`'s registry-backed answer and covers all of
+    them (and the reserved/documentation blocks, which no probe should reach
+    either). An IPv4-mapped IPv6 address is judged as the IPv4 address it is.
+    """
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or ip.is_link_local or ip.is_private
+
+
+def _resolve(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Every address ``host`` resolves to, or ``[]`` when it does not resolve.
+
+    An unresolvable name is not a private host: the request step will report
+    its own failure, and refusing here would file "no such host" as an SSRF
+    block. The check is point-in-time — the connection resolves again — so a
+    name that re-points between the two (DNS rebinding) is out of reach here.
+    """
+    try:
+        answers = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError):
+        return []
+    addresses = []
+    for _family, _type, _proto, _canonname, sockaddr in answers:
+        try:
+            # An IPv6 sockaddr may carry a zone id ("fe80::1%en0").
+            addresses.append(ipaddress.ip_address(str(sockaddr[0]).split("%")[0]))
+        except ValueError:
+            continue
+    return addresses
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -141,8 +195,9 @@ def probe(
     redirect, a 404) is a normal result, not an error — only a timeout raises,
     as :class:`ProbeTimeout`. See the module docstring for why.
 
-    Refuses a non-http(s) scheme or an SSRF host (loopback / link-local /
-    metadata) with :class:`ProbeBlocked` before any request is made. A
+    Refuses a non-http(s) scheme or an SSRF host (loopback, link-local /
+    metadata, RFC1918, unique-local — as a literal or as any address a name
+    resolves to) with :class:`ProbeBlocked` before any request is made. A
     deliberate local target opts in with ``allow_private_hosts=True``.
     """
     _check_url(url, allow_private_hosts)
