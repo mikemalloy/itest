@@ -16,11 +16,15 @@ from __future__ import annotations
 import html
 import json
 import re
+from importlib import resources
 from pathlib import Path
 
 from itest.report.model import STATUS_CLASS, Page, Tile
 
-TEMPLATE = Path(__file__).parent / "templates" / "readiness.html"
+#: The committed template: a resource of the ``itest.report`` package, read
+#: through :mod:`importlib.resources` so an installed wheel finds it too.
+TEMPLATE_PACKAGE = "itest.report"
+TEMPLATE_RESOURCE = "templates/readiness.html"
 
 MARKER = "<!-- itest:data:{name} -->"
 
@@ -666,10 +670,18 @@ def build_blocks(page: Page) -> dict[str, object]:
     }
 
 
+def template_text() -> str:
+    """The shipped template's source."""
+    template = resources.files(TEMPLATE_PACKAGE).joinpath(TEMPLATE_RESOURCE)
+    return template.read_text(encoding="utf-8")
+
+
 def render(page: Page, template_path: Path | None = None) -> str:
     """Render ``page`` into the template and return the self-contained HTML."""
-    template_path = template_path or TEMPLATE
-    document = template_path.read_text(encoding="utf-8")
+    if template_path is None:
+        document = template_text()
+    else:
+        document = template_path.read_text(encoding="utf-8")
     for name, value in build_blocks(page).items():
         marker = MARKER.format(name=name)
         if marker not in document:

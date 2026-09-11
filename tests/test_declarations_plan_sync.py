@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -497,19 +498,35 @@ def test_a_second_sync_adds_nothing(workdir: Path) -> None:
     assert (workdir / READONLY_FILE).read_text(encoding="utf-8") == before
 
 
+def _edit_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **applies_when: str
+) -> None:
+    """Serve an edited copy of the shipped table where ``importlib.resources``
+    would find it, with ``applies_when`` replaced for the named trait ids."""
+    table = yaml.safe_load(
+        traits_module.resources.files(traits_module.TABLE_PACKAGE)
+        .joinpath(traits_module.TABLE_RESOURCE)
+        .read_text(encoding="utf-8")
+    )
+    for trait in table["traits"]:
+        if trait["id"] in applies_when:
+            trait["applies_when"] = applies_when[trait["id"]]
+    directory = tmp_path / "edited-table"
+    directory.mkdir(exist_ok=True)
+    (directory / traits_module.TABLE_RESOURCE).write_text(
+        yaml.safe_dump(table, sort_keys=False), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        traits_module, "resources", SimpleNamespace(files=lambda _pkg: directory)
+    )
+
+
 def test_editing_one_applies_when_line_changes_the_generated_suite(
     workdir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The proof that the rule is data. B3 applies only where an egress edge is
     declared; make it apply always and every tool gets the check."""
-    table = yaml.safe_load(traits_module.TRAITS_PATH.read_text(encoding="utf-8"))
-    for trait in table["traits"]:
-        if trait["id"] == "B3":
-            assert trait["applies_when"] == "egress != none"
-            trait["applies_when"] = "always"
-    edited = tmp_path / "edited-traits.yaml"
-    edited.write_text(yaml.safe_dump(table, sort_keys=False), encoding="utf-8")
-    monkeypatch.setattr(traits_module, "TRAITS_PATH", edited)
+    _edit_table(tmp_path, monkeypatch, B3="always")
 
     assert _sync().exit_code == 0
     readonly = _functions(workdir / READONLY_FILE)

@@ -31,6 +31,7 @@ the expression.
 from __future__ import annotations
 
 import re
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -39,9 +40,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from itest.core.manifest import Tier
 
-#: The shipped table. Overridable only by passing a path to :func:`load_traits`
-#: (which is how the test that proves the table is data edits one line of it).
-TRAITS_PATH = Path(__file__).resolve().parents[2] / "traits" / "traits.yaml"
+#: Where the shipped table lives: a resource of the ``itest.traits`` package,
+#: read through :mod:`importlib.resources` and never by a path relative to this
+#: file, so an installed wheel reads exactly what a source checkout reads.
+TABLE_PACKAGE = "itest.traits"
+TABLE_RESOURCE = "traits.yaml"
 
 #: The only table version this build understands.
 TABLE_VERSION = 1
@@ -94,7 +97,8 @@ class TraitTable(BaseModel):
 
 def load_traits(path: Path | None = None) -> TraitTable:
     """Load the applies-when table. Defaults to the one shipped with the engine."""
-    path = Path(path) if path is not None else TRAITS_PATH
+    if path is None:
+        path = resources.files(TABLE_PACKAGE).joinpath(TABLE_RESOURCE)
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except FileNotFoundError:
