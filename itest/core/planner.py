@@ -417,8 +417,12 @@ def plan_traits(changeset: Changeset, manifest: Manifest | None) -> None:
     if not tools:
         return
 
-    from itest.core.declarations.tools import trait_context, trait_decisions
-    from itest.core.declarations.traits import load_traits, trait_table_hash
+    from itest.core.declarations.traits import (
+        load_traits,
+        trait_context,
+        trait_decisions,
+        trait_table_hash,
+    )
 
     table = load_traits()
     changeset.trait_table_hash = trait_table_hash(table)

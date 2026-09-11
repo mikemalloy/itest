@@ -348,7 +348,7 @@ def test_an_applies_when_naming_an_unknown_attribute_is_refused_at_load(
 def test_the_known_attributes_are_exactly_what_a_point_supplies() -> None:
     """The load-time check and the evaluation context cannot disagree: a field
     the loader accepts is one every tool point carries, and vice versa."""
-    from itest.core.declarations.tools import trait_context
+    from itest.core.declarations.traits import trait_context
     from itest.core.manifest import IntegrationPoint
 
     point = IntegrationPoint(

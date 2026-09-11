@@ -1,0 +1,13 @@
+Recipes the trait table references, in recipes:
+
+  present  recipes/tool_authn.md           A1
+  missing  recipes/tool_isolation.md       A2
+  missing  recipes/tool_identity.md        A3, A4
+  missing  recipes/tool_mutation_class.md  B1
+  missing  recipes/tool_gating.md          B2
+  missing  recipes/tool_egress.md          B3
+  missing  recipes/tool_audit.md           B4
+  missing  recipes/tool_containment.md     C1, C2, C3
+  missing  recipes/tool_provenance.md      D1, D2, D3
+
+9 recipe(s): 1 present, 8 missing.

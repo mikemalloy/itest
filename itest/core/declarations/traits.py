@@ -48,8 +48,9 @@ from typing import Any, Literal, NamedTuple
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from itest.core.declarations.schema import NO_TRAITS
 from itest.core.environments import VALID_TIERS
-from itest.core.manifest import Tier
+from itest.core.manifest import IntegrationPoint, Tier
 
 #: Where the shipped table lives: a resource of the ``itest.traits`` package,
 #: read through :mod:`importlib.resources` and never by a path relative to this
@@ -65,8 +66,8 @@ TABLE_VERSION = 1
 TRAIT_KINDS = ("engine", "generated")
 
 #: The attributes an ``applies_when`` may name — exactly the keys
-#: :func:`itest.core.declarations.tools.trait_context` supplies (a test pins
-#: the two together). Checked at load, so a typo refuses the table outright.
+#: :func:`trait_context` supplies (a test pins the two together). Checked at
+#: load, so a typo refuses the table outright.
 KNOWN_ATTRIBUTES = (
     "mutation",
     "egress",
@@ -385,3 +386,74 @@ def applicable(table: TraitTable, context: dict[str, Any]) -> list[Trait]:
     regenerated file reads the same way every time.
     """
     return [trait for trait in table.traits if evaluate(trait.applies_when, context)]
+
+
+# --- deciding one tool ------------------------------------------------------------
+
+
+def trait_context(point: IntegrationPoint) -> dict[str, Any]:
+    """The attribute names the applies-when table evaluates against.
+
+    Built from the point alone: sync reads the manifest and the changeset, never
+    the declaration, so everything the table asks about has to be on the point.
+    Exactly :data:`KNOWN_ATTRIBUTES` (a test pins the two together). Lives here,
+    beside the table, rather than with the probe-backed point builder, so that
+    ``itest traits --for`` can decide a tool without importing a transport.
+    """
+    attributes = point.attributes
+    return {
+        "mutation": attributes.get("mutation"),
+        "egress": attributes.get("egress"),
+        "approval": attributes.get("approval"),
+        "active": attributes.get("active"),
+        "has_free_form_input": attributes.get("has_free_form_input"),
+        "auth.second_tenant_env": attributes.get("second_tenant_env"),
+        "audit.sink": attributes.get("audit_sink"),
+        "identity.runs_as": attributes.get("runs_as"),
+    }
+
+
+class TraitDecision(NamedTuple):
+    """Whether one trait applies to one tool, and what decided it."""
+
+    trait: Trait
+    applies: bool
+    #: ``rule: <applies_when>``, ``declared traits: ...``, or the active-tier
+    #: withholding. Printed by the plan and by ``itest traits --for``.
+    reason: str
+
+
+def trait_decisions(point: IntegrationPoint, table: TraitTable) -> list[TraitDecision]:
+    """Every trait in the table, decided for one declared tool, in table order.
+
+    The table decides, unless the declaration hand-picked a list — and a tool
+    whose declaration withholds the active tier loses its active traits whichever
+    way they were chosen. Withholding removes the check; it never leaves one
+    behind that must not run. Raises :class:`TraitTableError` for a hand-picked
+    trait the table does not define.
+    """
+    declared = point.attributes.get("traits")
+    if declared:
+        for trait_id in declared:
+            if trait_id != NO_TRAITS and table.get(trait_id) is None:
+                raise TraitTableError(
+                    f"{point.source}/{point.target} is declared with trait "
+                    f"{trait_id!r}, which the trait table does not define. "
+                    f"Known traits: {', '.join(table.ids)}."
+                )
+    context = trait_context(point)
+    withheld = point.attributes.get("active") is False
+
+    decisions: list[TraitDecision] = []
+    for trait in table.traits:
+        if declared:
+            applies = trait.id in declared
+            reason = f"declared traits: {', '.join(declared)}"
+        else:
+            applies = evaluate(trait.applies_when, context)
+            reason = f"rule: {trait.applies_when}"
+        if applies and withheld and trait.tier == "active":
+            applies = False
+            reason = "active: false withholds active-tier checks"
+        decisions.append(TraitDecision(trait, applies, reason))
+    return decisions

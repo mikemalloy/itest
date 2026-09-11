@@ -41,16 +41,11 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 from itest.core.declarations.loader import declaration_path, resolve_url
 from itest.core.declarations.schema import NO_TRAITS, Declaration, Egress
-from itest.core.declarations.traits import (
-    Trait,
-    TraitTable,
-    TraitTableError,
-    evaluate,
-)
+from itest.core.declarations.traits import TraitTable
 from itest.core.manifest import IntegrationPoint
 from itest.probes.mcp import McpTarget, ToolInfo, classify_mutation
 
@@ -307,73 +302,3 @@ def orphaned_overrides(declaration: Declaration, live: list[ToolInfo]) -> list[s
     """
     live_names = {tool.name for tool in live}
     return [name for name in declaration.tools if name not in live_names]
-
-
-def trait_context(point: IntegrationPoint) -> dict[str, Any]:
-    """The attribute names the applies-when table evaluates against.
-
-    Built from the point alone: sync reads the manifest and the changeset, never
-    the declaration, so everything the table asks about has to be on the point.
-    """
-    attributes = point.attributes
-    return {
-        "mutation": attributes.get("mutation"),
-        "egress": attributes.get("egress"),
-        "approval": attributes.get("approval"),
-        "active": attributes.get("active"),
-        "has_free_form_input": attributes.get("has_free_form_input"),
-        "auth.second_tenant_env": attributes.get("second_tenant_env"),
-        "audit.sink": attributes.get("audit_sink"),
-        "identity.runs_as": attributes.get("runs_as"),
-    }
-
-
-class TraitDecision(NamedTuple):
-    """Whether one trait applies to one tool, and what decided it."""
-
-    trait: Trait
-    applies: bool
-    #: ``rule: <applies_when>``, ``declared traits: ...``, or the active-tier
-    #: withholding. Printed by the plan and by ``itest traits --for``.
-    reason: str
-
-
-def trait_decisions(point: IntegrationPoint, table: TraitTable) -> list[TraitDecision]:
-    """Every trait in the table, decided for one declared tool, in table order.
-
-    The table decides, unless the declaration hand-picked a list — and a tool
-    whose declaration withholds the active tier loses its active traits whichever
-    way they were chosen. Withholding removes the check; it never leaves one
-    behind that must not run. Raises :class:`TraitTableError` for a hand-picked
-    trait the table does not define.
-    """
-    declared = point.attributes.get("traits")
-    if declared:
-        for trait_id in declared:
-            if trait_id != NO_TRAITS and table.get(trait_id) is None:
-                raise TraitTableError(
-                    f"{point.source}/{point.target} is declared with trait "
-                    f"{trait_id!r}, which the trait table does not define. "
-                    f"Known traits: {', '.join(table.ids)}."
-                )
-    context = trait_context(point)
-    withheld = point.attributes.get("active") is False
-
-    decisions: list[TraitDecision] = []
-    for trait in table.traits:
-        if declared:
-            applies = trait.id in declared
-            reason = f"declared traits: {', '.join(declared)}"
-        else:
-            applies = evaluate(trait.applies_when, context)
-            reason = f"rule: {trait.applies_when}"
-        if applies and withheld and trait.tier == "active":
-            applies = False
-            reason = "active: false withholds active-tier checks"
-        decisions.append(TraitDecision(trait, applies, reason))
-    return decisions
-
-
-def planned_traits(point: IntegrationPoint, table: TraitTable) -> list[Trait]:
-    """The traits that apply to one declared tool, in table order."""
-    return [d.trait for d in trait_decisions(point, table) if d.applies]

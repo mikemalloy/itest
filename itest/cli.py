@@ -366,6 +366,101 @@ def add(
 
 
 @app.command()
+def traits(
+    for_tool: str | None = typer.Option(
+        None,
+        "--for",
+        help=(
+            "A declared tool, as <server>/<tool>: print whether each trait applies "
+            "to it and the rule that decided."
+        ),
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print JSON."),
+) -> None:
+    """Print the trait table, or every trait decided for one tool."""
+    from itest.core import planner
+    from itest.core import points as point_labels
+    from itest.core.declarations.traits import (
+        TraitTableError,
+        load_traits,
+        trait_decisions,
+    )
+    from itest.core.manifest import load_manifest
+    from itest.traits import catalog
+
+    try:
+        table = load_traits()
+    except TraitTableError as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+
+    if for_tool is None:
+        if as_json:
+            typer.echo(json.dumps(catalog.table_json(table), indent=2))
+        else:
+            echo(catalog.render_table(table))
+        return
+
+    # Read from the manifest alone: what plan last recorded about the tool. No
+    # declaration is loaded and no server is asked.
+    manifest_file = planner.manifest_path(Path.cwd())
+    if not manifest_file.exists():
+        echo(
+            f"No manifest found at {manifest_file}. Run `itest plan && itest sync` "
+            "first: --for reads a tool's attributes from the manifest.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    manifest = load_manifest(manifest_file)
+    try:
+        point = catalog.find_tool(manifest, for_tool)
+        decisions = trait_decisions(point, table)
+    except (catalog.ToolLookupError, TraitTableError) as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        document = catalog.tool_json(point, decisions, table, manifest)
+        typer.echo(json.dumps(document, indent=2))
+    else:
+        tag = point_labels.summary(point)
+        echo(catalog.render_tool(point, decisions, table, manifest, tag))
+
+
+@app.command()
+def recipes(
+    # B008: see the note on `plan` above — typer requires the call here.
+    recipes_dir: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--recipes-dir",
+        help=(
+            "Directory holding the skill's recipe files. Default: the first of "
+            "skills/, .claude/skills/ and ~/.claude/skills/ that has "
+            "itest-implementer/references/recipes."
+        ),
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print JSON."),
+) -> None:
+    """List every recipe the trait table references, and whether it exists."""
+    from itest.core.declarations.traits import TraitTableError, load_traits
+    from itest.traits import catalog
+
+    try:
+        table = load_traits()
+    except TraitTableError as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+
+    base_dir = Path.cwd()
+    directory = catalog.resolve_recipes_dir(recipes_dir, base_dir, Path.home())
+    if as_json:
+        document = catalog.recipes_json(table, directory, base_dir)
+        typer.echo(json.dumps(document, indent=2))
+    else:
+        echo(catalog.render_recipes(table, directory, base_dir))
+
+
+@app.command()
 def redact(
     # B008: see the note on `plan` above — typer requires the call here.
     input_path: Path | None = typer.Argument(  # noqa: B008
