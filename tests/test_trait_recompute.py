@@ -450,3 +450,30 @@ def test_a_declaration_free_sync_writes_the_p30_manifest_shape(
         assert (tmp_path / "itest_tests" / name).read_bytes() == (
             P30 / "alex-s6" / "itest_tests" / name
         ).read_bytes()
+
+
+def test_every_p30_fixture_file_is_tracked_by_git() -> None:
+    """The fixtures live under `.itest/` and `itest_tests/`, which .gitignore
+    excludes everywhere. A file present on disk but never committed passes here
+    and fails on every CI runner, so each one must be tracked explicitly."""
+    import subprocess
+
+    if not (REPO_ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    on_disk = {
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in P30.rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
+    }
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files", "--", str(P30.relative_to(REPO_ROOT))],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+    )
+    assert on_disk - tracked == set(), "force-add these with `git add -f`"
+    for name in ("reference-mcp", "alex-s6"):
+        assert f"tests/fixtures/p30-manifests/{name}/.itest/manifest.yaml" in tracked
