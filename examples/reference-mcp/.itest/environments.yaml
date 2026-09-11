@@ -1,0 +1,11 @@
+# The committed environment policy for examples/reference-mcp.
+#
+# The declaration (.itest/tools/reference-mcp.yaml) allows the active tier in
+# `staging`; a declaration can only narrow this policy, never widen it, so the
+# example ships the policy that permits it. `prod` is production by name and
+# may never run the active (mutating) tier. Which environment a checkout points
+# at is the local binding (`--environment`, or a gitignored .itest/environment).
+version: 1
+environments:
+  staging: { tiers: [static, readonly, active] }
+  prod:    { tiers: [static, readonly], production: true }
