@@ -36,6 +36,7 @@ or a table whose rule was edited, is therefore a diff here — ``+B2 on ...`` /
 
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 from pathlib import Path
@@ -180,6 +181,10 @@ def diagram_path(base_dir: Path) -> Path:
 
 PLAN_ROOT_KEYS = ("planned_values", "values")
 
+#: The Terraform side of a declarations-only project: a state root holding no
+#: resources. Every detector reads it as "nothing deployed", which is the truth.
+EMPTY_TERRAFORM: dict = {"values": {"root_module": {"resources": []}}}
+
 
 def _validate_root(document: object, origin: str) -> dict:
     """Ensure the document carries a plan or state root.
@@ -209,8 +214,31 @@ def _validate_root(document: object, origin: str) -> dict:
     )
 
 
+def _declarations_only(base_dir: Path) -> bool:
+    """True when the project has declarations and no Terraform configuration.
+
+    Terraform reads the ``*.tf`` / ``*.tf.json`` files in the directory it runs
+    in, never below it, so that is where configuration is looked for. The
+    declarations package is imported only once no configuration is found, so a
+    Terraform project never loads it here.
+    """
+    if any(base_dir.glob("*.tf")) or any(base_dir.glob("*.tf.json")):
+        return False
+    from itest.core.declarations.loader import declarations_dir
+
+    directory = declarations_dir(base_dir)
+    return directory.is_dir() and any(directory.glob("*.yaml"))
+
+
 def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
-    """Obtain the terraform plan or state JSON, from a file or from terraform."""
+    """Obtain the terraform plan or state JSON, from a file or from terraform.
+
+    A declarations-only project — no ``--tf-json``, no Terraform files, and a
+    declaration under ``.itest/tools/`` — has nothing for Terraform to report,
+    so terraform being absent, failing, or answering with an empty state all
+    mean :data:`EMPTY_TERRAFORM`. With Terraform files present every one of
+    those stays an error: an empty state there means nothing was applied.
+    """
     if tf_json is not None:
         path = Path(tf_json)
         try:
@@ -221,6 +249,16 @@ def load_plan_json(tf_json: Path | None, base_dir: Path) -> dict:
             raise PlanInputError(f"--tf-json file is not valid JSON: {exc}") from exc
         return _validate_root(document, f"--tf-json file {path}")
 
+    if _declarations_only(base_dir):
+        try:
+            return _terraform_show(base_dir)
+        except PlanInputError:
+            return copy.deepcopy(EMPTY_TERRAFORM)
+    return _terraform_show(base_dir)
+
+
+def _terraform_show(base_dir: Path) -> dict:
+    """Run ``terraform show -json`` in ``base_dir`` and validate its root."""
     try:
         proc = subprocess.run(
             ["terraform", "show", "-json"],

@@ -27,6 +27,13 @@ The file name **is** the server name: `server: reference-mcp` must live in
 path is the address — it is half of every point id and a fragment of every
 generated test name.
 
+A project can be **declarations only**. With no Terraform files (`*.tf`,
+`*.tf.json`) in the project directory and no `--tf-json`, `itest plan` and
+`itest sync` treat the Terraform side as an empty resource set — whether
+terraform is not installed, fails, or reports an empty state — and plan the
+declared servers. A directory that *has* Terraform files and an empty state is
+still refused: there, it means nothing was applied.
+
 ## The worked example
 
 The committed declaration for `examples/reference-mcp/` is the reference for the

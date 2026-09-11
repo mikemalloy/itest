@@ -28,7 +28,13 @@ integration points, generates test stubs, and verifies deployed infrastructure.
 - `itest plan`: reads `terraform show -json` output plus the existing manifest,
   detects integration points, prints a proposed changeset (new points, orphaned
   tests, unchanged), writes the proposal to `.itest/plan.json`, and emits a
-  Mermaid diagram. Plan never modifies test files.
+  Mermaid diagram. Plan never modifies test files. **Terraform is optional
+  when a project is declarations-only**: with no `--tf-json`, no `*.tf` /
+  `*.tf.json` in the project directory, and a declaration under
+  `.itest/tools/`, terraform being absent, failing, or reporting an empty state
+  all mean an empty resource set, and plan goes on to the declarations. With
+  Terraform files present an empty state stays the "nothing was applied"
+  error.
 - `itest sync`: consumes the plan (running one implicitly if absent), updates
   the manifest, generates pytest stubs for new integration points. Pauses for
   confirmation unless --auto-approve. NEVER modifies or deletes a test file
