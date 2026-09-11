@@ -91,5 +91,11 @@ def test_public_host_passes_the_guard(monkeypatch) -> None:
     def fake_send(url, method, headers, timeout):
         return sentinel
 
+    def fake_getaddrinfo(host, *args, **kwargs):
+        # The guard resolves names now; answer with a public address so the
+        # test does not depend on DNS.
+        return [(2, 1, 6, "", ("93.184.215.14", 0))]
+
     monkeypatch.setattr(http_probe, "_send", fake_send)
+    monkeypatch.setattr(http_probe.socket, "getaddrinfo", fake_getaddrinfo)
     assert probe("https://example.com/health") is sentinel
