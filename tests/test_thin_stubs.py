@@ -301,3 +301,44 @@ def test_an_unimplemented_engine_check_skips(monkeypatch) -> None:
     with pytest.raises(pytest.skip.Exception) as excinfo:
         runtime.run_engine_case(case, "TARGET", authenticated=False)
     assert "A1" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("status", ["changed", "not_verifiable"])
+def test_a_finding_that_is_not_a_failure_is_recorded_then_skipped(
+    monkeypatch, status: str
+) -> None:
+    """`changed` waits on a reviewer and `not_verifiable` could not be judged:
+    neither is a failing check. The CheckResult is recorded (the ledger reports
+    it as-is), and the test skips, so the point reads as unverified — AT RISK —
+    rather than failing and blocking the release."""
+    import itest.checks
+
+    monkeypatch.setattr(
+        itest.checks,
+        "run_engine_check",
+        lambda *a, **k: CheckResult(status, "description moved", None),
+    )
+    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="D3")
+    recorded = []
+    with pytest.raises(pytest.skip.Exception) as excinfo:
+        runtime.run_engine_case(
+            case,
+            "TARGET",
+            authenticated=True,
+            record=lambda name, value: recorded.append((name, value)),
+        )
+    assert f"{status}: description moved" in str(excinfo.value)
+    assert recorded[0][1]["status"] == status
+
+
+def test_a_failing_check_still_fails(monkeypatch) -> None:
+    import itest.checks
+
+    monkeypatch.setattr(
+        itest.checks,
+        "run_engine_check",
+        lambda *a, **k: CheckResult("critical", "anonymous call accepted", None),
+    )
+    case = runtime.EngineCase(point={"target": "t", "id": "x"}, trait="A1")
+    result = runtime.run_engine_case(case, "TARGET", authenticated=False)
+    assert result.status == "critical"

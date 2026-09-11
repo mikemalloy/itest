@@ -49,7 +49,10 @@ traits:
   The module holds a single test, parametrized at collection time over every
   (tool, engine trait) the manifest records, which calls
   `itest.checks.run_engine_check`. Add a tool and it is picked up without
-  regenerating anything.
+  regenerating anything. The engine records each `CheckResult` for verify's
+  ledger. A `changed` or `not_verifiable` result is recorded and then skipped
+  rather than failed: it is a finding that waits on a human (AT RISK), not a
+  failing check (BLOCKED).
 - **`generated`**: the check needs a fact only a human can supply, such as a
   second tenant's record or the identity the server should act as. Sync writes
   one **thin binding** per (tool, trait) into

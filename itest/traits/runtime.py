@@ -17,7 +17,9 @@ list of cases, and the call into ``itest.checks``.
 - :func:`run_engine_case` calls ``itest.checks.run_engine_check`` and records
   the ``CheckResult`` on the test (``record_property``), which is how verify's
   ledger reports the check's own status. A check the library does not implement
-  yet skips: it was not run, and must not read as an error or a pass.
+  yet skips: it was not run, and must not read as an error or a pass. So does a
+  ``changed`` or ``not_verifiable`` result, after it is recorded: a finding
+  that waits on a human is not a failing check.
 """
 
 from __future__ import annotations
@@ -31,6 +33,11 @@ import pytest
 from itest.core.manifest import Manifest, load_manifest
 
 MANIFEST_REL = Path(".itest") / "manifest.yaml"
+
+#: CheckResult statuses that are findings, not failures: ``changed`` waits on a
+#: reviewer, ``not_verifiable`` could not be judged. The engine records them and
+#: skips, so the page shows them (AT RISK) without pytest failing the point.
+NOT_A_FAILURE = ("changed", "not_verifiable")
 
 #: The frozen docstring line of a generated binding.
 _DOCSTRING = re.compile(r"itest point: (?P<point>\S+)\s+trait: (?P<trait>\S+)")
@@ -158,4 +165,8 @@ def run_engine_case(case: EngineCase, target, *, authenticated: bool, record=Non
                 "evidence": result.evidence,
             },
         )
+    if result.status in NOT_A_FAILURE:
+        # Recorded above, so the ledger reports it as-is; skipped here, so the
+        # point reads as unverified rather than failing and blocking a release.
+        pytest.skip(f"{result.status}: {result.detail}")
     return result
