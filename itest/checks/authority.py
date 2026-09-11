@@ -20,24 +20,30 @@ from itest.checks._base import (
     find_tool,
     live_listing,
     not_verifiable,
-    reference_listing,
     server_of,
     tool_of,
 )
 from itest.core.declarations.loader import declaration_path
 from itest.probes.mcp import (
-    CRITICAL,
     MUTATING_CLASSES,
     McpTarget,
-    ToolInfo,
     call_tool,
     classify_mutation,
 )
 
 #: The only classes A1 will call. Everything else — write, destructive, and
-#: ``unknown``, which may be either — is judged from the anonymous session and
-#: never called: engine checks are readonly by definition.
+#: ``unknown``, which may be either — is never called: engine checks are
+#: readonly by definition.
 CALLABLE_CLASSES = frozenset({"read", "informational"})
+
+#: The front door held: the whole server passes, and no tool is called.
+FRONT_DOOR_REFUSED = "server refuses anonymous sessions; per-tool call not attempted"
+
+#: A mutating tool behind an open front door: what only the active tier can prove.
+MUTATING_DEFERRED = (
+    "anonymous session admitted; this tool mutates, so its own guard can only be "
+    "proven by an active-tier call on a non-production environment"
+)
 
 #: Strictness order for "the stricter of the recorded and the live class".
 _RANK = {"informational": 0, "read": 1, "unknown": 2, "write": 3, "destructive": 4}
@@ -93,99 +99,105 @@ def _stricter(recorded: str, live: str | None) -> str:
     return max(recorded, live, key=lambda cls: _RANK.get(cls, _RANK["unknown"]))
 
 
-def _anonymous_session(target: McpTarget, tool: str) -> tuple[dict, ToolInfo | None]:
-    """The anonymous ``tools/list``, once per server per run, as evidence."""
-    try:
-        tools = live_listing(target, anonymous=True)
-    except ListingUnavailable as exc:
-        status = "refused" if exc.refused else "error"
-        return {
-            "status": status,
-            "detail": str(exc),
-            "tool_count": None,
-            "lists_tool": None,
-        }, None
-    info = find_tool(tools, tool)
-    return {
-        "status": "admitted",
-        "detail": f"listed {len(tools)} tools to an unauthenticated caller",
-        "tool_count": len(tools),
-        "lists_tool": info is not None,
-    }, info
-
-
 @engine_check("A1")
 def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckResult:
     """A1 refuses anonymous: does the server turn away a caller with no credential?
 
-    Always probes **anonymously** — no credential, and over stdio the credential
-    variable is stripped from the subprocess environment. ``authenticated`` only
-    chooses how the tool's input schema is read when the anonymous listing is
-    refused.
+    A1 judges only what it observed. It always probes **anonymously** — no
+    credential, and over stdio the credential variable is stripped from the
+    subprocess environment. ``authenticated`` does not change what it does.
 
-    A read or informational tool is **called** once, with sentinel arguments built
-    from its input schema (required strings get ``sentinels.nonexistent_id``,
-    numbers ``0``, booleans ``false``, nothing optional):
+    **1. The front door, once per server.** An anonymous ``initialize`` +
+    ``tools/list``, cached for the run.
 
-    - ``pass`` — the call was refused ("unauthenticated tools/call refused: ...").
-    - ``fail`` — the call was answered: an anonymous caller can read through it.
-    - ``not_verifiable`` — the call failed in transport, or reached the tool and
-      got a tool error (an in-tool refusal and a sentinel miss look alike), or no
-      sentinel could be built.
+    - ``pass`` — the server refuses anonymous sessions. Every tool on it passes
+      with "server refuses anonymous sessions; per-tool call not attempted", and
+      the refusal is in the evidence. This is the common good case.
+    - ``not_verifiable`` — the session could not be attempted (unreachable, a
+      transport error); the detail says why.
 
-    A write, destructive or unknown tool is **never called** — the class used is
-    the stricter of the manifest's and the live listing's. It is judged from the
-    anonymous session instead:
+    **2. Behind an open front door, per tool.** The class used is the stricter of
+    the manifest's and the live listing's, so a stale manifest cannot talk A1
+    into calling a mutating tool.
 
-    - ``pass`` — the anonymous session itself was refused, before any tool.
-    - ``critical`` — an anonymous session was admitted and lists the write or
-      destructive tool: nothing authenticates a caller before it. Being let in is
-      the finding; the evidence says ``basis: anonymous-session``.
-    - ``not_verifiable`` — the listing failed, the tool is hidden from the
-      anonymous listing (hidden is not refused), or its class is unknown.
+    - A **read or informational** tool gets one anonymous ``tools/call`` with
+      sentinel arguments (required strings get ``sentinels.nonexistent_id``,
+      numbers ``0``, booleans ``false``, nothing optional):
+      ``pass`` if the call is refused; ``fail`` if the tool answered — "anonymous
+      call succeeded on a read tool", data exposure rather than mutation (a tool
+      error still means the tool ran for an anonymous caller, and says so);
+      ``not_verifiable`` for a transport error or a missing sentinel.
+    - A **write or destructive** tool is **not called**: ``not_verifiable``,
+      "anonymous session admitted; this tool mutates, so its own guard can only
+      be proven by an active-tier call on a non-production environment".
+    - An **unknown** tool, or one hidden from the anonymous listing, is not
+      called: ``not_verifiable``.
 
-    The anonymous ``tools/list`` is taken once per server and recorded on every
-    result as ``evidence.anonymous_listing``. An anonymous listing is common and
-    is not a failure by itself; the report shows it.
+    A1 never returns ``critical``: that status means a *demonstrated* anonymous
+    admission on a mutating tool, which only the active-tier A1 can show.
 
     Standards: OWASP Agentic Top 10 ASI03 (Identity and Privilege Abuse); the
     Semgrep MCP security cheatsheet, server tab, row 4.
     """
     server, tool = server_of(point), tool_of(point)
     recorded = str(attributes_of(point).get("mutation") or "unknown")
-
-    session, info = _anonymous_session(target, tool)
-    if info is None and session["status"] != "admitted":
-        try:
-            info = find_tool(
-                reference_listing(target, authenticated=authenticated), tool
-            )
-        except ListingUnavailable:
-            info = None
-    live = classify_mutation(info)[0] if info is not None else None
-    cls = _stricter(recorded, live)
-
     evidence: dict[str, Any] = {
         "server": server,
         "tool": tool,
-        "mutation": cls,
         "recorded_mutation": recorded,
-        "live_mutation": live,
+        "live_mutation": None,
+        "mutation": recorded,
+        "anonymous_listing": None,
+        "anonymous_listing_detail": None,
+        "anonymous_tool_count": None,
         "called": False,
         "arguments": None,
-        "basis": "anonymous-session",
-        "anonymous_listing": session,
     }
 
+    # 1. The front door.
+    try:
+        tools = live_listing(target, anonymous=True)
+    except ListingUnavailable as exc:
+        evidence["anonymous_listing_detail"] = str(exc)
+        if exc.refused:
+            evidence["anonymous_listing"] = "refused"
+            return CheckResult("pass", FRONT_DOOR_REFUSED, evidence)
+        evidence["anonymous_listing"] = "error"
+        return not_verifiable(
+            f"the anonymous session could not be attempted: {exc}", evidence
+        )
+    evidence.update(
+        anonymous_listing="admitted",
+        anonymous_listing_detail=(
+            f"listed {len(tools)} tools to an unauthenticated caller"
+        ),
+        anonymous_tool_count=len(tools),
+    )
+
+    # 2. Behind an open front door.
+    info = find_tool(tools, tool)
+    live = classify_mutation(info)[0] if info is not None else None
+    cls = _stricter(recorded, live)
+    evidence.update(live_mutation=live, mutation=cls)
+
+    if cls in MUTATING_CLASSES:
+        return not_verifiable(MUTATING_DEFERRED, evidence)
     if cls not in CALLABLE_CLASSES:
-        return _judge_session(tool, cls, session, evidence)
+        return not_verifiable(
+            f"anonymous session admitted; the class of {tool!r} is {cls}, so it "
+            "was not called",
+            evidence,
+        )
+    if info is None:
+        return not_verifiable(
+            f"anonymous session admitted, but {tool!r} is not in the anonymous "
+            "listing; it was not called (D1 reports a tool the server no longer "
+            "lists)",
+            evidence,
+        )
 
-    if info is None and session["status"] == "error":
-        return not_verifiable(session["detail"], evidence)
-
-    schema = info.input_schema if info is not None else {}
     sentinel = ""
-    if _needs_string_sentinel(schema):
+    if _needs_string_sentinel(info.input_schema):
         try:
             sentinel = declaration_for(server).sentinels.nonexistent_id
         except DeclarationMissing as exc:
@@ -195,11 +207,11 @@ def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
                 evidence,
             )
     try:
-        arguments = sentinel_arguments(schema, sentinel)
+        arguments = sentinel_arguments(info.input_schema, sentinel)
     except NoSentinel as exc:
         return not_verifiable(str(exc), evidence)
 
-    evidence.update(called=True, arguments=arguments, basis="call")
+    evidence.update(called=True, arguments=arguments)
     result = call_tool(
         target,
         tool,
@@ -217,52 +229,15 @@ def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     if result.status == "ok":
         return CheckResult(
             "fail",
-            f"an unauthenticated tools/call of the {cls} tool {tool!r} was answered: "
-            "an anonymous caller can use it",
+            f"anonymous call succeeded on a read tool ({tool!r}): data exposure, "
+            "not mutation",
             evidence,
         )
-    if result.status == CRITICAL:
-        return CheckResult(CRITICAL, result.detail, evidence)
-    if result.raw is not None:
-        return not_verifiable(
-            f"the unauthenticated call reached {tool!r} and got a tool error "
-            f"({result.detail}); an in-tool refusal and a sentinel miss look alike",
+    if result.status == "error" and result.raw is not None:
+        return CheckResult(
+            "fail",
+            f"anonymous call reached the read tool {tool!r} and it answered with a "
+            f"tool error ({result.detail}): the tool ran for an anonymous caller",
             evidence,
         )
     return not_verifiable(f"tools/call failed: {result.detail}", evidence)
-
-
-def _judge_session(tool: str, cls: str, session: dict, evidence: dict) -> CheckResult:
-    """A1 for a tool it will not call: what the anonymous session showed."""
-    if session["status"] == "refused":
-        return CheckResult(
-            "pass",
-            f"unauthenticated session refused ({session['detail']}); the {cls} tool "
-            f"{tool!r} was not called — engine checks never call a write, "
-            "destructive or unknown tool",
-            evidence,
-        )
-    if session["status"] == "error":
-        return not_verifiable(
-            f"the anonymous listing failed: {session['detail']}", evidence
-        )
-    if not session["lists_tool"]:
-        return not_verifiable(
-            f"an anonymous session was admitted but does not list {tool!r}; hidden "
-            "is not refused, and it was not called",
-            evidence,
-        )
-    if cls in MUTATING_CLASSES:
-        return CheckResult(
-            CRITICAL,
-            f"CRITICAL: an unauthenticated session was admitted and lists the {cls} "
-            f"tool {tool!r}; nothing authenticates a caller before it. It was not "
-            "called (engine checks never call a mutating tool), so being let in "
-            "is the finding",
-            evidence,
-        )
-    return not_verifiable(
-        f"the class of {tool!r} is unknown, so it was not called; an anonymous "
-        "session was admitted and lists it",
-        evidence,
-    )

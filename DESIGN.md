@@ -228,10 +228,13 @@ human-owned fixture, for facts only a person can supply. The contract is small o
 purpose (`CheckResult`, `run_engine_check`, `run_generated_check`) and **honest
 by construction**: anything a check cannot establish — an unreachable server, a
 tool error, a missing sentinel, an unknown trait — is `not_verifiable` with the
-reason, never a pass and never an exception. Engine checks are readonly: none
-passes `allow_mutating`, so a write or destructive tool is judged from what an
-anonymous session is shown, never by calling it, and the class used is the
-stricter of the recorded and the live one. Every string in a result is scrubbed
+reason, never a pass and never an exception. Engine checks are readonly and
+**judge only what they observed**: none passes `allow_mutating`, so A1 proves the
+front door (an anonymous session refused passes every tool on the server) and
+calls only read tools behind an open one; a write or destructive tool there is
+`not_verifiable`, never `critical`, because a listing is not a call and
+`critical` means a demonstrated admission. The class used is the stricter of the
+recorded and the live one. Every string in a result is scrubbed
 of the credential and of credential-shaped text. A server is listed once per run.
 The agreement check for mutation class (B1) has a limit it states rather than
 hides: a tool whose annotation and name agree and both lie passes it, and only a
@@ -468,9 +471,10 @@ Shipped:
 - Check library (`itest/checks`, `docs/checks.md`): the `CheckResult` contract,
   `run_engine_check` / `run_generated_check` with a registry (unknown id →
   `not_verifiable`), a per-run listing cache, and the scrub rule. Engine checks
-  **A1** refuses anonymous (read tools called anonymously with sentinels;
-  mutating tools judged from the anonymous session, `critical` when it is
-  admitted and lists them), **B1** mutation class by agreement (pinned limit:
+  **A1** refuses anonymous (front door first — a refused anonymous session
+  passes every tool; behind an open one, read tools are called anonymously with
+  sentinels and mutating tools are `not_verifiable`, deferred to the active
+  tier; never `critical`), **B1** mutation class by agreement (pinned limit:
   `lookalike_read` passes), and **D1** inventory with an undeclared list, **D2**
   schema drift, **D3** description drift. `itest.probes.mcp` gained
   `list_tools(anonymous=True)` and `McpProbeError.refused` for A1.
@@ -488,6 +492,11 @@ Not yet built (do not build without explicit instruction):
   tool that lies *consistently* — `lookalike_read` declares `readOnlyHint=true`,
   is named like a read, and mutates — passes B1 agreement by design and is this
   check's fixture.
+- **A1 active** (active tier, non-production only): an anonymous `tools/call`
+  on each mutating tool behind an open front door, with sentinel arguments —
+  `critical` on admission. This is where the MCP probe's proven critical path
+  (P29's unauthenticated-call-admitted rule) belongs; the readonly A1 never says
+  `critical`.
 - Generated checks A2, A3, A4, B2, B4 (the registry exists and is empty, so
   every generated binding is `not_verifiable`, never pass).
 - Engine checks B3 (egress), C1, C2, C3: the table names them, the library has no

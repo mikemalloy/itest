@@ -52,7 +52,7 @@ The statuses:
 |---|---|
 | `pass` | The check ran and the property holds. |
 | `fail` | The check ran and the property does not hold. |
-| `critical` | An anonymous path to a write or destructive tool. Stop and escalate. |
+| `critical` | A **demonstrated** anonymous admission on a write or destructive tool — never an inference from a listing. Stop and escalate. No readonly engine check produces it; it is reserved for A1 active. |
 | `changed` | The live server differs from what the last sync recorded. Sync makes this drift. |
 | `not_verifiable` | The check could not run; the detail says why. **Never a pass.** |
 
@@ -82,7 +82,7 @@ answers — written to be printed by a future `itest explain`.
 
 | id | module | what it calls | statuses | standards |
 |---|---|---|---|---|
-| **A1** refuses anonymous | `authority.py` | anonymous `tools/list` once per server; one anonymous `tools/call` of a **read or informational** tool with sentinel arguments. Never calls a write, destructive or unknown tool. | `pass` (call or session refused), `fail` (read answered), `critical` (anonymous session admitted and lists a write/destructive tool), `not_verifiable` | OWASP Agentic ASI03; LLM06; Semgrep server tab row 4 |
+| **A1** refuses anonymous | `authority.py` | anonymous `initialize` + `tools/list` once per server (the front door); behind an admitted session, one anonymous `tools/call` of a **read or informational** tool with sentinel arguments. Never calls a write, destructive or unknown tool. | `pass` (front door refused, or the read call refused), `fail` (a read tool answered), `not_verifiable` (mutating tool behind an open door, unknown, hidden, no sentinel, transport). Never `critical`. | OWASP Agentic ASI03; LLM02; Semgrep server tab row 4 |
 | **B1** mutation class (agreement) | `blast_radius.py` | the reference listing only | `pass` (all statements agree), `changed` (live class ≠ manifest), `fail` (annotation and name disagree, unsettled), `not_verifiable` (unknown, declaration only, not listed) | OWASP Agentic ASI02; LLM06; AgBOM mutation attribute |
 | **D1** inventory | `change.py` | the reference listing; the project manifest | `pass`, `fail` (`not in tools/list; orphan`), `not_verifiable`; `evidence.undeclared` on every result | OWASP Agentic ASI04; Semgrep client tab row 14 |
 | **D2** schema drift | `change.py` | the reference listing | `pass`, `changed` (both hashes), `not_verifiable` | OWASP Agentic ASI04; Semgrep client tab rows 12, 14 |
@@ -93,16 +93,24 @@ The recipes explain each result for a reviewer:
 [`tool_mutation_class.md`](../skills/itest-implementer/references/recipes/tool_mutation_class.md),
 [`tool_provenance.md`](../skills/itest-implementer/references/recipes/tool_provenance.md).
 
-### A1 and the mutating tools
+### A1 judges only what it observed
 
-The class A1 acts on is the **stricter** of the manifest's and the live
-listing's, so a stale or edited manifest cannot talk it into calling a
-destructive tool. For a write or destructive tool it never calls anything: it
-reads the anonymous session instead. A session that is refused is a `pass`; a
-session that is admitted and lists the tool is `critical`, with
-`evidence.basis: anonymous-session` — being let in is the finding, and it is
-reached without the call the probe would need `allow_mutating` for. An
-`unknown` tool may be either, so it is not called and is `not_verifiable`.
+A1 starts at the **front door**: one anonymous `initialize` + `tools/list` per
+server. A server that refuses anonymous sessions passes A1 for every tool, with
+"server refuses anonymous sessions; per-tool call not attempted" — the common
+good case, and no tool is called. Behind an admitted session, a read or
+informational tool gets one anonymous call with sentinel arguments (refused →
+`pass`, answered → `fail`). A write or destructive tool is **not called** and is
+`not_verifiable`: "anonymous session admitted; this tool mutates, so its own
+guard can only be proven by an active-tier call on a non-production
+environment". The class used is the **stricter** of the manifest's and the live
+listing's, so a stale or edited manifest cannot talk A1 into calling a mutating
+tool; an `unknown` tool is not called either.
+
+A1 never returns `critical`. That status means a *demonstrated* anonymous
+admission on a mutating tool, and only a call can demonstrate one — which is
+**A1 active** (active tier, non-production only, sentinel arguments), not this
+check. A listing is never evidence enough.
 
 ## Sentinel rules
 
@@ -163,6 +171,9 @@ is not built; `lookalike_read` is its fixture.
 
 ## Not in this library yet
 
+- A1 active (active tier, non-production only): an anonymous call on each
+  mutating tool behind an open front door, with sentinel arguments — `critical`
+  on admission. This is where the MCP probe's proven critical path belongs.
 - B1 observed (active); A2, A3, A4, B2, B4 generated checks; B3, C1, C2 checks.
 - `itest explain <trait>` to print a check's docstring.
 - Wiring into sync, verify and the report — the tool ledger's statuses come from

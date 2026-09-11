@@ -237,59 +237,40 @@ def test_a1_a_required_parameter_with_no_sentinel_form_is_refused() -> None:
     assert "filter" in str(excinfo.value)
 
 
-def test_a1_delete_record_on_the_guarded_mount_passes(
-    project: Path, manifest_points: list[Any], reference: Any
+FRONT_DOOR = "server refuses anonymous sessions; per-tool call not attempted"
+DEFERRED = (
+    "anonymous session admitted; this tool mutates, so its own guard can only be "
+    "proven by an active-tier call on a non-production environment"
+)
+READ_TOOLS = {"get_guide", "search_records", "fetch_record", "lookalike_read", "enrich"}
+MUTATING_TOOLS = {"create_record", "update_record", "delete_record"}
+
+
+def test_a1_the_guarded_mount_passes_every_tool_at_the_front_door(
+    project: Path,
+    manifest_points: list[Any],
+    reference: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    result = run_engine_check(
-        "A1",
-        point(manifest_points, "delete_record"),
-        http_target(reference.guarded_url),
-        authenticated=False,
-    )
-    assert result.status == "pass", result.detail
-    assert result.detail.startswith("unauthenticated")
-    assert "refused" in result.detail
-    assert result.evidence["anonymous_listing"]["status"] == "refused"
-    assert result.evidence["called"] is False
+    """The anonymous session is refused, so no tool is called — read or not."""
+    calls: list[Any] = []
+    monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
+    for p in manifest_points:
+        result = run_engine_check(
+            "A1",
+            point(manifest_points, p.target),
+            http_target(reference.guarded_url),
+            authenticated=False,
+        )
+        assert result.status == "pass", (p.target, result.detail)
+        assert result.detail == FRONT_DOOR
+        assert result.evidence["anonymous_listing"] == "refused"
+        assert "401" in result.evidence["anonymous_listing_detail"]
+        assert result.evidence["called"] is False
+    assert calls == []
 
 
-def test_a1_delete_record_on_the_open_mount_is_critical(
-    project: Path, manifest_points: list[Any], reference: Any
-) -> None:
-    before = {key: dict(value) for key, value in reference.records.items()}
-    result = run_engine_check(
-        "A1",
-        point(manifest_points, "delete_record"),
-        http_target(reference.open_url),
-        authenticated=False,
-    )
-    assert result.status == "critical", result.detail
-    assert "delete_record" in result.detail
-    assert result.evidence["basis"] == "anonymous-session"
-    assert result.evidence["called"] is False
-    assert result.evidence["anonymous_listing"]["status"] == "admitted"
-    assert result.evidence["anonymous_listing"]["lists_tool"] is True
-    # Nothing was called, so nothing moved.
-    assert reference.records == before
-
-
-def test_a1_a_read_tool_on_the_guarded_mount_passes(
-    project: Path, manifest_points: list[Any], reference: Any
-) -> None:
-    result = run_engine_check(
-        "A1",
-        point(manifest_points, "fetch_record"),
-        http_target(reference.guarded_url),
-        authenticated=True,
-    )
-    assert result.status == "pass", result.detail
-    assert result.detail.startswith("unauthenticated tools/call refused: ")
-    assert "401" in result.detail
-    assert result.evidence["called"] is True
-    assert result.evidence["arguments"] == {"id": SENTINEL}
-
-
-def test_a1_a_read_tool_answered_anonymously_fails(
+def test_a1_a_read_tool_answered_on_the_open_mount_fails(
     project: Path, manifest_points: list[Any], reference: Any
 ) -> None:
     result = run_engine_check(
@@ -299,49 +280,119 @@ def test_a1_a_read_tool_answered_anonymously_fails(
         authenticated=False,
     )
     assert result.status == "fail", result.detail
-    assert "get_guide" in result.detail
-    # The anonymous listing is evidence, not the verdict.
-    listing = result.evidence["anonymous_listing"]
-    assert listing["status"] == "admitted"
-    assert listing["tool_count"] == 8
+    assert result.detail.startswith("anonymous call succeeded on a read tool")
+    assert result.evidence["anonymous_listing"] == "admitted"
+    assert result.evidence["anonymous_tool_count"] == 8
+    assert result.evidence["called"] is True
+    assert result.evidence["arguments"] == {}
 
 
-def test_a1_over_stdio_without_the_credential(
-    project: Path, manifest_points: list[Any]
-) -> None:
-    """stdio has no transport guard: the reference server answers a subprocess
-    launched without its credential. A read answered is a fail; a destructive
-    tool listed to that session is critical, and is still not called."""
-    target = stdio_target()
-    assert (
-        run_engine_check(
-            "A1", point(manifest_points, "search_records"), target, authenticated=True
-        ).status
-        == "fail"
-    )
-    destructive = run_engine_check(
-        "A1", point(manifest_points, "delete_record"), target, authenticated=True
-    )
-    assert destructive.status == "critical"
-    assert destructive.evidence["called"] is False
-
-
-def test_a1_a_tool_error_is_not_verifiable(
+def test_a1_fetch_record_on_the_open_mount_fails(
     project: Path, manifest_points: list[Any], reference: Any
 ) -> None:
-    """fetch_record answers the sentinel with a 404-shaped tool error. The call
-    was admitted, but an in-tool refusal and a sentinel miss look the same."""
+    """fetch_record answers the sentinel with a 404-shaped tool error. The
+    anonymous call reached the read tool and its code ran: that is the
+    demonstrated admission, and the detail says it was a tool error."""
     result = run_engine_check(
         "A1",
         point(manifest_points, "fetch_record"),
         http_target(reference.open_url),
         authenticated=False,
     )
-    assert result.status == "not_verifiable", result.detail
+    assert result.status == "fail", result.detail
     assert "404" in result.detail
+    assert result.evidence["arguments"] == {"id": SENTINEL}
+    assert result.evidence["call_status"] == "error"
 
 
-def test_a1_a_transport_error_is_not_verifiable(
+def test_a1_delete_record_on_the_open_mount_is_deferred_to_the_active_tier(
+    project: Path, manifest_points: list[Any], reference: Any
+) -> None:
+    before = {key: dict(value) for key, value in reference.records.items()}
+    result = run_engine_check(
+        "A1",
+        point(manifest_points, "delete_record"),
+        http_target(reference.open_url),
+        authenticated=False,
+    )
+    assert result.status == "not_verifiable", result.detail
+    assert result.detail == DEFERRED
+    assert result.evidence["anonymous_listing"] == "admitted"
+    assert result.evidence["called"] is False
+    assert reference.records == before  # nothing was called, so nothing moved
+
+
+def test_a1_every_mutating_tool_on_an_open_server_is_deferred(
+    project: Path, manifest_points: list[Any], reference: Any
+) -> None:
+    for name in sorted(MUTATING_TOOLS):
+        result = run_engine_check(
+            "A1",
+            point(manifest_points, name),
+            http_target(reference.open_url),
+            authenticated=False,
+        )
+        assert (result.status, result.detail) == ("not_verifiable", DEFERRED), name
+
+
+def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
+    project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A server can admit anonymous sessions and still refuse the call."""
+
+    def refused(*args: Any, **kwargs: Any) -> CallResult:
+        return CallResult(
+            ok=False,
+            status="refused",
+            detail="calling 'get_guide': the server refused with HTTP 403",
+        )
+
+    monkeypatch.setattr(authority, "call_tool", refused)
+    result = run_engine_check(
+        "A1", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
+    )
+    assert result.status == "pass", result.detail
+    assert result.detail.startswith("unauthenticated tools/call refused: ")
+    assert result.evidence["anonymous_listing"] == "admitted"
+
+
+def test_a1_over_stdio_without_the_credential(
+    project: Path, manifest_points: list[Any]
+) -> None:
+    """stdio has no transport guard: the reference server admits a subprocess
+    launched without its credential. A read answered is a fail; a destructive
+    tool is deferred to the active tier and is not called."""
+    target = stdio_target()
+    read = run_engine_check(
+        "A1", point(manifest_points, "search_records"), target, authenticated=True
+    )
+    assert read.status == "fail"
+    destructive = run_engine_check(
+        "A1", point(manifest_points, "delete_record"), target, authenticated=True
+    )
+    assert (destructive.status, destructive.detail) == ("not_verifiable", DEFERRED)
+    assert destructive.evidence["called"] is False
+
+
+def test_a1_never_produces_critical(
+    project: Path, manifest_points: list[Any], reference: Any
+) -> None:
+    """critical means a demonstrated admission on a mutating tool, which only an
+    active-tier call can show. The readonly A1 never says it."""
+    for target in (
+        stdio_target(),
+        http_target(reference.guarded_url),
+        http_target(reference.open_url),
+    ):
+        for p in manifest_points:
+            result = run_engine_check(
+                "A1", point(manifest_points, p.target), target, authenticated=False
+            )
+            assert result.status != "critical", (p.target, result.detail)
+    assert "CRITICAL" not in Path(authority.__file__).read_text(encoding="utf-8")
+
+
+def test_a1_a_transport_error_on_the_call_is_not_verifiable(
     project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def timed_out(*args: Any, **kwargs: Any) -> CallResult:
@@ -361,11 +412,13 @@ def test_a1_an_unreachable_server_is_not_verifiable(
     project: Path, manifest_points: list[Any]
 ) -> None:
     dead = McpTarget(kind="stdio", command=[sys.executable, "-c", "pass"])
-    result = run_engine_check(
-        "A1", point(manifest_points, "delete_record"), dead, authenticated=False
-    )
-    assert result.status == "not_verifiable"
-    assert result.evidence["anonymous_listing"]["status"] == "error"
+    for name in ("get_guide", "delete_record"):
+        result = run_engine_check(
+            "A1", point(manifest_points, name), dead, authenticated=False
+        )
+        assert result.status == "not_verifiable"
+        assert result.evidence["anonymous_listing"] == "error"
+        assert result.evidence["called"] is False
 
 
 def test_a1_without_a_declaration_there_is_no_sentinel(
@@ -394,6 +447,19 @@ def test_a1_an_unknown_class_is_never_called(
     assert result.status == "not_verifiable"
 
 
+def test_a1_a_tool_hidden_from_the_anonymous_listing_is_not_called(
+    project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
+    hidden = point(manifest_points, "get_guide")
+    hidden["target"] = "hidden_reader"
+    result = run_engine_check("A1", hidden, stdio_target(), authenticated=True)
+    assert calls == []
+    assert result.status == "not_verifiable"
+    assert "not in the anonymous listing" in result.detail
+
+
 def test_a1_the_stricter_of_recorded_and_live_class_decides(
     project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -408,7 +474,7 @@ def test_a1_the_stricter_of_recorded_and_live_class_decides(
         authenticated=True,
     )
     assert calls == []
-    assert result.status == "critical"
+    assert (result.status, result.detail) == ("not_verifiable", DEFERRED)
 
 
 # --- B1: mutation class (agreement) -------------------------------------------
@@ -771,7 +837,7 @@ def test_a_credential_echoed_by_the_server_is_scrubbed(
     result = run_engine_check(
         "A1", point(manifest_points, "fetch_record"), stdio_target(), authenticated=True
     )
-    assert result.status == "not_verifiable"
+    assert result.status == "fail"
     assert "***" in result.detail
     for text in [result.detail, *strings_in(result.evidence)]:
         assert TOKEN not in text
