@@ -44,7 +44,7 @@ from test_declarations_plan_sync import (
 
 from itest.cli import app
 from itest.core.declarations.tools import tool_point_id
-from itest.core.declarations.traits import trait_table_hash
+from itest.core.declarations.traits import load_traits, trait_table_hash
 from itest.core.manifest import load_manifest, save_manifest
 
 P30 = REPO_ROOT / "tests" / "fixtures" / "p30-manifests"
@@ -404,19 +404,102 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
     manifest = _manifest(workdir)
     assert manifest.trait_table_hash == trait_table_hash()
     assert _planned(workdir) == EXPECTED_TRAITS
-    # Every P30 entry is still registered, live, and learned which trait it
-    # covers from the id P30 gave it.
+    # Every P30 entry is still registered and learned which trait it covers
+    # from the id P30 gave it. A generated trait's stub stays live; an engine
+    # trait's is retired — the engine module is what runs that trait now.
+    kinds = {t.id: t.kind for t in load_traits().traits}
     legacy_ids = {t.id for t in legacy.tests}
     assert legacy_ids <= {t.id for t in manifest.tests}
     for entry in manifest.tests:
         if entry.id in legacy_ids:
             assert entry.trait == entry.test_name.split("_")[1].upper()
-            assert entry.retired is False
+            assert entry.retired is (kinds[entry.trait] == "engine")
     # The new A3 bindings went to the server's own directory, beside its
     # conftest; nothing P30 wrote was touched.
     assert len(_functions(workdir / ACTIVE_FILE)) == 8
     for path, text in legacy_files.items():
         assert (workdir / path).read_text(encoding="utf-8") == text
+
+
+#: The P30 checkout's per-tool stubs for traits that are engine traits now:
+#: A1, B1, B3, C1, C2 and D1-D3 on the tools each applied to (66 stubs, less
+#: the 11 for the generated A2, B2 and B4).
+P30_ENGINE_STUBS = 55
+P30_STUB_FILE = "itest_tests/test_tools_reference_mcp.py"
+
+
+def test_a_p30_per_tool_engine_stub_is_retired_and_never_run(workdir: Path) -> None:
+    """Before the engine module existed, sync wrote a per-tool stub for every
+    trait. For an engine trait that stub is superseded: the first sync retires
+    it in place — kept on disk, kept in the manifest, never run — and the
+    engine module is the only thing that runs the trait."""
+    _p30_checkout(workdir, "reference-mcp")
+    _declare(workdir)
+    stub_file = workdir / P30_STUB_FILE
+    before = stub_file.read_text(encoding="utf-8")
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert f"retired {P30_ENGINE_STUBS} check(s)" in result.output
+
+    by_name = {t.test_name: t for t in _manifest(workdir).tests}
+    stub = by_name["test_a1_get_guide"]
+    assert stub.retired is True
+    assert stub.status != "orphaned"
+    assert stub_file.read_text(encoding="utf-8") == before  # nothing deleted
+    engine = by_name["test_engine[get_guide-A1]"]
+    assert engine.path == ENGINE_FILE
+    assert engine.retired is False
+
+    verify = runner.invoke(
+        app, ["verify", "--environment", "staging", "--output", "json"]
+    )
+    assert verify.exit_code in (0, 1), verify.output
+    payload = json.loads(verify.output)
+    outcomes = {t["canonical"]: t["outcome"] for t in payload["tests"]}
+    assert outcomes[f"{P30_STUB_FILE}::test_a1_get_guide"] == "not_applicable"
+    retired = [t for t in _manifest(workdir).tests if t.retired]
+    assert len(retired) == P30_ENGINE_STUBS
+    assert {outcomes[t.canonical] for t in retired} == {"not_applicable"}
+    checks = {
+        (tool["name"], check["trait"]): check
+        for server in payload["tools"]["servers"]
+        for tool in server["tools"]
+        for check in tool["checks"]
+    }
+    assert checks[("get_guide", "A1")]["test"] == (
+        f"{ENGINE_FILE}::test_engine[get_guide-A1]"
+    )
+
+    again = _sync()
+    assert again.exit_code == 0, again.output
+    assert "restored" not in again.output
+    assert sum(1 for t in _manifest(workdir).tests if t.retired) == P30_ENGINE_STUBS
+
+
+def test_a_no_op_sync_retires_an_engine_stub_an_earlier_sync_left_live(
+    workdir: Path,
+) -> None:
+    """A checkout synced before this rule existed has traits_planned recorded
+    and the P30 engine stubs still live, so its plan is a no-op — and the stubs
+    are retired anyway."""
+    _p30_checkout(workdir, "reference-mcp")
+    _declare(workdir)
+    assert _sync().exit_code == 0
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_file)
+    for test in manifest.tests:
+        test.retired = False  # what the earlier sync left behind
+    save_manifest(manifest, manifest_file)
+
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    assert "No changes to apply" not in result.output
+    assert (
+        f"Retired {P30_ENGINE_STUBS} per-tool stub(s) the engine module supersedes."
+        in result.output
+    )
+    assert sum(1 for t in _manifest(workdir).tests if t.retired) == P30_ENGINE_STUBS
 
 
 def test_a_declaration_free_p30_manifest_round_trips_byte_for_byte(

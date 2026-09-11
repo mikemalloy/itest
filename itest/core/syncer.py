@@ -481,6 +481,60 @@ def _record_entry_traits(manifest: Manifest) -> None:
             test.trait = planner.trait_from_entry(test)
 
 
+def _trait_kinds() -> dict[str, str]:
+    """trait id -> ``engine`` | ``generated``, from the table. Loaded lazily."""
+    from itest.core.declarations.traits import load_traits
+
+    return {trait.id: trait.kind for trait in load_traits().traits}
+
+
+def _superseded(test: TestEntry, kinds: dict[str, str]) -> bool:
+    """A per-tool stub sync wrote for a trait the engine module now runs.
+
+    Before the engine module existed, sync wrote one stub per (tool, trait) for
+    every trait, engine ones included (entry id ``t-<point>-<trait>``). Such a
+    stub would run as a skip beside the engine case that actually checks the
+    trait, so it is retired in place. Only sync's own per-tool stubs match: an
+    engine case (``e-`` id) and a test a human registered keep running.
+    """
+    return (
+        test.trait is not None
+        and kinds.get(test.trait) == "engine"
+        and not _is_engine_case(test)
+        and test.id == f"t-{test.point_id}-{test.trait.lower()}"
+    )
+
+
+def retire_superseded(base_dir: Path) -> int:
+    """Retire superseded per-tool engine stubs when the changeset is a no-op.
+
+    A checkout synced before this rule records ``traits_planned`` already, so
+    its plan moves nothing and ``apply`` never runs — while its P30 engine stubs
+    are still live. Returns how many were retired; writes only when one was.
+    """
+    manifest_file = planner.manifest_path(base_dir)
+    if not manifest_file.exists():
+        return 0
+    manifest = load_manifest(manifest_file)
+    tool_ids = {p.id for p in manifest.points if p.type == _TOOL_POINT_TYPE}
+    if not tool_ids:
+        return 0
+    kinds = _trait_kinds()
+    retired = 0
+    for test in manifest.tests:
+        if (
+            test.point_id in tool_ids
+            and test.status != "orphaned"
+            and not test.retired
+            and _superseded(test, kinds)
+        ):
+            test.retired = True
+            retired += 1
+    if retired:
+        save_manifest(manifest, manifest_file)
+    return retired
+
+
 def _apply_trait_lifecycle(manifest: Manifest, changeset: Changeset) -> tuple[int, int]:
     """Retire the tests of traits that stopped applying; restore returning ones.
 
@@ -488,13 +542,20 @@ def _apply_trait_lifecycle(manifest: Manifest, changeset: Changeset) -> tuple[in
     those), so an unreachable server's held tests stay as they were. Returns
     ``(retired, restored)``. Neither touches a file: retirement is a manifest
     statement, and the stub stays on disk exactly as it was.
+
+    A per-tool stub for a trait that is now an engine trait (see
+    :func:`_superseded`) is retired even though its trait applies — the engine
+    module runs that trait — and is never restored.
     """
     retired = restored = 0
+    if not changeset.traits_planned:
+        return retired, restored
+    kinds = _trait_kinds()
     for test in manifest.tests:
         planned = changeset.traits_planned.get(test.point_id)
         if planned is None or test.trait is None or test.status == "orphaned":
             continue
-        applies = test.trait in planned
+        applies = test.trait in planned and not _superseded(test, kinds)
         if applies and test.retired:
             test.retired = False
             restored += 1

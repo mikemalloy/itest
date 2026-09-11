@@ -127,6 +127,11 @@ Trait changes (2):
   never runs it and reports it as `not_applicable`. If the trait applies again,
   the same entry comes back under the same id. Nothing generated is ever
   deleted.
+- **A per-tool stub for an engine trait** — what sync wrote for every trait
+  before the engine module existed — is retired in place the same way, even
+  though its trait still applies: the engine module is the only thing that runs
+  that trait, and the old stub would only ever run as a skip beside it. A
+  no-op sync retires one too, and it is never restored.
 - **A tool's mutation class** is a drift attribute, along with `schema_hash`,
   `description_hash` and `annotations_hash`. An annotation flip is `changed`
   (`mutation: read → destructive (annotation)`), and the traits it moves are

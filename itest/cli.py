@@ -159,16 +159,21 @@ def sync(
         # still has to be recorded: status is derived from the body, not from
         # whether the plan moved. Likewise an owned binding frozen against a
         # schema the manifest has since moved past is ITest's to regenerate.
+        # And a per-tool stub for a trait the engine module now runs is
+        # retired even when no plan moved.
         regenerated = syncer.regenerate(base_dir)
+        superseded = syncer.retire_superseded(base_dir)
         reclassified = syncer.reconcile(base_dir)
         if regenerated:
             echo(
                 f"Regenerated {regenerated} check(s) against their tool's "
                 "current schema."
             )
+        if superseded:
+            echo(f"Retired {superseded} per-tool stub(s) the engine module supersedes.")
         if reclassified:
             echo(f"Reclassified {reclassified} test(s) from their bodies.")
-        if not (regenerated or reclassified):
+        if not (regenerated or superseded or reclassified):
             echo("No changes to apply. Manifest is up to date.")
         return
 

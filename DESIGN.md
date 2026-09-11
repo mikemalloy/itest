@@ -297,7 +297,9 @@ mutation class as detected (the resolved class and an `annotations_hash`) is a
 drift attribute: an annotation flip is `changed`, never a quiet `unchanged`. A
 trait that stops applying **retires** its test (`retired: true`: kept on disk,
 never run, reported `not_applicable`) and restores the same entry if it applies
-again. `itest traits` / `itest recipes` print the table, one tool's decisions,
+again. A P30-era per-tool stub for a trait that is now an engine trait is
+retired the same way and never restored: the engine module is the only thing
+that runs an engine trait. `itest traits` / `itest recipes` print the table, one tool's decisions,
 and the recipes it names, from the manifest and the table alone.
 
 ### Engine checks and generated checks
