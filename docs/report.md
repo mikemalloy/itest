@@ -6,11 +6,20 @@ your data by your pipeline** — there is no sample content anywhere on the page
 
 ```sh
 itest report --html                          # runs verify, writes readiness.html
-itest report --html --out release.html
+itest report --html --environment staging    # runs verify as `verify --environment staging`
+itest report --html --out release.html       # --out is the path flag (as on `redact`)
 itest report --from verify.json              # render a run you already have
 itest report --since .itest/prev-manifest.yaml   # adds trends and the since-line
 itest report --redact                        # pseudonymized account ids
 ```
+
+`--environment` is passed to the verify the report runs, with the same policy
+and binding resolution and the same refusals as `itest verify --environment`:
+an environment the policy does not define, or a production one that lists the
+active tier, exits 2 and writes nothing. It cannot be combined with `--from`,
+whose document already records where it ran. `--output PATH` is a deprecated
+alias for `--out` for one release (on `plan` and `verify`, `--output` is a
+format), and warns.
 
 Exit code is 0 whenever the page renders. **The verdict never becomes an exit
 code** — that is `itest verify`'s job, and a report command that failed the

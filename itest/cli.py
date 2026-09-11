@@ -252,8 +252,22 @@ def report(
         True, "--html", help="Render the HTML readiness page (the only format today)."
     ),
     # B008: see the note on `plan` above — typer requires the call here.
-    out: Path = typer.Option(  # noqa: B008
-        Path("readiness.html"), "--out", help="Where to write the page."
+    out: Path | None = typer.Option(  # noqa: B008
+        None, "--out", help="Where to write the page. Default: readiness.html."
+    ),
+    # `--out` is the file-path flag here and on `redact`; `--output` means an
+    # output *format* on plan and verify. `report --output PATH` is accepted for
+    # one release, with a warning, then removed.
+    output_path: Path | None = typer.Option(  # noqa: B008
+        None, "--output", hidden=True, help="Deprecated: use --out."
+    ),
+    environment: str | None = typer.Option(
+        None,
+        "--environment",
+        help=(
+            "Environment the report's verify runs as, exactly as "
+            "`itest verify --environment`; overrides the .itest/environment binding."
+        ),
     ),
     from_json: Path | None = typer.Option(  # noqa: B008
         None,
@@ -279,6 +293,30 @@ def report(
     from itest.report import model as report_model
     from itest.report import render as report_render
 
+    if output_path is not None:
+        if out is not None and out != output_path:
+            echo(
+                f"--out {out} and --output {output_path} name different files. "
+                "Pass --out alone: --output is its deprecated alias.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        typer.echo(
+            "warning: `itest report --output` is deprecated and will be removed in "
+            "the next release; use --out (on plan and verify, --output is a format).",
+            err=True,
+        )
+        out = output_path
+    out = out if out is not None else Path("readiness.html")
+    if environment is not None and from_json is not None:
+        echo(
+            "--environment chooses where the report's own verify runs; --from "
+            "renders a run that already happened, whose environment is in the "
+            "document. Pass one or the other.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
     base_dir = Path.cwd()
     manifest_file = manifest or planner.manifest_path(base_dir)
     if not manifest_file.exists():
@@ -291,7 +329,10 @@ def report(
             # page and that command can never disagree about a run.
             document = json.loads(
                 verifier.run_verify(
-                    base_dir, output="json", redact_accounts=redact
+                    base_dir,
+                    output="json",
+                    redact_accounts=redact,
+                    environment=environment,
                 ).model_dump_json()
             )
         else:

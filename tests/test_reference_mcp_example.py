@@ -216,12 +216,29 @@ def test_reference_mcp_runs_plan_sync_verify_report_from_its_own_directory(
 
     # report: a page naming all eight tools under a verdict band.
     page = tmp_path / "readiness.html"
-    report = runner.invoke(app, ["report", "--html", "--out", str(page)])
+    # The page reflects the environment verified: report runs its verify in
+    # staging too, so the active-tier checks are attempted, never held out.
+    report = runner.invoke(
+        app, ["report", "--html", "--environment", "staging", "--out", str(page)]
+    )
     assert report.exit_code == 0, report.output
     html = page.read_text(encoding="utf-8")
     for tool in TOOLS:
         assert tool in html, tool
-    verdict = extract_blocks(html)["PAGE"]["verdict"]
+    blocks = extract_blocks(html)
+    verdict = blocks["PAGE"]["verdict"]
     assert verdict["word"] in ("VERIFIED", "AT RISK", "BLOCKED")
     assert f"Verdict: {verdict['word']}" in report.output
     assert 'class="verdict' in html
+    assert "<b>staging</b>" in verdict["sub"]
+    assert "no environment bound" not in verdict["sub"]
+    cells = [
+        cell["txt"]
+        for group in blocks["TOOLS"]
+        for row in group["rows"]
+        for cell in row["cells"]
+        if cell
+    ]
+    assert cells and "HELD OUT" not in cells
+    assert "NOT RUN" in cells or "NOT VERIFIABLE" in cells  # active tier attempted
+

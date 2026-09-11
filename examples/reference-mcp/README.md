@@ -84,7 +84,7 @@ export REFERENCE_MCP_TOKEN=dry-run-token   # a name the declaration reads; any v
 itest plan                                  # eight tools, no --tf-json
 itest sync                                  # engine modules, bindings, your conftest.py
 itest verify --environment staging          # staging permits the active tier
-itest report --html --out readiness.html
+itest report --html --environment staging --out readiness.html
 ```
 
 The declaration's `[python, server.py]` launches `server.py` from this
