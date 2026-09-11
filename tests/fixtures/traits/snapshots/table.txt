@@ -1,17 +1,17 @@
 Trait table d6ca53720c12: 14 traits in 4 families (9 engine, 5 generated).
 
-  ID                                  FAMILY        NAME                         KIND       TIER      APPLIES WHEN                                                  RECIPE
-  authority.anonymous                 Authority     refuses anonymous            engine     readonly  always                                                        tool_authn.md
-  authority.tenant_isolation          Authority     tenant isolation             generated  active    auth.second_tenant_env present and mutation != informational  tool_isolation.md
-  authority.backing_least_privilege   Authority     acts as declared identity    generated  active    identity.runs_as present                                      tool_identity.md
-  authority.delegation                Authority     caller identity passthrough  generated  active    identity.runs_as == passthrough                               tool_identity.md
-  blast.mutation_class                Blast radius  mutation class               engine     readonly  always                                                        tool_mutation_class.md
-  blast.destructive_gating            Blast radius  destructive gating           generated  active    mutation == destructive                                       tool_gating.md
-  blast.egress                        Blast radius  external egress              engine     readonly  egress != none                                                tool_egress.md
-  blast.audit                         Blast radius  audit record                 generated  active    mutation in [write, destructive] and audit.sink present       tool_audit.md
-  containment.parameter_scope         Containment   parameter scope              engine     active    mutation != informational                                     tool_containment.md
-  containment.expression_passthrough  Containment   expression passthrough       engine     active    has_free_form_input                                           tool_containment.md
-  containment.output_hygiene          Containment   output hygiene               engine     readonly  mutation != informational                                     tool_containment.md
-  change.inventory                    Change        inventory                    engine     readonly  always                                                        tool_provenance.md
-  change.schema_drift                 Change        schema drift                 engine     readonly  always                                                        tool_provenance.md
-  change.description_drift            Change        description drift            engine     readonly  always                                                        tool_provenance.md
+  SLUG                                CODE       FAMILY        KIND       TIER      APPLIES WHEN                                                  STANDARDS                        RECIPE
+  authority.anonymous                 AUTH-1     Authority     engine     readonly  always                                                        ASI03, LLM02, semgrep-server-4   tool_authn.md
+  authority.tenant_isolation          AUTH-2     Authority     generated  active    auth.second_tenant_env present and mutation != informational  —                                tool_isolation.md
+  authority.backing_least_privilege   AUTH-3     Authority     generated  active    identity.runs_as present                                      —                                tool_identity.md
+  authority.delegation                AUTH-4     Authority     generated  active    identity.runs_as == passthrough                               —                                tool_identity.md
+  blast.mutation_class                BLAST-1    Blast radius  engine     readonly  always                                                        ASI02, LLM06                     tool_mutation_class.md
+  blast.destructive_gating            BLAST-2    Blast radius  generated  active    mutation == destructive                                       —                                tool_gating.md
+  blast.egress                        BLAST-3    Blast radius  engine     readonly  egress != none                                                —                                tool_egress.md
+  blast.audit                         BLAST-4    Blast radius  generated  active    mutation in [write, destructive] and audit.sink present       —                                tool_audit.md
+  containment.parameter_scope         CONTAIN-1  Containment   engine     active    mutation != informational                                     —                                tool_containment.md
+  containment.expression_passthrough  CONTAIN-2  Containment   engine     active    has_free_form_input                                           —                                tool_containment.md
+  containment.output_hygiene          CONTAIN-3  Containment   engine     readonly  mutation != informational                                     —                                tool_containment.md
+  change.inventory                    CHANGE-1   Change        engine     readonly  always                                                        ASI04, LLM03, semgrep-client-14  tool_provenance.md
+  change.schema_drift                 CHANGE-2   Change        engine     readonly  always                                                        ASI04, LLM03                     tool_provenance.md
+  change.description_drift            CHANGE-3   Change        engine     readonly  always                                                        ASI04, LLM01, semgrep-client-12  tool_provenance.md

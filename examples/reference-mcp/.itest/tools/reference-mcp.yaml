@@ -28,8 +28,8 @@ auth:
   scheme: bearer
   credential_env: REFERENCE_MCP_TOKEN
   # A second tenant's credential. Its presence is what makes the tenant
-  # isolation trait (A2) applicable at all: with one identity there is nothing
-  # to cross. Leave it out and that check is not generated, rather than
+  # isolation trait (authority.tenant_isolation) applicable at all: with one
+  # identity there is nothing to cross. Leave it out and that check is not generated, rather than
   # generated and quietly passing.
   second_tenant_env: REFERENCE_MCP_TOKEN_TENANT_B
 
@@ -44,8 +44,8 @@ identity:
 
 audit:
   # Where a mutation is recorded. Its presence is what makes the audit trait
-  # (B4) applicable; a server with nowhere to write an audit record gets no
-  # audit check rather than a check that asserts nothing.
+  # (blast.audit) applicable; a server with nowhere to write an audit record
+  # gets no audit check rather than a check that asserts nothing.
   sink: stderr-json
 
 approval:
@@ -86,7 +86,7 @@ tools:
     # The one declared egress edge: it describes an external data provider.
     # (The reference implementation calls nothing — an example that phoned home
     # would make the suite depend on the network.) Declaring it is what makes
-    # the egress trait (B3) applicable to this tool and no other.
+    # the egress trait (blast.egress) applicable to this tool and no other.
     egress:
       to: enrichment-provider.example
       data: [email]
@@ -96,4 +96,4 @@ tools:
   # in the tool listing disagrees with anything else, so detection here is
   # correct to call it a read and the cross-check has nothing to flag. Catching
   # it needs a call and a look at the store afterwards — a behavioural check
-  # (P31's B1 recipe), not a declaration. Do not "fix" this by declaring it.
+  # (the active-tier "mutation class observed" check), not a declaration. Do not "fix" this by declaring it.

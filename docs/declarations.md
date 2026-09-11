@@ -217,7 +217,7 @@ every tool's trait set from the current table and the tool's current
 attributes, and compares it with the set the manifest recorded
 (`traits_planned`). A trait that newly applies gains a check. A trait that
 stops applying has its check retired: kept on disk, never run, and reported as
-`not_applicable`. The plan lists each change (`+A2 on server/tool (rule: ...)`).
+`not_applicable`. The plan lists each change (`+authority.tenant_isolation on server/tool (rule: ...)`).
 Engine traits run from one parametrized module per server. Generated traits get
 one thin binding per tool, fed by fixtures in a `conftest.py` that is yours.
 [docs/traits.md](traits.md) covers the table, what a sync does when it changes,

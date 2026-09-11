@@ -75,7 +75,7 @@ def test_traits_prints_the_table(tmp_path: Path, monkeypatch) -> None:
     )
     for column in (
         "Blast radius",
-        "destructive gating",
+        "BLAST-2",
         "generated",
         "active",
         "mutation == destructive",
@@ -98,10 +98,12 @@ def test_traits_json_is_the_table(tmp_path: Path, monkeypatch) -> None:
         "id": "authority.anonymous",
         "family": "authority",
         "family_name": "Authority",
+        "code": "AUTH-1",
         "name": "refuses anonymous",
         "kind": "engine",
         "tier": "readonly",
         "applies_when": "always",
+        "standards": ["ASI03", "LLM02", "semgrep-server-4"],
         "recipe": "tool_authn.md",
     }
 
@@ -275,3 +277,62 @@ def test_recipes_default_search_finds_a_checkout_of_the_skill(
     assert "in skills/itest-implementer/references/recipes:" in result.output
     gating = next(line for line in result.output.splitlines() if "tool_gating" in line)
     assert "present" in gating
+
+
+# --- slugs, codes and standards -------------------------------------------------
+
+
+def test_the_table_shows_slug_code_family_kind_tier_rule_standards_recipe(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = _traits()
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    header = lines[2].split()
+    assert header[:2] == ["SLUG", "CODE"]
+    assert " ".join(header) == (
+        "SLUG CODE FAMILY KIND TIER APPLIES WHEN STANDARDS RECIPE"
+    )
+    anonymous = next(
+        line for line in lines if line.lstrip().startswith("authority.anonymous ")
+    )
+    assert "AUTH-1" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    gating = next(
+        line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
+    )
+    assert "BLAST-2" in gating and "—" in gating  # no mapping yet, said so
+
+
+def test_traits_json_carries_code_and_standards(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    payload = json.loads(_traits("--json").output)
+    by_id = {t["id"]: t for t in payload["traits"]}
+    assert by_id["change.description_drift"]["code"] == "CHANGE-3"
+    assert by_id["change.description_drift"]["standards"] == [
+        "ASI04",
+        "LLM01",
+        "semgrep-client-12",
+    ]
+    assert by_id["blast.egress"]["standards"] == []
+
+
+def test_traits_for_shows_each_decision_with_its_rule_and_standards(
+    synced: Path,
+) -> None:
+    result = _traits("--for", "reference-mcp/get_guide")
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    anonymous = next(line for line in lines if "authority.anonymous " in line)
+    assert anonymous.lstrip().startswith("APPLIES")
+    assert "AUTH-1" in anonymous and "rule: always" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    isolation = next(line for line in lines if "authority.tenant_isolation " in line)
+    assert isolation.lstrip().startswith("does not apply")
+    assert "rule: auth.second_tenant_env present" in isolation
+
+    payload = json.loads(_traits("--for", "reference-mcp/get_guide", "--json").output)
+    first = payload["traits"][0]
+    assert (first["id"], first["code"]) == ("authority.anonymous", "AUTH-1")
+    assert first["standards"] == ["ASI03", "LLM02", "semgrep-server-4"]

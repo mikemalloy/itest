@@ -2,17 +2,17 @@ reference-mcp/delete_record: destructive (detected) [approval confirm_param]
   id=49dc4907b3ff  declared in .itest/tools/reference-mcp.yaml
   12 of 14 traits apply (table d6ca53720c12), decided from the manifest's recorded attributes.
 
-  APPLIES          authority.anonymous                 refuses anonymous            engine     readonly  rule: always
-  APPLIES          authority.tenant_isolation          tenant isolation             generated  active    rule: auth.second_tenant_env present and mutation != informational
-  APPLIES          authority.backing_least_privilege   acts as declared identity    generated  active    rule: identity.runs_as present
-  does not apply   authority.delegation                caller identity passthrough  generated  active    rule: identity.runs_as == passthrough
-  APPLIES          blast.mutation_class                mutation class               engine     readonly  rule: always
-  APPLIES          blast.destructive_gating            destructive gating           generated  active    rule: mutation == destructive
-  does not apply   blast.egress                        external egress              engine     readonly  rule: egress != none
-  APPLIES          blast.audit                         audit record                 generated  active    rule: mutation in [write, destructive] and audit.sink present
-  APPLIES          containment.parameter_scope         parameter scope              engine     active    rule: mutation != informational
-  APPLIES          containment.expression_passthrough  expression passthrough       engine     active    rule: has_free_form_input
-  APPLIES          containment.output_hygiene          output hygiene               engine     readonly  rule: mutation != informational
-  APPLIES          change.inventory                    inventory                    engine     readonly  rule: always
-  APPLIES          change.schema_drift                 schema drift                 engine     readonly  rule: always
-  APPLIES          change.description_drift            description drift            engine     readonly  rule: always
+  APPLIES          authority.anonymous                 AUTH-1     refuses anonymous            engine     readonly  rule: always                                                        ASI03, LLM02, semgrep-server-4
+  APPLIES          authority.tenant_isolation          AUTH-2     tenant isolation             generated  active    rule: auth.second_tenant_env present and mutation != informational  —
+  APPLIES          authority.backing_least_privilege   AUTH-3     acts as declared identity    generated  active    rule: identity.runs_as present                                      —
+  does not apply   authority.delegation                AUTH-4     caller identity passthrough  generated  active    rule: identity.runs_as == passthrough                               —
+  APPLIES          blast.mutation_class                BLAST-1    mutation class               engine     readonly  rule: always                                                        ASI02, LLM06
+  APPLIES          blast.destructive_gating            BLAST-2    destructive gating           generated  active    rule: mutation == destructive                                       —
+  does not apply   blast.egress                        BLAST-3    external egress              engine     readonly  rule: egress != none                                                —
+  APPLIES          blast.audit                         BLAST-4    audit record                 generated  active    rule: mutation in [write, destructive] and audit.sink present       —
+  APPLIES          containment.parameter_scope         CONTAIN-1  parameter scope              engine     active    rule: mutation != informational                                     —
+  APPLIES          containment.expression_passthrough  CONTAIN-2  expression passthrough       engine     active    rule: has_free_form_input                                           —
+  APPLIES          containment.output_hygiene          CONTAIN-3  output hygiene               engine     readonly  rule: mutation != informational                                     —
+  APPLIES          change.inventory                    CHANGE-1   inventory                    engine     readonly  rule: always                                                        ASI04, LLM03, semgrep-client-14
+  APPLIES          change.schema_drift                 CHANGE-2   schema drift                 engine     readonly  rule: always                                                        ASI04, LLM03
+  APPLIES          change.description_drift            CHANGE-3   description drift            engine     readonly  rule: always                                                        ASI04, LLM01, semgrep-client-12

@@ -17,29 +17,71 @@ The governing principle:
 version: 1
 
 families:
-  A: Authority
-  B: Blast radius
-  C: Containment
-  D: Change
+  authority: Authority
+  blast: Blast radius
+  containment: Containment
+  change: Change
 
 traits:
-  - id: B2                         # a family letter and a number; unique
-    family: B                      # must be one of `families`
+  - id: blast.destructive_gating   # <family>.<slug>; unique; the identity everywhere
+    code: BLAST-2                  # a display label for narrow columns; unique
+    family: blast                  # must be one of `families`, and the id's prefix
     name: destructive gating
     applies_when: mutation == destructive
     tier: active                   # static | readonly | active (the environment policy's tiers)
     kind: generated                # engine | generated
     recipe: tool_gating.md         # the skill file that says how the check works
+    standards: []                  # the published ids the trait answers; [] until confident
 ```
 
 | column | meaning |
 |---|---|
-| `id` | The trait's address. It appears in stub names, docstrings, the manifest and the ledger. |
-| `family` | Groups traits on the readiness page. Must be one of the table's `families`. |
+| `id` | The trait's identity: `<family>.<slug>`. It appears in the manifest, the ledger, docstrings, and — with the dot written `__` where a name cannot hold one — in binding and fixture names (`test_delete_record__blast__destructive_gating`, `blast__destructive_gating_fixtures`). |
+| `code` | A short display label (`AUTH-1`, `BLAST-2`, `CONTAIN-3`, `CHANGE-1`) for narrow table columns. Never an identity, never a dispatch key. |
+| `family` | Groups traits on the readiness page. Must be one of the table's `families`, and the first half of the id. |
 | `applies_when` | When the trait applies to a tool (grammar below). |
 | `tier` | What the check runs as, and what the environment policy gates on. Active-tier checks live in their own file. |
 | `kind` | Who runs the check (see below). |
 | `recipe` | The file in the bundled skill (`itest-implementer/references/recipes/`) that describes the check. |
+| `standards` | The published ids the trait answers, taken from its recipe's "Standards mapping" section. Empty until a mapping is confident — never an invented id. |
+
+### Ids, codes and standards
+
+The shipped traits, and what each answers:
+
+| id | code | standards |
+|---|---|---|
+| `authority.anonymous` | AUTH-1 | ASI03, LLM02, semgrep-server-4 |
+| `authority.tenant_isolation` | AUTH-2 | — |
+| `authority.backing_least_privilege` | AUTH-3 | — |
+| `authority.delegation` | AUTH-4 | — |
+| `blast.mutation_class` | BLAST-1 | ASI02, LLM06 |
+| `blast.destructive_gating` | BLAST-2 | — |
+| `blast.egress` | BLAST-3 | — |
+| `blast.audit` | BLAST-4 | — |
+| `containment.parameter_scope` | CONTAIN-1 | — |
+| `containment.expression_passthrough` | CONTAIN-2 | — |
+| `containment.output_hygiene` | CONTAIN-3 | — |
+| `change.inventory` | CHANGE-1 | ASI04, LLM03, semgrep-client-14 |
+| `change.schema_drift` | CHANGE-2 | ASI04, LLM03 |
+| `change.description_drift` | CHANGE-3 | ASI04, LLM01, semgrep-client-12 |
+
+A standards entry is one of: `ASI..` (OWASP Top 10 for Agentic Applications),
+`LLM..` (OWASP Top 10 for LLM Applications), `semgrep-<tab>-<row>` (the Semgrep
+MCP security cheatsheet), `CWE-..`, or `ACS-..` (the OWASP Agent Control
+Standard). The traits with a dash have no recipe yet, so nothing has been mapped
+with confidence; they get one when their recipe ships.
+
+**Old ids.** The first tables used AN-style ids (`A1`, `B2`, …). They read as
+OWASP ids to a security reader and were ours, so they were renamed; the map is
+`itest/traits/ids.py`, and it is a rename, not a trait rule. Anything written
+with an old id still loads, mapped to the new one on read: a manifest
+(`traits_planned`, each test's `trait`, and the engine cases' names, since the
+engine module names no trait itself), a verify ledger read by `itest report
+--from`, a declaration's `traits:` list, and a binding calling
+`run_generated_check("B2", ...)`. The next sync — a no-op one included — writes
+the manifest back with the new ids. A binding's function name is a function on
+disk, so it keeps the name it was generated with.
 
 ### `kind`: engine or generated
 
@@ -68,7 +110,12 @@ traits:
 The loader rejects the whole table, naming the trait and the bad value, when it
 finds any of these:
 
-- a duplicate id
+- a duplicate id, or an id that is not `<family>.<slug>` in lower case (an old
+  `A1`-style id included) or does not start with its own family
+- a duplicate code, or one that is not upper-case letters, a hyphen and a
+  number
+- a `standards` entry outside the known prefixes (`ASI`, `LLM`, `semgrep-`,
+  `CWE-`, `ACS-`) — an empty list is fine
 - an unknown family
 - a `kind` other than `engine` or `generated`
 - a `tier` the environment policy does not define
@@ -114,8 +161,8 @@ tool's current attributes. It compares the result with that tool's
 ```
 Trait changes (2):
   trait table changed (5458224b3c52 → 9c1d0e7a2b44): 1 tools gained checks, 1 tools retired checks.
-  +A2 on reference-mcp/get_guide (rule: always)
-  −B2 on reference-mcp/delete_record (mutation changed)
+  +authority.tenant_isolation on reference-mcp/get_guide (rule: always)
+  −blast.destructive_gating on reference-mcp/delete_record (mutation changed)
 ```
 
 - **A generated trait that newly applies**: sync appends a binding, unless the
@@ -176,8 +223,10 @@ summary, for example `reference-mcp needs attention: 3 hand-edited, 1 stale`.
 ## Commands
 
 ```
-itest traits                            # the table, headed by its hash
-itest traits --for <server>/<tool>      # every trait decided for one tool, and why
+itest traits                            # the table, headed by its hash: slug, code, family,
+                                        #   kind, tier, applies_when, standards, recipe
+itest traits --for <server>/<tool>      # every trait decided for one tool: APPLIES or does
+                                        #   not apply, the rule that decided, the standards
 itest traits --json                     # either of the above as JSON
 itest recipes [--recipes-dir DIR]       # every recipe the table names: path, present/missing, traits
 itest recipes --json

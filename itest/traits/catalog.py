@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from itest.core.declarations.traits import (
+    Trait,
     TraitDecision,
     TraitTable,
     trait_table_hash,
@@ -39,6 +40,12 @@ def _columns(rows: list[list[str]], indent: str = "  ") -> list[str]:
 # --- the table ------------------------------------------------------------------
 
 
+def _standards(trait: Trait) -> str:
+    """The published ids a trait answers, or a dash: no mapping is not a gap
+    to be filled with a guess."""
+    return ", ".join(trait.standards) or "—"
+
+
 def table_json(table: TraitTable) -> dict:
     return {
         "trait_table_hash": trait_table_hash(table),
@@ -46,12 +53,14 @@ def table_json(table: TraitTable) -> dict:
         "traits": [
             {
                 "id": t.id,
+                "code": t.code,
                 "family": t.family,
                 "family_name": table.families.get(t.family, t.family),
                 "name": t.name,
                 "kind": t.kind,
                 "tier": t.tier,
                 "applies_when": t.applies_when,
+                "standards": list(t.standards),
                 "recipe": t.recipe,
             }
             for t in table.traits
@@ -60,6 +69,8 @@ def table_json(table: TraitTable) -> dict:
 
 
 def render_table(table: TraitTable) -> str:
+    """The table: the slug is the identity, the code a short label beside it,
+    and the standards the published ids each trait answers."""
     kinds = [t.kind for t in table.traits]
     out = [
         f"Trait table {trait_table_hash(table)}: {len(table.traits)} traits in "
@@ -67,15 +78,27 @@ def render_table(table: TraitTable) -> str:
         f"{kinds.count('generated')} generated).",
         "",
     ]
-    rows = [["ID", "FAMILY", "NAME", "KIND", "TIER", "APPLIES WHEN", "RECIPE"]]
+    rows = [
+        [
+            "SLUG",
+            "CODE",
+            "FAMILY",
+            "KIND",
+            "TIER",
+            "APPLIES WHEN",
+            "STANDARDS",
+            "RECIPE",
+        ]
+    ]
     rows += [
         [
             t.id,
+            t.code,
             table.families.get(t.family, t.family),
-            t.name,
             t.kind,
             t.tier,
             t.applies_when,
+            _standards(t),
             t.recipe,
         ]
         for t in table.traits
@@ -136,11 +159,13 @@ def tool_json(
         "traits": [
             {
                 "id": d.trait.id,
+                "code": d.trait.code,
                 "name": d.trait.name,
                 "kind": d.trait.kind,
                 "tier": d.trait.tier,
                 "applies": d.applies,
                 "reason": d.reason,
+                "standards": list(d.trait.standards),
             }
             for d in decisions
         ],
@@ -172,10 +197,12 @@ def render_tool(
         [
             ("APPLIES" if d.applies else "does not apply").ljust(_DECISION_WIDTH - 2),
             d.trait.id,
+            d.trait.code,
             d.trait.name,
             d.trait.kind,
             d.trait.tier,
             d.reason,
+            _standards(d.trait),
         ]
         for d in decisions
     ]
