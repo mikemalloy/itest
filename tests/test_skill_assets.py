@@ -36,6 +36,23 @@ HTTP_PROBE_RECIPE = RECIPE_DIR / "http_probe.md"
 # new edge to detect — the edge is the API route the route detector already found.
 LAYERED_RECIPES = {"http_probe": "route_edge"}
 
+# Tool recipes cover declared `mcp_tool` points, one per trait family, and are
+# named by the trait table (`itest/traits/traits.yaml`), not by a detector type.
+# `tool_recipe_shape` is the template the generated ones follow.
+TOOL_RECIPE_SHAPE = "tool_recipe_shape"
+
+# Engine recipes describe a check ITest runs itself: there is nothing to
+# generate, so there is no python for the agent to copy.
+ENGINE_RECIPES = {"tool_authn", "tool_mutation_class", "tool_provenance"}
+
+
+def trait_table_recipes() -> set[str]:
+    """The recipe stems the trait table names."""
+    from itest.core.declarations.traits import load_traits
+
+    return {Path(t.recipe).stem for t in load_traits().traits}
+
+
 TEMPLATE_BEGIN = "<!-- BEGIN conftest.py -->"
 TEMPLATE_END = "<!-- END conftest.py -->"
 
@@ -132,7 +149,30 @@ def test_no_recipe_without_a_detector() -> None:
         assert base_type in emitted, (
             f"{recipe} layers on {base_type}, which no detector emits"
         )
-    assert (recipes - set(LAYERED_RECIPES)) <= emitted
+    tool_recipes = {r for r in recipes if r.startswith("tool_")}
+    assert (recipes - set(LAYERED_RECIPES) - tool_recipes) <= emitted
+
+
+def test_every_tool_recipe_is_named_by_the_trait_table() -> None:
+    """A tool recipe the table does not name is one no tool can reach."""
+    tool_recipes = {p.stem for p in RECIPE_DIR.glob("tool_*.md")}
+    assert tool_recipes - {TOOL_RECIPE_SHAPE} <= trait_table_recipes()
+
+
+@pytest.mark.parametrize("stem", sorted(ENGINE_RECIPES | {TOOL_RECIPE_SHAPE}))
+def test_tool_recipes_carry_a_version_line(stem: str) -> None:
+    text = (RECIPE_DIR / f"{stem}.md").read_text(encoding="utf-8")
+    assert text.splitlines()[0] == "recipe-version: 1"
+
+
+@pytest.mark.parametrize("stem", sorted(ENGINE_RECIPES))
+def test_engine_recipes_say_there_is_nothing_to_generate(stem: str) -> None:
+    text = (RECIPE_DIR / f"{stem}.md").read_text(encoding="utf-8")
+    assert "Nothing to generate" in text
+    assert "itest traits --for" in text
+    assert "failure" in text.lower()
+    for section in ("Statuses", "Evidence fields", "Standards mapping"):
+        assert section in text, f"{stem} has no {section} section"
 
 
 @pytest.mark.parametrize(
@@ -224,7 +264,8 @@ def test_every_recipe_example_is_valid_python() -> None:
     fence = re.compile(r"```python\n(.*?)```", re.DOTALL)
     for recipe in sorted(RECIPE_DIR.glob("*.md")):
         blocks = fence.findall(recipe.read_text(encoding="utf-8"))
-        assert blocks, f"{recipe.name} shows no python example"
+        if recipe.stem not in ENGINE_RECIPES:
+            assert blocks, f"{recipe.name} shows no python example"
         for index, block in enumerate(blocks):
             compile(block, f"{recipe.name}#{index}", "exec")
 
