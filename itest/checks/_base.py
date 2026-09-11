@@ -213,8 +213,19 @@ def live_listing(target: McpTarget, *, anonymous: bool) -> list[ToolInfo]:
     return cached
 
 
+def listing_label(authenticated: bool) -> str:
+    """How the reference listing was taken, for ``evidence.listing``."""
+    return "authenticated" if authenticated else "anonymous"
+
+
 def reference_listing(target: McpTarget, *, authenticated: bool) -> list[ToolInfo]:
     """The listing a check compares the manifest against.
+
+    ``authenticated=False`` — no credential resolves, the normal case for a stdio
+    server like reference-mcp — takes the **anonymous** listing, and the checks
+    run on it when the server admits one. Only a refused anonymous listing is
+    unavailable, and its reason names the variable that would unlock the
+    authenticated one (a name, never a value).
 
     ``authenticated=True`` takes it with the target's credential and refuses to
     fall back to anonymous when the credential cannot be resolved — reporting an
@@ -228,7 +239,20 @@ def reference_listing(target: McpTarget, *, authenticated: bool) -> list[ToolInf
                 f"an authenticated listing was asked for, but {target.credential_env}"
                 " is unset or empty"
             )
-    return live_listing(target, anonymous=not authenticated)
+    try:
+        return live_listing(target, anonymous=not authenticated)
+    except ListingUnavailable as exc:
+        if authenticated or not exc.refused:
+            raise
+        unlock = (
+            f"export {target.credential_env} to take the authenticated listing"
+            if target.credential_env
+            else "the declaration names no credential that could unlock it"
+        )
+        raise ListingUnavailable(
+            f"the server refused the anonymous tool listing ({exc}); {unlock}",
+            refused=True,
+        ) from None
 
 
 def find_tool(tools: list[ToolInfo], name: str) -> ToolInfo | None:

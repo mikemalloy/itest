@@ -127,10 +127,9 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
         )
     for (tool, trait), check in checks.items():
         if trait in LISTING_TRAITS:
-            # An authenticated listing is asked for (a credential is named) and
-            # the credential is unset: not_verifiable, never quietly anonymous.
-            assert check["status"] == "not_verifiable", (tool, trait)
-            assert "REFERENCE_MCP_TOKEN is unset" in check["detail"]
+            # No credential resolves, so the run is anonymous; the stdio server
+            # admits an anonymous listing and the listing checks pass on it.
+            assert check["status"] == "pass", (tool, trait, check["detail"])
         elif trait in UNIMPLEMENTED_ENGINE:
             assert check["status"] == "not_verifiable", (tool, trait)
             assert check["detail"] == f"no engine check for {trait}"
@@ -147,9 +146,9 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
 def test_with_the_credential_exported_the_listing_checks_pass(
     workdir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The way a user supplies it: the named variable, exported. B1 and D1-D3
-    then take the authenticated listing and pass on every tool, and the token
-    never reaches the ledger."""
+    """The way a user supplies it: the named variable, exported. The run is
+    then authenticated: B1 and D1-D3 take the authenticated listing and pass on
+    every tool, and the token never reaches the ledger."""
     token = "ledger-token-6d1e-do-not-log"
     monkeypatch.setenv("REFERENCE_MCP_TOKEN", token)
     payload = _verify()

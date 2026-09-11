@@ -12,6 +12,7 @@ from itest.checks._base import (
     attributes_of,
     engine_check,
     find_tool,
+    listing_label,
     manifest_tools,
     not_verifiable,
     reference_listing,
@@ -45,10 +46,13 @@ def check_d1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     appearing, unreviewed tool is where a colliding name comes from).
     """
     server, tool = server_of(point), tool_of(point)
+    listing = listing_label(authenticated)
     try:
         tools = reference_listing(target, authenticated=authenticated)
     except ListingUnavailable as exc:
-        return not_verifiable(str(exc), {"server": server, "tool": tool})
+        return not_verifiable(
+            str(exc), {"server": server, "tool": tool, "listing": listing}
+        )
 
     recorded = manifest_tools(server)
     undeclared = (
@@ -59,7 +63,7 @@ def check_d1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
         "tool": tool,
         "listed": find_tool(tools, tool) is not None,
         "undeclared": undeclared,
-        "listing": "authenticated" if authenticated else "anonymous",
+        "listing": listing,
     }
     if evidence["listed"]:
         return CheckResult("pass", f"{tool!r} is listed by {server}", evidence)
@@ -71,24 +75,22 @@ def _hash_check(
 ) -> CheckResult:
     server, tool = server_of(point), tool_of(point)
     recorded = attributes_of(point).get(field)
+    base = {"server": server, "tool": tool, "listing": listing_label(authenticated)}
     try:
         tools = reference_listing(target, authenticated=authenticated)
     except ListingUnavailable as exc:
-        return not_verifiable(str(exc), {"server": server, "tool": tool})
+        return not_verifiable(str(exc), base)
     info = find_tool(tools, tool)
     if info is None:
         return not_verifiable(
             f"{tool!r} is not in tools/list, so its {what} cannot be compared "
             "(D1 reports the orphan)",
-            {"server": server, "tool": tool},
+            base,
         )
     if not recorded:
-        return not_verifiable(
-            f"the manifest records no {field} for {tool!r}",
-            {"server": server, "tool": tool},
-        )
+        return not_verifiable(f"the manifest records no {field} for {tool!r}", base)
     live = getattr(info, field)
-    evidence = {"server": server, "tool": tool, "recorded": recorded, "live": live}
+    evidence = {**base, "recorded": recorded, "live": live}
     if live == recorded:
         return CheckResult("pass", f"{what} unchanged ({field} {live})", evidence)
     return CheckResult(

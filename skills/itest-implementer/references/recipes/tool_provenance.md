@@ -52,7 +52,11 @@ it.
 | D1 | `fail` | `not in tools/list; orphan` — withdrawn, renamed, or hidden from this caller. |
 | D2 / D3 | `pass` | The hash matches the recording. |
 | D2 / D3 | `changed` | The hash moved since the last sync; both hashes are in the evidence. Sync turns this into drift. |
-| all | `not_verifiable` | No listing could be taken (unreachable, refused, or an authenticated listing with its credential unset); or, for D2/D3, the tool is not listed (D1 reports it) or the manifest recorded no hash. Never a pass. |
+| all | `not_verifiable` | No listing could be taken (unreachable; an anonymous listing refused — the detail names the credential variable that would unlock it; or an authenticated listing whose credential will not resolve); or, for D2/D3, the tool is not listed (D1 reports it) or the manifest recorded no hash. Never a pass. |
+
+With no credential resolving — the normal case for a stdio server — the checks
+run on the **anonymous** listing when the server admits one; the evidence says
+`listing: anonymous`, so a reviewer knows what the answer rests on.
 
 ## 4. Evidence fields
 
@@ -62,8 +66,8 @@ manifest point, `[]` when there are none, and `null` when there was no manifest
 at the project root to compare against ("nothing recorded" and "nothing to
 compare" are different facts).
 
-**D2 / D3:** `server`, `tool`, `recorded` (the manifest's hash), `live` (the
-listing's hash).
+**D2 / D3:** `server`, `tool`, `listing` (`authenticated` or `anonymous`),
+`recorded` (the manifest's hash), `live` (the listing's hash).
 
 ## 5. Standards mapping
 

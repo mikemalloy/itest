@@ -8,8 +8,11 @@ check for one tool**.
 Two kinds of check share it:
 
 - **Engine checks.** ITest runs them itself, from the manifest's point and the
-  server's live tool list. No per-tool file exists, so nothing can go stale.
-  Every engine check is readonly by definition. Most traits are engine checks.
+  server's live tool list. An engine check has no per-tool file, so nothing can
+  go stale. Most are readonly tier; **C1 and C2 are active tier** — they will
+  call tools with sentinel injection arguments, which is safe only on a
+  non-production environment — and run only where the committed policy
+  (`.itest/environments.yaml`) allows `active`. Most traits are engine checks.
 - **Generated checks.** For the few traits that need a fact only a person can
   supply — a second tenant's record, how to read the audit sink — sync writes a
   one-line binding that calls this same library with a human-owned fixture. The
@@ -39,12 +42,24 @@ def run_generated_check(trait_id: str, point: dict, target: McpTarget,
 `description_hash`, `annotations`). `source` is accepted in place of `server`, so a
 raw manifest entry works too.
 
-`authenticated` chooses how the **reference listing** — the `tools/list` a check
-compares the manifest against — is taken: with the target's credential, or
-anonymously. An authenticated listing whose credential is unset is
-`not_verifiable`, never quietly anonymous; a target that names no credential has
-nothing to authenticate with and is listed as the server allows. A1 always probes
-anonymously whatever this says.
+`authenticated` chooses how the **reference listing** — the `tools/list` B1 and
+D1–D3 compare the manifest against — is taken. The runtime passes `True` only
+when the server's named credential actually resolves (the shell, then
+`.itest/.env`); a name alone is not a credential.
+
+- `authenticated=False` — no credential resolves; reference-mcp over stdio is
+  the normal case. The checks run on the **anonymous** listing when the server
+  admits one, with `evidence.listing: anonymous`. Only a refused anonymous
+  listing is `not_verifiable`, and its detail names the variable that would
+  unlock the authenticated one ("export REFERENCE_MCP_TOKEN …" — a name, never
+  a value).
+- `authenticated=True` — the listing is taken with the credential,
+  `evidence.listing: authenticated`. If the credential cannot be resolved after
+  all, the result is `not_verifiable`, never quietly anonymous. A target that
+  names no credential has nothing to authenticate with and is listed as the
+  server allows.
+
+A1 always probes anonymously whatever this says.
 
 The statuses:
 

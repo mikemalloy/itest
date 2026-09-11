@@ -64,6 +64,7 @@ plan time, before B1 could ever see it.
 | field | meaning |
 |---|---|
 | `server`, `tool` | The point. |
+| `listing` | `authenticated` or `anonymous` — which listing the live class was read from. With no credential resolving, B1 runs on the anonymous listing when the server admits one; a refused one is `not_verifiable`, naming the variable that would unlock it. |
 | `manifest` | `{mutation, mutation_source}` as recorded. |
 | `live` | `{class, source}` from `classify_mutation` of the live listing; `source` is `annotation`, `name`, `conflict:name-says-<x>` or `unknown`. |
 | `annotations` | Exactly the annotation fields the server sent (`{}` when none). |

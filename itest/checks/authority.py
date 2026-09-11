@@ -32,8 +32,8 @@ from itest.probes.mcp import (
 )
 
 #: The only classes A1 will call. Everything else — write, destructive, and
-#: ``unknown``, which may be either — is never called: engine checks are
-#: readonly by definition.
+#: ``unknown``, which may be either — is never called: A1 is a readonly-tier
+#: check.
 CALLABLE_CLASSES = frozenset({"read", "informational"})
 
 #: The front door held: the whole server passes, and no tool is called.

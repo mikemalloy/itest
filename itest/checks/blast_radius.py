@@ -15,6 +15,7 @@ from itest.checks._base import (
     attributes_of,
     engine_check,
     find_tool,
+    listing_label,
     not_verifiable,
     reference_listing,
     server_of,
@@ -90,24 +91,24 @@ def check_b1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     provenance = str(attributes.get("mutation_source") or "detected")
     declared = recorded if provenance in _DECLARED else None
 
+    base = {"server": server, "tool": tool, "listing": listing_label(authenticated)}
     try:
         tools = reference_listing(target, authenticated=authenticated)
     except ListingUnavailable as exc:
-        return not_verifiable(str(exc), {"server": server, "tool": tool})
+        return not_verifiable(str(exc), base)
     info = find_tool(tools, tool)
     if info is None:
         return not_verifiable(
             f"{tool!r} is not in tools/list, so its class cannot be read "
             "(D1 reports the orphan)",
-            {"server": server, "tool": tool},
+            base,
         )
 
     live, live_source = classify_mutation(info)
     hint = _hint(info.annotations)
     name_class = _name_class(info)
     evidence = {
-        "server": server,
-        "tool": tool,
+        **base,
         "manifest": {"mutation": recorded, "mutation_source": provenance},
         "live": {"class": live, "source": live_source},
         "annotations": dict(info.annotations),

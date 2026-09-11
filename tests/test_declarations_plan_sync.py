@@ -924,13 +924,14 @@ def test_verify_gates_the_active_tool_checks_off_the_safe_floor(
     assert "33 gated test(s) withheld by this environment" in result.output
     assert "Ran 48 tests" in result.output
     assert "No environment bound: running the safe floor" in result.output
-    # Every point reports the coverage it has. The read tools fail A1; the
-    # mutating tools' checks all skip (A1 deferred to the active tier, the
-    # listing checks not_verifiable with no credential) — a skip is not a pass.
+    # Every point reports the coverage it has. The read tools fail A1. The
+    # mutating tools pass on the listing checks (B1, D1-D3, run on the anonymous
+    # listing); their A1 is deferred to the active tier and skips, which is not
+    # a pass and is not a fail.
     assert result.output.count("[FAIL] reference-mcp -> ") == 5
-    assert result.output.count("[STUB] reference-mcp -> ") == 3
+    assert result.output.count("[PASS] reference-mcp -> ") == 3
     for tool in ("create_record", "update_record", "delete_record"):
-        assert f"[STUB] reference-mcp -> {tool} " in result.output
+        assert f"[PASS] reference-mcp -> {tool} " in result.output
 
 
 def test_verify_runs_the_active_checks_when_the_environment_allows_them(

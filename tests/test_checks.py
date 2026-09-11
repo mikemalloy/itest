@@ -800,6 +800,7 @@ def test_d2_d3_a_stale_hash_is_changed(
     assert result.evidence == {
         "server": SERVER,
         "tool": "enrich",
+        "listing": "authenticated",
         "recorded": "000000000000",
         "live": live,
     }
@@ -873,17 +874,74 @@ def test_an_authenticated_listing_without_the_credential_is_not_verifiable(
     assert ENV in result.detail
 
 
+LISTING_TRAITS = ("B1", "D1", "D2", "D3")
+
+
+@pytest.mark.parametrize("trait", LISTING_TRAITS)
 def test_an_anonymous_listing_on_the_guarded_mount_is_not_verifiable(
-    project: Path, manifest_points: list[Any], reference: Any
+    trait: str, project: Path, manifest_points: list[Any], reference: Any
 ) -> None:
+    """Refused anonymously: not_verifiable, naming the variable that unlocks the
+    authenticated listing — a NAME, never its value."""
     result = run_engine_check(
-        "D3",
+        trait,
         point(manifest_points, "fetch_record"),
         http_target(reference.guarded_url),
         authenticated=False,
     )
     assert result.status == "not_verifiable"
     assert "refused" in result.detail
+    assert f"export {ENV}" in result.detail
+    assert TOKEN not in result.detail
+    assert result.evidence["listing"] == "anonymous"
+
+
+def test_a_refused_anonymous_listing_with_no_credential_named_says_so(
+    project: Path, manifest_points: list[Any], reference: Any
+) -> None:
+    target = McpTarget(kind="http", url=reference.guarded_url, allow_private_hosts=True)
+    result = run_engine_check(
+        "D1", point(manifest_points, "fetch_record"), target, authenticated=False
+    )
+    assert result.status == "not_verifiable"
+    assert "names no credential" in result.detail
+
+
+@pytest.mark.parametrize("trait", LISTING_TRAITS)
+@pytest.mark.parametrize("mount", ["stdio", "open"])
+def test_listing_checks_run_on_an_admitted_anonymous_listing(
+    trait: str,
+    mount: str,
+    project: Path,
+    manifest_points: list[Any],
+    reference: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No credential resolves — reference-mcp over stdio is the normal case — so
+    the runtime passes authenticated=False. A server that admits an anonymous
+    listing still gets its listing checks, labelled as anonymous."""
+    monkeypatch.delenv(ENV)
+    target = stdio_target() if mount == "stdio" else http_target(reference.open_url)
+    for name in ("delete_record", "lookalike_read", "enrich"):
+        result = run_engine_check(
+            trait, point(manifest_points, name), target, authenticated=False
+        )
+        assert result.status == "pass", (trait, name, result.detail)
+        assert result.evidence["listing"] == "anonymous"
+
+
+@pytest.mark.parametrize("trait", LISTING_TRAITS)
+def test_an_authenticated_listing_is_labelled_so(
+    trait: str, project: Path, manifest_points: list[Any], reference: Any
+) -> None:
+    result = run_engine_check(
+        trait,
+        point(manifest_points, "fetch_record"),
+        http_target(reference.guarded_url),
+        authenticated=True,
+    )
+    assert result.status == "pass", result.detail
+    assert result.evidence["listing"] == "authenticated"
 
 
 # --- the per-run listing cache ------------------------------------------------

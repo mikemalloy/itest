@@ -228,13 +228,21 @@ human-owned fixture, for facts only a person can supply. The contract is small o
 purpose (`CheckResult`, `run_engine_check`, `run_generated_check`) and **honest
 by construction**: anything a check cannot establish — an unreachable server, a
 tool error, a missing sentinel, an unknown trait — is `not_verifiable` with the
-reason, never a pass and never an exception. Engine checks are readonly and
-**judge only what they observed**: none passes `allow_mutating`, so A1 proves the
+reason, never a pass and never an exception. An engine check has no per-tool
+file; most are readonly tier, and **C1 and C2 are active tier** — they will call
+tools with sentinel injection arguments, which is safe only on a non-production
+environment — so they run only where the committed policy allows `active`. The
+engine checks shipped today are readonly and **judge only what they observed**:
+none passes `allow_mutating`, so A1 proves the
 front door (an anonymous session refused passes every tool on the server) and
 calls only read tools behind an open one; a write or destructive tool there is
 `not_verifiable`, never `critical`, because a listing is not a call and
 `critical` means a demonstrated admission. The class used is the stricter of the
-recorded and the live one. Every string in a result is scrubbed
+recorded and the live one. With no credential resolving — a stdio server like
+reference-mcp is the normal case — the listing checks (B1, D1–D3) run on the
+anonymous listing when the server admits one, labelled `listing: anonymous`, and
+are `not_verifiable` only when it is refused, naming the variable that would
+unlock it. Every string in a result is scrubbed
 of the credential and of credential-shaped text. A server is listed once per run.
 The agreement check for mutation class (B1) has a limit it states rather than
 hides: a tool whose annotation and name agree and both lie passes it, and only a
