@@ -82,7 +82,7 @@ answers — written to be printed by a future `itest explain`.
 
 | id | module | what it calls | statuses | standards |
 |---|---|---|---|---|
-| **A1** refuses anonymous | `authority.py` | anonymous `initialize` + `tools/list` once per server (the front door); behind an admitted session, one anonymous `tools/call` of a **read or informational** tool with sentinel arguments. Never calls a write, destructive or unknown tool. | `pass` (front door refused, or the read call refused), `fail` (a read tool answered), `not_verifiable` (mutating tool behind an open door, unknown, hidden, no sentinel, transport). Never `critical`. | OWASP Agentic ASI03; LLM02; Semgrep server tab row 4 |
+| **A1** refuses anonymous | `authority.py` | anonymous `initialize` + `tools/list` once per server (the front door); behind an admitted session, one anonymous `tools/call` of a **read or informational** tool with sentinel arguments. Never calls a write, destructive or unknown tool. | `pass` (front door refused, or the read call refused — at the transport or by an auth-shaped tool error), `fail` (a read tool answered, or ran and returned any other tool error), `not_verifiable` (mutating tool behind an open door, unknown, hidden, no sentinel, transport). Never `critical`. | OWASP Agentic ASI03; LLM02; Semgrep server tab row 4 |
 | **B1** mutation class (agreement) | `blast_radius.py` | the reference listing only | `pass` (all statements agree), `changed` (live class ≠ manifest), `fail` (annotation and name disagree, unsettled), `not_verifiable` (unknown, declaration only, not listed) | OWASP Agentic ASI02; LLM06; AgBOM mutation attribute |
 | **D1** inventory | `change.py` | the reference listing; the project manifest | `pass`, `fail` (`not in tools/list; orphan`), `not_verifiable`; `evidence.undeclared` on every result | OWASP Agentic ASI04; Semgrep client tab row 14 |
 | **D2** schema drift | `change.py` | the reference listing | `pass`, `changed` (both hashes), `not_verifiable` | OWASP Agentic ASI04; Semgrep client tab rows 12, 14 |
@@ -100,12 +100,22 @@ server. A server that refuses anonymous sessions passes A1 for every tool, with
 "server refuses anonymous sessions; per-tool call not attempted" — the common
 good case, and no tool is called. Behind an admitted session, a read or
 informational tool gets one anonymous call with sentinel arguments (refused →
-`pass`, answered → `fail`). A write or destructive tool is **not called** and is
-`not_verifiable`: "anonymous session admitted; this tool mutates, so its own
-guard can only be proven by an active-tier call on a non-production
-environment". The class used is the **stricter** of the manifest's and the live
-listing's, so a stale or edited manifest cannot talk A1 into calling a mutating
-tool; an `unknown` tool is not called either.
+`pass`, answered → `fail`). A tool error is read by what it says: an
+**auth-shaped** error — containing `unauthorized`, `unauthenticated`,
+`forbidden`, `permission`, `not allowed`, `401` or `403`, case-insensitive, with
+the tool's own name removed — is a refusal inside the tool (`pass`, "refused
+inside the tool: <quoted error>", evidence `basis: tool-level refusal`); any
+other tool error (not found, validation, internal) means the anonymous caller
+reached the tool's logic (`fail`, quoting it). The vocabulary is one tuple,
+`authority.AUTH_REFUSAL_MARKERS`, and it is a heuristic: the quoted error is
+always in the detail so a reviewer can overrule it.
+
+A write or destructive tool is **not called** and is `not_verifiable`:
+"anonymous session admitted; this tool mutates, so its own guard can only be
+proven by an active-tier call on a non-production environment". The class used
+is the **stricter** of the manifest's and the live listing's, so a stale or
+edited manifest cannot talk A1 into calling a mutating tool; an `unknown` tool is
+not called either.
 
 A1 never returns `critical`. That status means a *demonstrated* anonymous
 admission on a mutating tool, and only a call can demonstrate one — which is

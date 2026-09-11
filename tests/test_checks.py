@@ -392,6 +392,95 @@ def test_a1_never_produces_critical(
     assert "CRITICAL" not in Path(authority.__file__).read_text(encoding="utf-8")
 
 
+def _tool_error(message: str):
+    """A mocked call_tool: admitted, and the tool answered with this error."""
+
+    def answer(*args: Any, **kwargs: Any) -> CallResult:
+        return CallResult(
+            ok=False,
+            status="error",
+            detail=f"Error executing tool get_guide: {message}",
+            raw={"content": [{"type": "text", "text": message}], "isError": True},
+        )
+
+    return answer
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Unauthorized: a bearer token is required",
+        "UNAUTHENTICATED caller",
+        "Forbidden",
+        "permission denied for anonymous callers",
+        "anonymous access is Not Allowed",
+        "HTTP 401 from the backing store",
+        "upstream said 403",
+    ],
+)
+def test_a1_an_auth_shaped_tool_error_is_a_refusal_inside_the_tool(
+    message: str,
+    project: Path,
+    manifest_points: list[Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(authority, "call_tool", _tool_error(message))
+    result = run_engine_check(
+        "A1", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
+    )
+    assert result.status == "pass", result.detail
+    assert result.detail.startswith("refused inside the tool: ")
+    assert message in result.detail
+    assert result.evidence["basis"] == "tool-level refusal"
+    assert result.evidence["anonymous_listing"] == "admitted"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "404 record 'sentinel-cannot-exist-0000' not found",
+        "validation error: id must match ^r-[0-9]+$",
+        "internal error: database unavailable",
+    ],
+)
+def test_a1_any_other_tool_error_means_the_tool_logic_was_reached(
+    message: str,
+    project: Path,
+    manifest_points: list[Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(authority, "call_tool", _tool_error(message))
+    result = run_engine_check(
+        "A1", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
+    )
+    assert result.status == "fail", result.detail
+    assert message in result.detail
+    assert "basis" not in result.evidence
+
+
+def test_a1_a_tool_name_is_not_read_as_a_refusal() -> None:
+    """The SDK quotes the tool's name in its error text; a tool named for
+    permissions must not refuse itself."""
+    assert not authority._is_auth_refusal(
+        "get_permissions", "Error executing tool get_permissions: 404 not found"
+    )
+    assert authority._is_auth_refusal(
+        "get_permissions", "Error executing tool get_permissions: permission denied"
+    )
+
+
+def test_a1_the_refusal_vocabulary_is_one_tuple() -> None:
+    assert authority.AUTH_REFUSAL_MARKERS == (
+        "unauthorized",
+        "unauthenticated",
+        "forbidden",
+        "permission",
+        "not allowed",
+        "401",
+        "403",
+    )
+
+
 def test_a1_a_transport_error_on_the_call_is_not_verifiable(
     project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:

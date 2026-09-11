@@ -45,6 +45,29 @@ MUTATING_DEFERRED = (
     "proven by an active-tier call on a non-production environment"
 )
 
+#: Words that make a tool error read as the tool refusing the caller, matched
+#: case-insensitively against the error text with the tool's own name removed
+#: (the SDK quotes the name, and a tool called ``get_permissions`` must not
+#: refuse itself). A HEURISTIC: a server that words its refusal differently reads
+#: as "reached the tool's logic" (fail), and one that says "forbidden" about
+#: something other than the caller reads as a refusal (pass). The detail always
+#: quotes the error, so a reviewer can overrule it.
+AUTH_REFUSAL_MARKERS = (
+    "unauthorized",
+    "unauthenticated",
+    "forbidden",
+    "permission",
+    "not allowed",
+    "401",
+    "403",
+)
+
+
+def _is_auth_refusal(tool: str, message: str) -> bool:
+    text = message.replace(tool, "").lower()
+    return any(marker in text for marker in AUTH_REFUSAL_MARKERS)
+
+
 #: Strictness order for "the stricter of the recorded and the live class".
 _RANK = {"informational": 0, "read": 1, "unknown": 2, "write": 3, "destructive": 4}
 
@@ -123,10 +146,14 @@ def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
     - A **read or informational** tool gets one anonymous ``tools/call`` with
       sentinel arguments (required strings get ``sentinels.nonexistent_id``,
       numbers ``0``, booleans ``false``, nothing optional):
-      ``pass`` if the call is refused; ``fail`` if the tool answered — "anonymous
-      call succeeded on a read tool", data exposure rather than mutation (a tool
-      error still means the tool ran for an anonymous caller, and says so);
-      ``not_verifiable`` for a transport error or a missing sentinel.
+      ``pass`` if the call is refused — by the transport, or inside the tool: a
+      tool error whose text is auth-shaped (:data:`AUTH_REFUSAL_MARKERS`, a
+      heuristic) is "refused inside the tool", evidence ``basis: tool-level
+      refusal``; ``fail`` if the tool answered — "anonymous call succeeded on a
+      read tool", data exposure rather than mutation — or answered with any other
+      tool error (not found, validation, internal), which means the anonymous
+      caller reached the tool's logic; ``not_verifiable`` for a transport error or
+      a missing sentinel.
     - A **write or destructive** tool is **not called**: ``not_verifiable``,
       "anonymous session admitted; this tool mutates, so its own guard can only
       be proven by an active-tier call on a non-production environment".
@@ -234,6 +261,11 @@ def check_a1(point: dict, target: McpTarget, *, authenticated: bool) -> CheckRes
             evidence,
         )
     if result.status == "error" and result.raw is not None:
+        if _is_auth_refusal(tool, result.detail):
+            evidence["basis"] = "tool-level refusal"
+            return CheckResult(
+                "pass", f"refused inside the tool: {result.detail}", evidence
+            )
         return CheckResult(
             "fail",
             f"anonymous call reached the read tool {tool!r} and it answered with a "

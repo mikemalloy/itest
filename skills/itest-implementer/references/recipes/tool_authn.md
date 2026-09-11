@@ -38,7 +38,7 @@ or edited manifest can never talk A1 into calling a mutating tool.
 
 | class | what A1 does |
 |---|---|
-| `read`, `informational` | **Calls it once**, anonymously, with sentinel arguments (§3). Refused is a pass; answered is a fail. |
+| `read`, `informational` | **Calls it once**, anonymously, with sentinel arguments (§3). Refused — by the transport or inside the tool — is a pass; answered is a fail. |
 | `write`, `destructive` | **Does not call it.** `not_verifiable`: the tool's own guard can only be proven by an active-tier call on a non-production environment. |
 | `unknown` | **Does not call it** — it may be either. `not_verifiable`. |
 
@@ -55,11 +55,18 @@ or edited manifest can never talk A1 into calling a mutating tool.
   happy path is the server's own tests' job, or a future generated check.
 - **Not tenant isolation.** A caller with *a* credential reading another
   tenant's data is A2, a generated check that needs a second identity.
-- **Not the difference between a miss and an in-tool refusal.** A read tool that
-  answers the sentinel with a tool error ran for an anonymous caller, and A1
-  reports that as a `fail`. A tool that checks the caller itself and returns
-  "unauthorized" as a tool error reads the same way; the detail quotes the error
-  so a reviewer can tell.
+- **Not, with certainty, what a tool error means.** When an anonymous call
+  reaches a read tool and it answers with a tool error, A1 reads the error's
+  text. An **auth-shaped** error — it contains `unauthorized`,
+  `unauthenticated`, `forbidden`, `permission`, `not allowed`, `401` or `403`,
+  case-insensitive, with the tool's own name removed — is the tool refusing the
+  caller: `pass`, "refused inside the tool: <quoted error>", evidence `basis:
+  tool-level refusal`. **Any other** tool error (not found, validation,
+  internal) means the anonymous caller reached the tool's logic: `fail`, quoting
+  the error. This is a **heuristic**: a server that words its refusal
+  differently reads as a `fail`, and one that says "forbidden" about something
+  other than the caller reads as a `pass`. The detail always quotes the error so
+  a reviewer can overrule it.
 
 ## 3. Sentinel arguments
 
@@ -82,8 +89,8 @@ with a guessed value.
 
 | status | means |
 |---|---|
-| `pass` | The server refused the anonymous session (front door), or it admitted the session and refused the anonymous call on this read tool. The guard held. |
-| `fail` | A read or informational tool **answered** an anonymous caller — "anonymous call succeeded on a read tool". Anyone who can reach the server can read through it: data exposure, not mutation. |
+| `pass` | The server refused the anonymous session (front door); or it admitted the session and refused the anonymous call on this read tool — at the transport, or inside the tool with an auth-shaped error ("refused inside the tool: …"). The guard held. |
+| `fail` | A read or informational tool **answered** an anonymous caller — "anonymous call succeeded on a read tool" — or answered with a tool error that is not auth-shaped, so its logic ran for an anonymous caller. Anyone who can reach the server can read through it: data exposure, not mutation. |
 | `not_verifiable` | The anonymous session could not be attempted; or the session was admitted and the tool mutates (deferred to A1 active), its class is unknown, it is hidden from the anonymous listing, no sentinel could be built, or the call failed in transport. The detail says which. It is never a pass. |
 
 A1 never returns `critical` — that needs a demonstrated admission on a mutating
@@ -103,6 +110,7 @@ refuses anonymous callers is a fact about now, not a drift from a recording.
 | `called` | Whether a `tools/call` was sent. Always `false` for write, destructive and unknown tools, and for every tool behind a refused front door. |
 | `arguments` | The sentinel arguments sent, or `null`. |
 | `call_status` | The probe's own status for the call, when one was made. |
+| `basis` | `tool-level refusal` when the pass rests on an auth-shaped tool error rather than a transport refusal; absent otherwise. |
 
 Every string is scrubbed: the credential's value never appears, even if the
 server echoes it.
@@ -140,8 +148,13 @@ predates the engine check; do not implement it by hand.
   transport, so the front door refuses and every tool passes. If it is, that is a
   person's claim: write it in the declaration's per-tool `notes`, and expect A1
   to keep saying `fail` — a public read is still a read anyone can make. A `fail`
-  quoting a tool error means the tool ran for the anonymous caller; check that the
-  error is a miss and not the tool refusing, and fix the transport either way.
+  quoting a tool error means the tool's logic ran for the anonymous caller. If
+  the quoted error is really the tool refusing in words the heuristic does not
+  know, the tool is guarded — but fix the transport anyway, so the front door
+  refuses and nothing rests on the wording of an error.
+- **`pass` with `basis: tool-level refusal`** — read the quoted error. The tool
+  turned the caller away, but only inside its own code, behind an open front
+  door; every other tool on that server has to get that right too.
 - **`not_verifiable` on a mutating tool** ("anonymous session admitted; this tool
   mutates…") — the server lets anonymous callers in, and nothing readonly can show
   whether this tool stops them. Treat the open front door as the finding: close
@@ -158,8 +171,8 @@ predates the engine check; do not implement it by hand.
 `examples/reference-mcp/` exercises every branch: its guarded mount (`/mcp`)
 refuses anonymous sessions, so every tool passes at the front door and nothing
 is called. Its deliberately **open mount** (`/open/mcp`) admits them:
-`get_guide` and `fetch_record` (whose 404 tool error still ran for the anonymous
-caller) are `fail`, and `delete_record`, `create_record` and `update_record` are
+`get_guide` and `fetch_record` (whose 404 tool error is not auth-shaped, so the
+tool ran for the anonymous caller) are `fail`, and `delete_record`, `create_record` and `update_record` are
 `not_verifiable`, deferred to A1 active. `tests/test_checks.py` pins each
 outcome, proves A1 never says `critical`, and proves by spying on `call_tool`
 that no write, destructive or unknown tool is ever called.
