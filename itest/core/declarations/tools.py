@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,9 @@ POINT_TYPE = "mcp_tool"
 #: What ``classify_mutation`` returns when neither the annotations nor the name
 #: decided. Not a disagreement with anything — an absence of detection.
 UNKNOWN = "unknown"
+
+#: A stdio command's first word that means "the interpreter ITest runs under".
+BARE_PYTHON = frozenset({"python", "python3"})
 
 
 class MutationConflict(Exception):
@@ -87,14 +91,27 @@ def build_target(
 
     ``None`` means an ``http`` server whose ``url_env`` is unset: the caller
     reports it as unreachable and carries on. Nothing here logs the url.
+
+    A ``stdio`` command is self-contained. It is launched in ``base_dir`` — the
+    project directory holding the declaration's ``.itest/`` — so a relative path
+    in it (``[python, server.py]``) names a file in that project whatever the
+    caller's working directory is. And a bare ``python`` / ``python3`` as its
+    first word is the interpreter ITest itself runs under: the one verify's
+    pytest run uses too, and the one ``pip install`` put ITest's dependencies
+    in — not whichever ``python`` happens to be first on PATH.
     """
     transport = declaration.transport
     credential_env = declaration.auth.credential_env
     if transport.kind == "stdio":
+        project = (base_dir if base_dir is not None else Path.cwd()).resolve()
+        command = list(transport.command or [])
+        if command and command[0] in BARE_PYTHON:
+            command[0] = sys.executable
         return McpTarget(
             kind="stdio",
-            command=list(transport.command or []),
+            command=command,
             credential_env=credential_env,
+            cwd=str(project),
         )
 
     url = resolve_url(declaration, base_dir)

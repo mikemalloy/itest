@@ -99,10 +99,8 @@ def test_the_example_declaration_round_trips(checkout: Path) -> None:
 
     assert declaration.server == "reference-mcp"
     assert declaration.transport.kind == "stdio"
-    assert declaration.transport.command == [
-        "python",
-        "examples/reference-mcp/server.py",
-    ]
+    # Launched in the project directory, so the server is the file beside it.
+    assert declaration.transport.command == ["python", "server.py"]
     assert declaration.transport.url_env == "REFERENCE_MCP_URL"
 
     assert declaration.auth.scheme == "bearer"

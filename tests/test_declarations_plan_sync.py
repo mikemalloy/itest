@@ -87,8 +87,8 @@ environments:
 def _declare(base_dir: Path, *, name: str = "reference-mcp", **changes: object) -> Path:
     """Write the example declaration into ``base_dir``, with the command rewired.
 
-    The committed example launches the server by a repo-relative path; a test
-    checkout is somewhere else entirely, so the argv becomes this interpreter and
+    The committed example launches `python server.py` in its own directory; a
+    test checkout holds no server.py, so the argv becomes this interpreter and
     the absolute path. Everything else is the real file.
     """
     document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))

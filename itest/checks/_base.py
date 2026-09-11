@@ -185,6 +185,7 @@ def _target_key(target: McpTarget) -> tuple:
         target.credential_env,
         target.timeout_s,
         target.allow_private_hosts,
+        target.cwd,
     )
 
 

@@ -164,6 +164,11 @@ class McpTarget:
     can point the probe at ``169.254.169.254`` must not do so by accident. It
     loosens the *host* rule only: a scheme other than http/https is refused
     either way.
+
+    ``cwd`` is the directory a ``stdio`` command is launched in, so a relative
+    path in ``command`` (``server.py``) resolves against it rather than against
+    whatever directory the caller happens to be in. ``None`` inherits the
+    caller's. A declared server's target sets it to the project directory.
     """
 
     kind: Literal["stdio", "http"]
@@ -172,6 +177,7 @@ class McpTarget:
     credential_env: str | None = None
     timeout_s: float = 10.0
     allow_private_hosts: bool = False
+    cwd: str | None = None
 
 
 @dataclass(frozen=True)
@@ -421,7 +427,10 @@ def _client(target: McpTarget, credential: str | None) -> tuple[Client, list[int
         if credential and target.credential_env:
             env[target.credential_env] = credential
         params = StdioServerParameters(
-            command=target.command[0], args=list(target.command[1:]), env=env
+            command=target.command[0],
+            args=list(target.command[1:]),
+            env=env,
+            cwd=target.cwd,
         )
         return Client(params, read_timeout_seconds=target.timeout_s), statuses
 

@@ -45,7 +45,7 @@ server: reference-mcp
 
 transport:
   kind: stdio                                    # stdio | http
-  command: [python, examples/reference-mcp/server.py]
+  command: [python, server.py]                   # launched in the project directory
   url_env: REFERENCE_MCP_URL                     # a NAME, never a URL
 
 auth:
@@ -91,6 +91,19 @@ tools:
 ```
 
 ## The rules, and why each one is there
+
+### A stdio command runs in the project directory
+
+`transport.command` is launched with the **project directory** — the one that
+holds the declaration's `.itest/` — as its working directory. A relative path
+in it (`server.py`) therefore names a file in that project, whether `itest` is
+run from the project, from a parent directory with the project as its base, or
+from a pytest subprocess verify started. It never resolves against the
+caller's working directory or a repository root. A bare `python` or `python3`
+as the first word is the interpreter ITest itself runs under — the one its
+dependencies were installed into, and the one verify's pytest run uses — never
+whichever `python` is first on `PATH`, so `.venv/bin/itest` works without
+activating the virtualenv. Any other first word is passed through untouched.
 
 ### A URL and a credential are names, never values
 

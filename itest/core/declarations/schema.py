@@ -95,7 +95,11 @@ class Transport(Strict):
     """How to reach the server. ``stdio`` launches it; ``http`` connects to it."""
 
     kind: Literal["stdio", "http"]
-    #: argv for ``kind: stdio``, relative to the project root.
+    #: argv for ``kind: stdio``. It is launched in the project directory — the
+    #: one holding this file's ``.itest/`` — so a relative path in it resolves
+    #: there, never against the caller's working directory or a repository root.
+    #: A bare ``python`` / ``python3`` first word is the interpreter ITest runs
+    #: under (see ``tools.build_target``).
     command: list[str] | None = None
     #: The NAME of the environment variable holding the base URL for
     #: ``kind: http``. Present alongside a stdio command when the same server
