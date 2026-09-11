@@ -21,6 +21,14 @@ _RESULTS: dict[str, dict] = {}
 _COLLECTION_ERRORS: dict[str, dict] = {}
 
 
+def _skip_reason(report) -> str:
+    """The reason a skipped test gave, from pytest's ``(path, line, reason)``."""
+    longrepr = report.longrepr
+    if isinstance(longrepr, tuple) and len(longrepr) == 3:
+        return str(longrepr[2]).removeprefix("Skipped: ")
+    return ""
+
+
 def pytest_runtest_logreport(report) -> None:
     # The "call" phase is the test body: passed / failed / skipped-in-body.
     if report.when == "call":
@@ -29,11 +37,23 @@ def pytest_runtest_logreport(report) -> None:
             "detail": report.longreprtext if report.failed else "",
             "duration": report.duration,
         }
+        # A declared tool's check records the CheckResult it got, so verify's
+        # tool ledger reports the check's own status rather than pytest's.
+        check = dict(report.user_properties).get("itest_check")
+        if check is not None:
+            _RESULTS[report.nodeid]["check"] = check
+        if report.skipped:
+            _RESULTS[report.nodeid]["reason"] = _skip_reason(report)
     # A skip during setup (e.g. skipif) never reaches the call phase.
     elif report.when == "setup" and report.outcome == "skipped":
         _RESULTS.setdefault(
             report.nodeid,
-            {"outcome": "skipped", "detail": "", "duration": report.duration},
+            {
+                "outcome": "skipped",
+                "detail": "",
+                "duration": report.duration,
+                "reason": _skip_reason(report),
+            },
         )
     # An error during setup should surface as a failure.
     elif report.when == "setup" and report.outcome == "failed":

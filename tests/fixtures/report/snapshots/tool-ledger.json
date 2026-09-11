@@ -115,6 +115,9 @@
       "word": "TOOLS AT RISK"
     },
     "tools": {
+      "attention": [
+        "reference-mcp needs attention: 1 hand-edited"
+      ],
       "attest": "<span class='b'>Tool-boundary report.</span> Each row is a tool the declaration names, and each column a trait its checks recorded. Every cell is the status the check reported \u2014 nothing here is inferred from a tool's name or its mutation class.",
       "bars": [
         {
@@ -369,6 +372,7 @@
             },
             {
               "cls": "ok",
+              "state": "hand-edited",
               "txt": "PASS"
             },
             {

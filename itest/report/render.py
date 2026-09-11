@@ -50,7 +50,21 @@ CHECK_CELL = {
     "held_out": ("HELD OUT", "warn"),
     "not_verifiable": ("NOT VERIFIABLE", "none"),
     "n/a": ("N/A", "none"),
+    "not_run": ("NOT RUN", "none"),
 }
+
+#: Lifecycle state -> the small tag drawn on a check's cell. ``current`` has
+#: none: the tag is for what needs a human, and a clean cell must look clean.
+STATE_TAG = {
+    "stale": "stale",
+    "hand_edited": "hand-edited",
+    "recipe_newer": "recipe newer",
+    "not_applicable": "not applicable",
+    "orphan": "orphan",
+}
+
+#: The order the "needs attention" line lists states in.
+ATTENTION_ORDER = ["hand_edited", "stale", "recipe_newer", "orphan"]
 
 #: Mutation class -> (group heading, css suffix, the label printed in the row).
 MUTATION_GROUP = {
@@ -328,6 +342,7 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
         "bars": [],
         "exceptionsHead": "",
         "exceptions": [],
+        "attention": [],
     }
     if page.tools is None:
         return [], empty
@@ -361,7 +376,10 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
                     continue
                 fallback = (check.status.upper(), "none")
                 token, cls = CHECK_CELL.get(check.status, fallback)
-                cells.append({"txt": token, "cls": cls})
+                entry = {"txt": token, "cls": cls}
+                if check.state in STATE_TAG:
+                    entry["state"] = STATE_TAG[check.state]
+                cells.append(entry)
                 if check.status in flagged:
                     flagged[check.status] += 1
             statuses = {c.status for c in tool.checks}
@@ -371,7 +389,8 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
                 {
                     "n": tool.name,
                     "flag": bool(statuses & {"changed", "fail", "critical", "held_out"})
-                    or tool.held_out,
+                    or tool.held_out
+                    or any(c.state == "stale" for c in tool.checks),
                     "cells": cells,
                 }
             )
@@ -451,8 +470,24 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
         "bars": bars,
         "exceptionsHead": "Needs a human — named, not hidden",
         "exceptions": exceptions,
+        "attention": _attention(ledger),
     }
     return groups, labels
+
+
+def _attention(ledger) -> list[str]:
+    """One line per server whose checks need a human: "3 hand-edited, 1 stale"."""
+    lines = []
+    for server in ledger.servers:
+        counts = ledger.state_counts(server)
+        parts = [
+            f"{counts[state]} {STATE_TAG[state]}"
+            for state in ATTENTION_ORDER
+            if counts.get(state)
+        ]
+        if parts:
+            lines.append(f"{server.server} needs attention: {', '.join(parts)}")
+    return lines
 
 
 def _sweep_blocks(page: Page) -> tuple[list[dict], dict]:

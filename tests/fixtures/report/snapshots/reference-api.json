@@ -115,6 +115,7 @@
       "word": "No agent tools declared"
     },
     "tools": {
+      "attention": [],
       "attest": "",
       "bars": [],
       "emptyBody": "This run carried no tool ledger, so there is nothing to report here. The section is named rather than hidden: an absent sweep and a clean sweep must never look alike.",

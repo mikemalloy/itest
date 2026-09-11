@@ -214,7 +214,7 @@ def verify(
         raise typer.Exit(code=2) from None
 
     if output == "json":
-        typer.echo(report.model_dump_json(indent=2))
+        typer.echo(report.to_json(indent=2))
     elif output == "junit":
         # The note names a file for a machine to pick up; the rollup after it
         # is for the human, so only that one is styled.
