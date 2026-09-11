@@ -1,0 +1,31 @@
+"""The lifecycle states a declared tool's check can be in — one definition.
+
+verify computes a state for every check in its tool ledger, and the readiness
+page renders and counts them. Both import these constants from here, so the
+vocabulary cannot drift between the two (and the contract fixture pins it).
+
+``current``        ITest-owned and generated against the current schema
+``stale``          hand-edited AND generated against an older schema
+``hand_edited``    a human changed the file (its ownership hash differs)
+``recipe_newer``   the recipe moved since the check was generated
+``not_applicable`` retired: the trait no longer applies to the tool
+``orphan``         the tool is gone; the test is kept, never deleted
+"""
+
+from __future__ import annotations
+
+CHECK_STATES = (
+    "current",
+    "stale",
+    "hand_edited",
+    "recipe_newer",
+    "not_applicable",
+    "orphan",
+)
+
+#: States that do not count toward VERIFIED: VERIFIED is a coverage claim, and
+#: none of these is a trustworthy statement about the tool as it is today.
+UNCOUNTED_STATES = ("stale", "not_applicable", "orphan")
+
+#: States that do count toward VERIFIED — every state not excluded above.
+COUNTED_STATES = tuple(s for s in CHECK_STATES if s not in UNCOUNTED_STATES)

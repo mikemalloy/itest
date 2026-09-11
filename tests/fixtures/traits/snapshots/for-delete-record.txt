@@ -1,0 +1,18 @@
+reference-mcp/delete_record: destructive (detected) [approval confirm_param]
+  id=49dc4907b3ff  declared in .itest/tools/reference-mcp.yaml
+  12 of 14 traits apply (table 5458224b3c52), decided from the manifest's recorded attributes.
+
+  APPLIES          A1  refuses anonymous            engine     readonly  rule: always
+  APPLIES          A2  tenant isolation             generated  active    rule: auth.second_tenant_env present and mutation != informational
+  APPLIES          A3  acts as declared identity    generated  active    rule: identity.runs_as present
+  does not apply   A4  caller identity passthrough  generated  active    rule: identity.runs_as == passthrough
+  APPLIES          B1  mutation class               engine     readonly  rule: always
+  APPLIES          B2  destructive gating           generated  active    rule: mutation == destructive
+  does not apply   B3  external egress              engine     readonly  rule: egress != none
+  APPLIES          B4  audit record                 generated  active    rule: mutation in [write, destructive] and audit.sink present
+  APPLIES          C1  parameter scope              engine     active    rule: mutation != informational
+  APPLIES          C2  expression passthrough       engine     active    rule: has_free_form_input
+  APPLIES          C3  output hygiene               engine     readonly  rule: mutation != informational
+  APPLIES          D1  inventory                    engine     readonly  rule: always
+  APPLIES          D2  schema drift                 engine     readonly  rule: always
+  APPLIES          D3  description drift            engine     readonly  rule: always

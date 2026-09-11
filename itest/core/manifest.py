@@ -42,6 +42,11 @@ class IntegrationPoint(BaseModel):
     source: str
     target: str
     attributes: dict = Field(default_factory=dict)
+    #: ``mcp_tool`` only: the trait ids the last sync decided apply to this
+    #: tool, recomputed from the current table on every sync. ``None`` on every
+    #: other point type, and on a tool no sync has recorded yet — omitted from
+    #: the YAML then, so a declaration-free manifest is byte-identical.
+    traits_planned: list[str] | None = None
     hcl_address: str
     origin: Literal["detected", "declared"] = "detected"
     first_seen: datetime
@@ -58,8 +63,16 @@ class TestEntry(BaseModel):
     point_id: str
     path: str
     test_name: str
+    #: The trait this test checks, for a declared tool's per-trait test.
+    #: ``None`` for a detected point's test and a hand-registered one.
+    trait: str | None = None
     ownership_hash: str
     status: Literal["stub", "implemented", "orphaned"] = "stub"
+    #: The trait no longer applies to the tool (the table or the tool changed).
+    #: A retired test is kept on disk and in the manifest, never run, and
+    #: reported as ``not_applicable``; it is restored, under the same id, if
+    #: the trait applies again. Distinct from ``orphaned``: the point is alive.
+    retired: bool = False
     disabled: bool = False
     disabled_reason: str | None = None
     labels: list[str] = Field(default_factory=list)
@@ -97,6 +110,9 @@ class Manifest(BaseModel):
 
     schema_version: int = SCHEMA_VERSION
     generated_at: datetime
+    #: ``trait_table_hash()`` of the table the last sync planned declared tools
+    #: against. ``None`` (and omitted) until a declared tool exists.
+    trait_table_hash: str | None = None
     points: list[IntegrationPoint] = Field(default_factory=list)
     tests: list[TestEntry] = Field(default_factory=list)
 
@@ -116,7 +132,7 @@ class Manifest(BaseModel):
         covered = 0
         for point in self.points:
             has_live_test = any(
-                (not t.disabled) and t.status != "orphaned"
+                (not t.disabled) and (not t.retired) and t.status != "orphaned"
                 for t in self.tests_for_point(point.id)
             )
             if has_live_test:
@@ -171,6 +187,29 @@ def _migrate(manifest: Manifest, from_version: int) -> None:
     manifest.schema_version = SCHEMA_VERSION
 
 
+#: Fields written only when they differ from their default. All of them arrived
+#: with the live trait table and mean something only for a declared tool, so a
+#: manifest without one — every Terraform-only project — serializes exactly as
+#: it did before they existed. No schema bump: each loads as its default.
+_SPARSE_TOP = {"trait_table_hash": None}
+_SPARSE_POINT = {"traits_planned": None}
+_SPARSE_TEST = {"trait": None, "retired": False}
+
+
+def _sparse(data: dict) -> dict:
+    def drop(document: dict, defaults: dict) -> None:
+        for key, default in defaults.items():
+            if key in document and document[key] == default:
+                del document[key]
+
+    drop(data, _SPARSE_TOP)
+    for point in data.get("points", []):
+        drop(point, _SPARSE_POINT)
+    for test in data.get("tests", []):
+        drop(test, _SPARSE_TEST)
+    return data
+
+
 def save_manifest(manifest: Manifest, path: str | Path) -> None:
     """Write ``manifest`` to ``path`` as diffable YAML (fields in order).
 
@@ -181,7 +220,7 @@ def save_manifest(manifest: Manifest, path: str | Path) -> None:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = manifest.model_dump(mode="json")
+    data = _sparse(manifest.model_dump(mode="json"))
     fd, tmp_name = tempfile.mkstemp(
         prefix=f"{path.name}.", suffix=".tmp", dir=path.parent
     )

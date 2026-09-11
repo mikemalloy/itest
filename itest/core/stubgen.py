@@ -1,10 +1,23 @@
 """Generate pytest stubs for integration points.
 
-Stubs are intentionally boring: a named function whose docstring records the
-point it covers and whose body is a single ``pytest.skip(...)``. They import
-only ``pytest`` so a freshly generated file is always importable, and they are
-only ever *appended* to the target file — never rewritten — so human edits are
-safe.
+Stubs for detected points are intentionally boring: a named function whose
+docstring records the point it covers and whose body is a single
+``pytest.skip(...)``. They import only ``pytest`` so a freshly generated file is
+always importable, and they are only ever *appended* to the target file — never
+rewritten — so human edits are safe.
+
+Declared tools follow one principle: **the amount of generated code a human
+must maintain is proportional to the facts only a human could supply, never to
+the number of tools.** So each declared server gets, in its own directory:
+
+- one **engine module** per group (active, or passive for every other
+  tier) — ITest-owned, no per-tool code: a single
+  parametrized test that reads the manifest at collection time and runs every
+  *engine* trait of every tool through ``itest.checks.run_engine_check``;
+- one **thin binding** per (tool, *generated* trait) — the frozen docstring
+  (point, trait, schema hash), one import, one call; no logic;
+- one **conftest.py**, written once and human-owned from birth: the fixtures
+  only a person can fill in. Never rewritten, never ownership-hashed.
 """
 
 from __future__ import annotations
@@ -48,27 +61,77 @@ def _slug(text: str) -> str:
     return points.slug(text).lower()
 
 
+def server_dir(server: str) -> str:
+    """The directory everything generated for one declared server lives in.
+
+    Its own directory because its conftest.py — the human's fixtures — is per
+    server, and pytest scopes a conftest by directory.
+    """
+    return f"{STUB_DIR_REL}/tools_{_slug(server)}"
+
+
+def _tier_suffix(tier: str) -> str:
+    return "_active" if tier == "active" else ""
+
+
 def tool_stub_file_for(point: IntegrationPoint, tier: str) -> str:
-    """Where one tool check goes: per server, and the active tier on its own.
+    """Where one generated binding goes: per server, and the active tier apart.
 
     Two files rather than one, and the split is by tier rather than by taste.
     verify keeps a disallowed tier out of *collection*: it can ``--ignore`` a
     file whose every test is gated — never importing it — but a gated test
     sharing a file with runnable siblings can only be ``--deselect``-ed, which
     imports the module. A mutating probe belongs behind the strong guarantee, so
-    it lives in a file that holds nothing else.
+    it lives in a file that holds nothing else. The file names differ from the
+    P30 ``test_tools_<server>.py`` ones so a checkout holding both never has two
+    test modules with one basename.
     """
-    suffix = "_active" if tier == "active" else ""
-    return f"{STUB_DIR_REL}/test_tools_{_slug(point.source)}{suffix}.py"
+    slug = _slug(point.source)
+    return f"{server_dir(point.source)}/test_{slug}__generated{_tier_suffix(tier)}.py"
+
+
+#: The two engine modules a server can have. ``active`` holds the active-tier
+#: engine traits alone, so verify can ``--ignore`` it without importing it;
+#: ``passive`` holds every other tier (static and readonly alike).
+ENGINE_GROUPS = ("active", "passive")
+
+
+def engine_group(tier: str) -> str:
+    """The engine module an engine trait of ``tier`` belongs in."""
+    return "active" if tier == "active" else "passive"
+
+
+def _check_group(group: str) -> str:
+    if group not in ENGINE_GROUPS:
+        raise ValueError(
+            f"engine module group {group!r} is not one of {', '.join(ENGINE_GROUPS)}"
+        )
+    return group
+
+
+def engine_module_for(server: str, group: str) -> str:
+    """The server's engine module for one group (see :data:`ENGINE_GROUPS`)."""
+    suffix = _tier_suffix(_check_group(group))
+    return f"{server_dir(server)}/test_{_slug(server)}__engine{suffix}.py"
+
+
+def conftest_for(server: str) -> str:
+    """The server's human-owned conftest."""
+    return f"{server_dir(server)}/conftest.py"
+
+
+#: The one test an engine module defines; each case is ``test_engine[<tool>-<id>]``.
+ENGINE_TEST = "test_engine"
+
+
+def engine_test_name(point: IntegrationPoint, trait_id: str) -> str:
+    """The parametrized node an engine case runs as, and is registered under."""
+    return f"{ENGINE_TEST}[{point.target}-{trait_id}]"
 
 
 def tool_function_name(point: IntegrationPoint, trait_id: str) -> str:
-    """``test_b2_delete_record``: the trait, then the tool.
-
-    The trait leads because one tool yields one test per applicable trait, and
-    reading the file top to bottom should group by what is being asked.
-    """
-    return f"test_{trait_id.lower()}_{_slug(point.target)}"
+    """``test_delete_record__B2``: the tool, then the trait it checks."""
+    return f"test_{_slug(point.target)}__{trait_id}"
 
 
 def stub_file_path(base_dir: Path, file_rel: str) -> Path:
@@ -112,39 +175,129 @@ def render_stub(point: IntegrationPoint, func_name: str) -> str:
     )
 
 
-def render_tool_stub(point: IntegrationPoint, func_name: str, trait: Trait) -> str:
-    """One stub for one (tool, trait) pair. The docstring is the address.
+#: The header of a file of generated bindings. Server-independent on purpose:
+#: the directory already says which server, and the header is compared as-is.
+GENERATED_HEADER = (
+    "# Generated by `itest sync`: one thin binding per (tool, generated trait).\n"
+    "# Each is a docstring, one import and one call — the check itself lives in\n"
+    "# itest.checks, and the facts it needs are the fixtures in conftest.py beside\n"
+    "# this file, which are yours. ITest records an ownership hash and only ever\n"
+    "# appends here; a file you edit is never rewritten.\n"
+)
 
-    It carries BOTH halves: the point id (which tool — stable across a reworded
-    description) and the trait id (which check). P31's recipes and P32's ledger
-    both find a check by its trait id, so these lines are frozen: add to them,
-    never rename them.
+
+def render_generated_stub(point: IntegrationPoint, func_name: str, trait: Trait) -> str:
+    """One binding for one (tool, generated trait). The docstring is the address.
+
+    Frozen: ``itest point`` (which tool — stable across a reworded description),
+    ``trait`` (which check) and ``schema`` (the input-schema hash it was
+    generated against, which is how verify tells a hand-edited check is stale).
+    Add to it, never rename it. The body is the binding and nothing more.
     """
-    attrs = point.attributes
-    egress = attrs.get("egress")
-    egress_line = f"egress={egress.get('to')}" if egress else "egress=none"
+    fixture = f"{trait.id.lower()}_fixtures"
+    schema = point.attributes.get("schema_hash")
     return (
-        f"\n\ndef {func_name}():\n"
-        f'    """Integration point {point.id} — trait {trait.id}.\n'
-        f"\n"
-        f"    {point.source} -> {point.target}\n"
-        f"    type={point.type} trait={trait.id} family={trait.family} "
-        f"tier={trait.tier}\n"
-        f"    mutation={attrs.get('mutation')} ({attrs.get('mutation_source')}) "
-        f"approval={attrs.get('approval')} {egress_line}\n"
-        f"    check: {trait.name}\n"
-        f"    recipe: {trait.recipe}\n"
-        f"    declared in: {point.hcl_address}\n"
-        f'    """\n'
-        f"    {STUB_SKIP_LINE}\n"
+        f"\n\ndef {func_name}(itest_target, itest_point, {fixture}):\n"
+        f'    """itest point: {point.id}  trait: {trait.id}  schema: {schema}"""\n'
+        "    from itest.checks import run_generated_check\n"
+        "\n"
+        "    result = run_generated_check(\n"
+        f'        "{trait.id}", itest_point, itest_target, fixtures={fixture}\n'
+        "    )\n"
+        '    assert result.status == "pass", result.detail\n'
     )
 
 
-def append_stubs(path: Path, blocks: list[str]) -> None:
-    """Append stub blocks to ``path``, creating it with the header if absent."""
+#: The head of every engine module. A module-level name so a test can stand in
+#: for an ITest upgrade that changes the template.
+ENGINE_HEADER = (
+    "# Generated by `itest sync`. ITest-owned: sync rewrites this file while it\n"
+    "# still matches its ownership hash, so do not edit it — an edit freezes it.\n"
+    "# It holds no per-tool code: the one test below is parametrized, when pytest\n"
+    "# collects this file, over every engine trait of every tool the manifest\n"
+    "# records for this server, and runs each through itest.checks.\n"
+)
+
+
+def render_engine_module(server: str, group: str) -> str:
+    """The engine module for one server and group. No tool is named in it."""
+    _check_group(group)
+    return (
+        ENGINE_HEADER + f'"""itest engine module: server {server}  group: {group}"""\n'
+        "\n"
+        "import pytest\n"
+        "\n"
+        "from itest.traits.runtime import (  # noqa: F401  (fixtures, used by name)\n"
+        "    engine_cases,\n"
+        "    itest_authenticated,\n"
+        "    itest_point,\n"
+        "    itest_target,\n"
+        "    run_engine_case,\n"
+        ")\n"
+        "\n"
+        "\n"
+        "@pytest.mark.parametrize(\n"
+        f'    "itest_case", engine_cases(__file__, "{server}", "{group}")\n'
+        ")\n"
+        f"def {ENGINE_TEST}(itest_case, itest_target, itest_authenticated, "
+        "record_property):\n"
+        "    result = run_engine_case(\n"
+        "        itest_case,\n"
+        "        itest_target,\n"
+        "        authenticated=itest_authenticated,\n"
+        "        record=record_property,\n"
+        "    )\n"
+        '    assert result.status == "pass", result.detail\n'
+    )
+
+
+def render_conftest(server: str, generated: list[Trait]) -> str:
+    """The server's conftest: one placeholder fixture per generated trait.
+
+    Written once and never again, so it names every generated trait in the
+    table — not only the ones that apply today — and a trait gained later finds
+    its fixture already here. Each placeholder skips, so an unfilled fact reads
+    as "not run", never as a pass.
+    """
+    path = conftest_for(server)
+    out = [
+        f"# Fixtures for the declared MCP server `{server}` — YOURS.",
+        "#",
+        "# `itest sync` wrote this file once and will never rewrite it: it is",
+        "# human-owned from birth and carries no ownership hash. The checks beside",
+        "# it are ITest's; the facts they need that only you can supply live here.",
+        "#",
+        "# Each `<trait>_fixtures` fixture feeds the generated check for that trait",
+        "# on every tool it applies to (take `itest_point` to vary it by tool).",
+        "# Return a dict of what the trait's recipe asks for. Until you do, it",
+        "# skips, and the check is reported as not run — never as passed.",
+        "import pytest",
+        "",
+        "# ITest's own fixtures: the tool point a check covers, and how to reach",
+        "# its server. Keep this import.",
+        "from itest.traits.runtime import itest_point, itest_target  # noqa: F401",
+    ]
+    for trait in generated:
+        name = f"{trait.id.lower()}_fixtures"
+        out += [
+            "",
+            "",
+            "@pytest.fixture",
+            f"def {name}(itest_point):",
+            f'    """{trait.id} {trait.name}: what recipe {trait.recipe} asks for."""',
+            "    pytest.skip(",
+            f'        "{trait.id} ({trait.name}) needs facts only you can supply: "',
+            f'        "fill in {name} in {path}"',
+            "    )",
+        ]
+    return "\n".join(out) + "\n"
+
+
+def append_stubs(path: Path, blocks: list[str], header: str = FILE_HEADER) -> None:
+    """Append stub blocks to ``path``, creating it with ``header`` if absent."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         existing = path.read_text(encoding="utf-8")
     else:
-        existing = FILE_HEADER
+        existing = header
     path.write_text(existing + "".join(blocks), encoding="utf-8")

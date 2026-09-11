@@ -5,6 +5,13 @@ integration points, flags orphaned tests, and rewrites the manifest. The one
 inviolable rule (DESIGN.md): a test file whose content hash differs from the
 recorded ownership hash is human-modified — sync appends to it but never
 rewrites or deletes a function in it.
+
+For declared tools it also applies the trait plan: it records each tool's
+``traits_planned`` and the table hash, appends a stub for every applicable
+*generated* trait that has none (an *engine* trait needs no per-tool code), and
+**retires** the test of a trait that no longer applies — kept on disk and in the
+manifest, never run — restoring the same entry if the trait applies again.
+Nothing generated is ever deleted.
 """
 
 from __future__ import annotations
@@ -52,6 +59,12 @@ class SyncResult(BaseModel):
     #: nothing is orphaned, so without this clause the line would read as though
     #: sync had done nothing while the manifest changed underneath it.
     recorded_changes: int = 0
+    #: Per-trait tests whose trait stopped applying, and ones that came back.
+    retired_checks: int = 0
+    restored_checks: int = 0
+    #: Engine cases newly registered: (tool, engine trait) pairs the engine
+    #: module now runs. No code is written for them.
+    registered_engine_checks: int = 0
     human_modified_files: int = 0
 
     def summary(self) -> str:
@@ -71,12 +84,28 @@ class SyncResult(BaseModel):
             if self.recorded_changes
             else ""
         )
+        retired = (
+            f"retired {self.retired_checks} check(s), " if self.retired_checks else ""
+        )
+        restored = (
+            f"restored {self.restored_checks} check(s), "
+            if self.restored_checks
+            else ""
+        )
+        engine = (
+            f"registered {self.registered_engine_checks} engine check(s), "
+            if self.registered_engine_checks
+            else ""
+        )
         return (
             f"Applied: added {self.added_stubs} stub(s), "
             f"flagged {self.flagged_orphans} orphan(s), "
             f"{resurrected}"
             f"{reclassified}"
             f"{recorded}"
+            f"{engine}"
+            f"{retired}"
+            f"{restored}"
             f"{self.human_modified_files} human-modified file(s) preserved."
         )
 
@@ -103,7 +132,17 @@ def prepare(tf_json: Path | None, base_dir: Path) -> tuple[Changeset, str | None
         )
 
     changeset = Changeset.model_validate_json(plan_file.read_text(encoding="utf-8"))
+    if changeset.trait_table_hash is not None and _table_moved(changeset):
+        changeset = planner.run_plan(tf_json, base_dir)
+        return changeset, "Ran plan first (the trait table changed since plan.json)."
     return changeset, None
+
+
+def _table_moved(changeset: Changeset) -> bool:
+    """True when the table on disk is not the one plan.json was computed from."""
+    from itest.core.declarations.traits import trait_table_hash
+
+    return trait_table_hash() != changeset.trait_table_hash
 
 
 def is_noop(changeset: Changeset) -> bool:
@@ -118,6 +157,10 @@ def is_noop(changeset: Changeset) -> bool:
         or changeset.resurrected_points
         or changeset.changed_points
         or changeset.orphan_candidates
+        or changeset.trait_changes
+        # A table hash not yet recorded (a first sync after an upgrade, or a
+        # table edit that happened to move no check) still has to be written.
+        or changeset.trait_table_hash != changeset.previous_trait_table_hash
     )
 
 
@@ -131,8 +174,13 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         manifest = Manifest(generated_at=now, points=[], tests=[])
 
     _refresh_point_registry(manifest, changeset, now)
+    if changeset.trait_table_hash is not None:
+        manifest.trait_table_hash = changeset.trait_table_hash
     resurrected = _resurrect_tests(manifest, changeset, base_dir)
     flagged = _flag_orphans(manifest, changeset)
+    _record_entry_traits(manifest)
+    retired, restored = _apply_trait_lifecycle(manifest, changeset)
+    engine = _write_tool_support(manifest, changeset, base_dir)
     added, human_modified_files = _generate_stubs(manifest, changeset, base_dir)
     # Last, so it reads the stubs this run just wrote as well as the ones a
     # human implemented since the previous run.
@@ -147,6 +195,9 @@ def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
         resurrected_tests=resurrected,
         reclassified_tests=reclassified,
         recorded_changes=len(changeset.changed_points),
+        retired_checks=retired,
+        restored_checks=restored,
+        registered_engine_checks=engine,
         human_modified_files=human_modified_files,
     )
 
@@ -186,9 +237,10 @@ def _refresh_point_registry(
             first_seen = existing[point.id].first_seen
         else:
             first_seen = now
-        registry.append(
-            point.model_copy(update={"first_seen": first_seen, "last_seen": now})
-        )
+        update = {"first_seen": first_seen, "last_seen": now}
+        if point.id in changeset.traits_planned:
+            update["traits_planned"] = list(changeset.traits_planned[point.id])
+        registry.append(point.model_copy(update=update))
     registry.extend(existing.get(p.id, p) for p in changeset.held_points)
     manifest.points = registry
 
@@ -225,6 +277,8 @@ def _status_from_body(path: Path, test_name: str) -> Literal["stub", "implemente
             and n.name == test_name
         ]
 
+    # A parametrized case (`test_engine[tool-A1]`) is its function's body.
+    test_name = test_name.split("[", 1)[0]
     # Module-level first (a top-level def is what sync generates and what a
     # canonical `path::name` addresses); fall back to any nested definition.
     matches = named(tree.body) or named(ast.walk(tree))
@@ -310,63 +364,88 @@ class _PendingStub(NamedTuple):
     def render(self, func_name: str) -> str:
         if self.trait is None:
             return stubgen.render_stub(self.point, func_name)
-        return stubgen.render_tool_stub(self.point, func_name, self.trait)
+        return stubgen.render_generated_stub(self.point, func_name, self.trait)
+
+    @property
+    def header(self) -> str:
+        return stubgen.FILE_HEADER if self.trait is None else stubgen.GENERATED_HEADER
 
 
-def _traits_for(point: IntegrationPoint, table) -> list[Trait]:
-    """Which checks one declared tool gets.
+def _record_entry_traits(manifest: Manifest) -> None:
+    """Fill ``trait`` on a declared tool's per-trait entries that predate it.
 
-    The table decides, unless the declaration hand-picked a list — and a tool
-    whose declaration withholds the active tier loses its active traits whichever
-    way they were chosen. Withholding removes the stub; it never leaves one
-    behind that must not run.
+    A P30 manifest encoded the trait only in the entry id sync gave it.
     """
-    from itest.core.declarations.schema import NO_TRAITS
-    from itest.core.declarations.tools import trait_context
-    from itest.core.declarations.traits import TraitTableError, applicable
-
-    declared = point.attributes.get("traits")
-    if declared:
-        if NO_TRAITS in declared:
-            chosen = []
-        else:
-            chosen = []
-            for trait_id in declared:
-                trait = table.get(trait_id)
-                if trait is None:
-                    raise TraitTableError(
-                        f"{point.source}/{point.target} is declared with trait "
-                        f"{trait_id!r}, which the trait table does not define. "
-                        f"Known traits: {', '.join(table.ids)}."
-                    )
-                chosen.append(trait)
-    else:
-        chosen = applicable(table, trait_context(point))
-
-    if point.attributes.get("active") is False:
-        return [trait for trait in chosen if trait.tier != "active"]
-    return chosen
+    tool_ids = {p.id for p in manifest.points if p.type == _TOOL_POINT_TYPE}
+    for test in manifest.tests:
+        if test.trait is None and test.point_id in tool_ids:
+            test.trait = planner.trait_from_entry(test)
 
 
-def _plan_stubs(changeset: Changeset) -> list[_PendingStub]:
-    """Expand the changeset's new points into the stubs sync will write.
+def _apply_trait_lifecycle(manifest: Manifest, changeset: Changeset) -> tuple[int, int]:
+    """Retire the tests of traits that stopped applying; restore returning ones.
 
-    The trait table is loaded lazily and only when a declared point is present,
-    so a project with no declarations does not read it at all.
+    Only tools this run observed are touched (``traits_planned`` holds exactly
+    those), so an unreachable server's held tests stay as they were. Returns
+    ``(retired, restored)``. Neither touches a file: retirement is a manifest
+    statement, and the stub stays on disk exactly as it was.
     """
-    table = None
+    retired = restored = 0
+    for test in manifest.tests:
+        planned = changeset.traits_planned.get(test.point_id)
+        if planned is None or test.trait is None or test.status == "orphaned":
+            continue
+        applies = test.trait in planned
+        if applies and test.retired:
+            test.retired = False
+            restored += 1
+        elif not applies and not test.retired:
+            test.retired = True
+            retired += 1
+    return retired, restored
+
+
+def _plan_stubs(manifest: Manifest, changeset: Changeset) -> list[_PendingStub]:
+    """The stubs this sync will write.
+
+    A detected point gets one when it is new. A declared tool gets one per
+    applicable **generated** trait that has no test yet — whether the tool is
+    new or the trait newly applies to it. An engine trait gets none: the engine
+    runs it from the manifest. The trait table is loaded lazily and only when a
+    declared tool is present, so a project with no declarations never reads it.
+    """
     pending: list[_PendingStub] = []
     for point in changeset.new_points:
         if point.type != _TOOL_POINT_TYPE:
             pending.append(
                 _PendingStub(point, None, stubgen.stub_file_for(point), _DEFAULT_TIER)
             )
-            continue
-        if table is None:
-            from itest.core.declarations.traits import load_traits
 
-            table = load_traits()
-        for trait in _traits_for(point, table):
+    tools = [p for p in changeset.detected_points if p.id in changeset.traits_planned]
+    if not tools:
+        return pending
+
+    from itest.core.declarations.traits import TraitTableError, load_traits
+
+    table = load_traits()
+    # A binding (or a P30 per-trait stub) covers a generated trait; an engine
+    # case never does — it is a different mechanism for a different kind.
+    covered = {
+        (t.point_id, t.trait)
+        for t in manifest.tests
+        if t.trait is not None and not _is_engine_case(t)
+    }
+    for point in tools:
+        for trait_id in changeset.traits_planned[point.id]:
+            trait = table.get(trait_id)
+            if trait is None:
+                raise TraitTableError(
+                    f"plan.json gives {point.source}/{point.target} trait "
+                    f"{trait_id!r}, which the trait table does not define. "
+                    "Re-run `itest plan`."
+                )
+            if trait.kind != "generated" or (point.id, trait_id) in covered:
+                continue
             pending.append(
                 _PendingStub(
                     point,
@@ -376,6 +455,104 @@ def _plan_stubs(changeset: Changeset) -> list[_PendingStub]:
                 )
             )
     return pending
+
+
+def _is_engine_case(test: TestEntry) -> bool:
+    return test.test_name.startswith(f"{stubgen.ENGINE_TEST}[")
+
+
+def _write_tool_support(
+    manifest: Manifest, changeset: Changeset, base_dir: Path
+) -> int:
+    """Each observed server's engine modules and its conftest; register cases.
+
+    An **engine module** (one per server and group — active, or passive for
+    every other tier — that has an engine trait) is
+    ITest-owned: written when absent, rewritten when it no longer matches the
+    template *and* still matches its recorded ownership hash, and otherwise —
+    a human edited it — left frozen, which ``_generate_stubs`` then reports.
+    Every (tool, engine trait) it will run is registered in the manifest under
+    the parametrized node name, so verify maps each result to its point.
+
+    The **conftest** is human-owned from birth: written if absent, never
+    rewritten, never registered, never hashed.
+
+    Returns the number of engine cases newly registered.
+    """
+    if not changeset.traits_planned:
+        return 0
+    from itest.core.declarations.traits import load_traits
+
+    table = load_traits()
+    tools = [p for p in changeset.detected_points if p.id in changeset.traits_planned]
+
+    cases: dict[tuple[str, str], list[tuple[IntegrationPoint, str]]] = {}
+    for point in tools:
+        for trait_id in changeset.traits_planned[point.id]:
+            trait = table.get(trait_id)
+            if trait is not None and trait.kind == "engine":
+                # Keyed by the module a case lands in, not by its tier: every
+                # non-active tier shares one module, and keying by tier would
+                # render that one file once per tier, each overwriting the last.
+                group = stubgen.engine_group(trait.tier)
+                cases.setdefault((point.source, group), []).append((point, trait_id))
+
+    registered = 0
+    for (server, group), pairs in sorted(cases.items()):
+        file_rel = stubgen.engine_module_for(server, group)
+        file_abs = stubgen.stub_file_path(base_dir, file_rel)
+        expected = stubgen.render_engine_module(server, group)
+        recorded = {t.ownership_hash for t in manifest.tests if t.path == file_rel}
+        # ITest's while it is absent, unrecorded, or still what ITest wrote.
+        owned = (
+            not file_abs.exists()
+            or not recorded
+            or stubgen.file_hash(file_abs) in recorded
+        )
+        if owned and (
+            not file_abs.exists() or file_abs.read_text(encoding="utf-8") != expected
+        ):
+            file_abs.parent.mkdir(parents=True, exist_ok=True)
+            file_abs.write_text(expected, encoding="utf-8")
+        current = stubgen.file_hash(file_abs)
+        # A frozen (hand-edited) module keeps its recorded hash, so it goes on
+        # being reported; an ITest-owned one records what is now on disk.
+        ownership = current if owned else next(iter(recorded))
+
+        names = {t.test_name for t in manifest.tests if t.path == file_rel}
+        for point, trait_id in pairs:
+            name = stubgen.engine_test_name(point, trait_id)
+            if name in names:
+                continue
+            manifest.tests.append(
+                TestEntry(
+                    id=f"e-{point.id}-{trait_id.lower()}",
+                    point_id=point.id,
+                    path=file_rel,
+                    test_name=name,
+                    trait=trait_id,
+                    ownership_hash=ownership,
+                    status="implemented",
+                    tier=table.get(trait_id).tier,
+                    resource_group=point.target,
+                )
+            )
+            names.add(name)
+            registered += 1
+        if owned:
+            for test in manifest.tests:
+                if test.path == file_rel:
+                    test.ownership_hash = current
+
+    generated = [t for t in table.traits if t.kind == "generated"]
+    for server in sorted({p.source for p in tools}):
+        conftest = stubgen.stub_file_path(base_dir, stubgen.conftest_for(server))
+        if not conftest.exists():
+            conftest.parent.mkdir(parents=True, exist_ok=True)
+            conftest.write_text(
+                stubgen.render_conftest(server, generated), encoding="utf-8"
+            )
+    return registered
 
 
 def _generate_stubs(
@@ -389,10 +566,10 @@ def _generate_stubs(
     already in the manifest keeps the path it was recorded with — routing
     applies to new stubs, never to tests that already exist.
     """
-    point_targets = {p.id: p.target for p in changeset.new_points}
+    point_targets = {p.id: p.target for p in changeset.detected_points}
 
     routed: dict[str, list[_PendingStub]] = {}
-    for stub in _plan_stubs(changeset):
+    for stub in _plan_stubs(manifest, changeset):
         routed.setdefault(stub.file_rel, []).append(stub)
 
     # Every file the manifest already knows is checked for human edits, even
@@ -430,7 +607,7 @@ def _generate_stubs(
             pending.append((stub, name))
 
         # Append-only: existing functions (including human edits) are kept.
-        stubgen.append_stubs(file_abs, blocks)
+        stubgen.append_stubs(file_abs, blocks, header=new_stubs[0].header)
         final_hash = stubgen.file_hash(file_abs)
 
         for stub, name in pending:
@@ -440,8 +617,12 @@ def _generate_stubs(
                     point_id=stub.point.id,
                     path=file_rel,
                     test_name=name,
+                    trait=stub.trait.id if stub.trait is not None else None,
                     ownership_hash=final_hash,
-                    status="stub",
+                    # A binding carries no skip line: its body is complete,
+                    # and what it still lacks (a fixture, the check library)
+                    # shows up as a skip at run time, not as a stub status.
+                    status="stub" if stub.trait is None else "implemented",
                     tier=stub.tier,
                     resource_group=point_targets.get(stub.point.id),
                 )

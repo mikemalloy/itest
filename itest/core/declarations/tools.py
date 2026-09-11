@@ -28,16 +28,17 @@ and nothing here can know which. Provenance is recorded per point:
 declaration filled the gap).
 
 **The attributes carry what the applies-when table asks about.** The table
-(``itest/traits/traits.yaml``) addresses ``auth.second_tenant_env`` and
-``audit.sink``, which are facts about the *server*, so they are copied onto each
-of its points. ``has_free_form_input`` is derived from the input schema here,
-because the schema itself is not kept — only its hash — and sync has nothing
-else to read.
+(``itest/traits/traits.yaml``) addresses ``auth.second_tenant_env``,
+``audit.sink`` and ``identity.runs_as``, which are facts about the *server*, so
+they are copied onto each of its points. ``has_free_form_input`` is derived
+from the input schema here, because the schema itself is not kept — only its
+hash — and sync has nothing else to read.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,12 @@ def build_target(
     if not url:
         return None
     return McpTarget(kind="http", url=url, credential_env=credential_env)
+
+
+def annotations_hash(annotations: dict[str, Any] | None) -> str:
+    """A 12-character sha256 of the tool's annotations, over canonical JSON."""
+    text = json.dumps(annotations or {}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
 def has_free_form_input(input_schema: dict[str, Any] | None) -> bool:
@@ -260,13 +267,21 @@ def build_points(
                     "schema_hash": tool.schema_hash,
                     "description_hash": tool.description_hash,
                     "annotations": dict(tool.annotations),
+                    # The annotations are what detection read, so a flip in
+                    # them is drift even when the class it yields is not.
+                    "annotations_hash": annotations_hash(tool.annotations),
+                    # What decided the detected class: `annotation`, `name`,
+                    # `conflict:name-says-<x>` or `unknown`. Printed beside a
+                    # mutation change so a reader sees why the class moved.
+                    "mutation_evidence": detected_source,
                     # Derived here because the schema itself is not kept, only
                     # its hash, and the applies-when table asks about it.
                     "has_free_form_input": has_free_form_input(tool.input_schema),
-                    # Two facts about the server, carried onto its points so the
+                    # Three facts about the server, carried onto its points so the
                     # table can address them without reloading the declaration.
                     "second_tenant_env": declaration.auth.second_tenant_env,
                     "audit_sink": declaration.audit.sink,
+                    "runs_as": declaration.identity.runs_as,
                     "traits": list(declared_traits) if declared_traits else None,
                 },
                 hcl_address=declaration_path(server),
@@ -287,21 +302,3 @@ def orphaned_overrides(declaration: Declaration, live: list[ToolInfo]) -> list[s
     """
     live_names = {tool.name for tool in live}
     return [name for name in declaration.tools if name not in live_names]
-
-
-def trait_context(point: IntegrationPoint) -> dict[str, Any]:
-    """The attribute names the applies-when table evaluates against.
-
-    Built from the point alone: sync reads the manifest and the changeset, never
-    the declaration, so everything the table asks about has to be on the point.
-    """
-    attributes = point.attributes
-    return {
-        "mutation": attributes.get("mutation"),
-        "egress": attributes.get("egress"),
-        "approval": attributes.get("approval"),
-        "active": attributes.get("active"),
-        "has_free_form_input": attributes.get("has_free_form_input"),
-        "auth.second_tenant_env": attributes.get("second_tenant_env"),
-        "audit.sink": attributes.get("audit_sink"),
-    }

@@ -131,6 +131,15 @@ A disagreement names the tool, the detected class and what decided it, and the
 declared class. Nothing is generated and the manifest is not written: one of the
 two statements is wrong, and ITest cannot know which.
 
+**The mutation class is also a drift attribute.** Both halves of it are drift,
+alongside `schema_hash` and `description_hash`: the class detection resolved,
+and a hash of the annotations it was read from. So a tool whose annotations
+flip is **changed** even when its name, schema and description are untouched,
+and the plan says what moved (`mutation: read → destructive (annotation)`).
+Under `detect` the flip is drift, and the checks the new class brings or drops
+show up as trait changes. With a declared class, a disagreement still refuses
+the plan exactly as above.
+
 ### Absence grants nothing
 
 Every optional section defaults to its least claim: no auth, no audit sink,
@@ -182,9 +191,18 @@ checks or it needs those ones.
 Not from this file, and not from code: from
 [`itest/traits/traits.yaml`](../itest/traits/traits.yaml), whose `applies_when`
 column is a tiny expression over the tool's own attributes (`mutation`,
-`egress`, `has_free_form_input`, `auth.second_tenant_env present`,
-`audit.sink present`). Editing one line of that table changes the generated
-stubs — which is the point, and is pinned by a test.
+`egress`, `approval`, `active`, `has_free_form_input`, and three server facts:
+`auth.second_tenant_env`, `audit.sink` and `identity.runs_as`). The table is live. Every sync recomputes
+every tool's trait set from the current table and the tool's current
+attributes, and compares it with the set the manifest recorded
+(`traits_planned`). A trait that newly applies gains a check. A trait that
+stops applying has its check retired: kept on disk, never run, and reported as
+`not_applicable`. The plan lists each change (`+A2 on server/tool (rule: ...)`).
+Engine traits run from one parametrized module per server. Generated traits get
+one thin binding per tool, fed by fixtures in a `conftest.py` that is yours.
+[docs/traits.md](traits.md) covers the table, what a sync does when it changes,
+and the lifecycle states; `itest traits --for <server>/<tool>` shows which rule
+decided each trait for one tool.
 
 ## What a declaration is *not* for
 

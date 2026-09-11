@@ -7,8 +7,8 @@ project will want a check withheld, or a new one applied to more tools — and a
 argument about policy should be settled in a reviewed YAML diff, not in a patch
 to the generator.
 
-``applies_when`` is deliberately the smallest language that expresses the eleven
-rows that ship:
+``applies_when`` is deliberately the smallest language that expresses the rows
+that ship:
 
 ===========================  ==============================================
 ``always``                   every tool
@@ -25,26 +25,59 @@ Two refusals are on purpose. An **unknown field** is an error rather than a
 false clause — a typo in the table would otherwise delete a check silently, and
 a check nobody notices is missing is worse than no table at all. An
 **unparseable clause** is an error for the same reason. Both name the trait and
-the expression.
+the expression, and both are raised when the table is *loaded*, not when a sync
+first reaches the row.
+
+Every row also says **who runs the check** (``kind``): ``engine`` traits are run
+by the engine straight from the manifest and have no per-tool file; ``generated``
+traits get a thin per-tool binding stub, because they need a fact only a human
+can supply (a second tenant's fixture, say). And the table as a whole has a
+**hash** (:func:`trait_table_hash`) over its parsed content, which the manifest
+records so a sync can say when the table itself changed.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NamedTuple
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from itest.core.manifest import Tier
+from itest.core.declarations.schema import NO_TRAITS
+from itest.core.environments import VALID_TIERS
+from itest.core.manifest import IntegrationPoint, Tier
 
-#: The shipped table. Overridable only by passing a path to :func:`load_traits`
-#: (which is how the test that proves the table is data edits one line of it).
-TRAITS_PATH = Path(__file__).resolve().parents[2] / "traits" / "traits.yaml"
+#: Where the shipped table lives: a resource of the ``itest.traits`` package,
+#: read through :mod:`importlib.resources` and never by a path relative to this
+#: file, so an installed wheel reads exactly what a source checkout reads.
+TABLE_PACKAGE = "itest.traits"
+TABLE_RESOURCE = "traits.yaml"
 
 #: The only table version this build understands.
 TABLE_VERSION = 1
+
+#: Who runs a trait's check. ``engine``: the engine, from the manifest, with no
+#: per-tool code. ``generated``: a thin per-tool stub bound to human fixtures.
+TRAIT_KINDS = ("engine", "generated")
+
+#: The attributes an ``applies_when`` may name — exactly the keys
+#: :func:`trait_context` supplies (a test pins the two together). Checked at
+#: load, so a typo refuses the table outright.
+KNOWN_ATTRIBUTES = (
+    "mutation",
+    "egress",
+    "approval",
+    "active",
+    "has_free_form_input",
+    "auth.second_tenant_env",
+    "audit.sink",
+    "identity.runs_as",
+)
 
 _IN_CLAUSE = re.compile(r"^(?P<field>[\w.]+)\s+in\s+\[(?P<items>[^\]]*)\]$")
 _COMPARISON = re.compile(r"^(?P<field>[\w.]+)\s*(?P<op>==|!=)\s*(?P<value>.+)$")
@@ -68,6 +101,9 @@ class Trait(BaseModel):
     #: What the generated stub is registered as, and what the environment policy
     #: gates on. An ``active`` trait's stubs live in their own file.
     tier: Tier
+    #: ``engine`` (run from the manifest, no per-tool file) or ``generated``
+    #: (a thin per-tool binding stub). See :data:`TRAIT_KINDS`.
+    kind: Literal["engine", "generated"]
     #: The recipe (in the bundled skill) that says how to implement the check.
     recipe: str
 
@@ -94,7 +130,8 @@ class TraitTable(BaseModel):
 
 def load_traits(path: Path | None = None) -> TraitTable:
     """Load the applies-when table. Defaults to the one shipped with the engine."""
-    path = Path(path) if path is not None else TRAITS_PATH
+    if path is None:
+        path = resources.files(TABLE_PACKAGE).joinpath(TABLE_RESOURCE)
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except FileNotFoundError:
@@ -114,6 +151,7 @@ def load_traits(path: Path | None = None) -> TraitTable:
             f"{path} declares version {version!r}, but this build understands "
             f"only version {TABLE_VERSION}."
         )
+    _check_rows(path, raw)
 
     try:
         table = TraitTable.model_validate(raw)
@@ -127,7 +165,68 @@ def load_traits(path: Path | None = None) -> TraitTable:
         if trait.id in seen:
             raise TraitTableError(f"{path} defines trait {trait.id!r} twice.")
         seen.add(trait.id)
+        try:
+            for field in referenced_attributes(trait.applies_when):
+                if field not in KNOWN_ATTRIBUTES:
+                    raise TraitTableError(
+                        f"applies_when {trait.applies_when!r} names an unknown "
+                        f"attribute {field!r}. Known attributes: "
+                        f"{', '.join(sorted(KNOWN_ATTRIBUTES))}."
+                    )
+        except TraitTableError as exc:
+            raise TraitTableError(f"{path}: trait {trait.id}: {exc}") from None
     return table
+
+
+def _check_rows(path: object, raw: dict) -> None:
+    """The refusals that name a trait, before pydantic sees the rows.
+
+    Pydantic would refuse most of these too, but with a location like
+    ``traits.3.kind``; a reader fixing the table wants the trait id, the bad
+    value and the values that would work.
+    """
+    families = raw.get("families") or {}
+    rows = raw.get("traits") or []
+    if not isinstance(rows, list):
+        return  # pydantic's refusal is precise enough for a non-list
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        trait_id = row.get("id", "(no id)")
+        if "kind" in row and row["kind"] not in TRAIT_KINDS:
+            raise TraitTableError(
+                f"{path}: trait {trait_id} has kind {row['kind']!r}. A kind is "
+                f"one of: {', '.join(TRAIT_KINDS)}."
+            )
+        if "tier" in row and row["tier"] not in VALID_TIERS:
+            raise TraitTableError(
+                f"{path}: trait {trait_id} has tier {row['tier']!r}, which the "
+                f"environment policy does not define. Tiers: "
+                f"{', '.join(VALID_TIERS)}."
+            )
+        if "family" in row and row["family"] not in families:
+            raise TraitTableError(
+                f"{path}: trait {trait_id} is in family {row['family']!r}, which "
+                f"the table's families do not name. Families: "
+                f"{', '.join(sorted(families)) or '(none)'}."
+            )
+
+
+def trait_table_hash(table: TraitTable | None = None) -> str:
+    """A 12-character sha256 of the table's canonical content.
+
+    Canonical means *parsed*: the rows as the model holds them, every
+    ``applies_when`` re-rendered from its parse, and the whole dumped as sorted
+    JSON. Re-indenting the YAML, adding a comment or respacing an expression is
+    not a table change and does not move the hash; changing what any row says
+    does. The manifest records it, so a sync can say the table changed.
+    """
+    table = table if table is not None else load_traits()
+    document = table.model_dump(mode="json")
+    for row in document["traits"]:
+        row["applies_when"] = canonical_expression(row["applies_when"])
+    text = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
 # --- the expression language ---------------------------------------------------
@@ -175,28 +274,34 @@ def _lookup(field: str, context: dict[str, Any], expression: str) -> Any:
     return context[field]
 
 
-def _clause(clause: str, context: dict[str, Any], expression: str) -> bool:
+class _Clause(NamedTuple):
+    """One parsed clause. ``op`` is always | truthy | present | == | != | in."""
+
+    op: str
+    field: str | None = None
+    value: Any = None
+
+
+def _parse_clause(clause: str, expression: str) -> _Clause:
     text = clause.strip()
     if text == "always":
-        return True
+        return _Clause("always")
 
     match = _PRESENT.match(text)
     if match:
-        return _lookup(match["field"], context, expression) is not None
+        return _Clause("present", match["field"])
 
     match = _IN_CLAUSE.match(text)
     if match:
         values = [_literal(item) for item in match["items"].split(",") if item.strip()]
-        return _lookup(match["field"], context, expression) in values
+        return _Clause("in", match["field"], tuple(values))
 
     match = _COMPARISON.match(text)
     if match:
-        value = _lookup(match["field"], context, expression)
-        wanted = _literal(match["value"])
-        return value == wanted if match["op"] == "==" else value != wanted
+        return _Clause(match["op"], match["field"], _literal(match["value"]))
 
     if _FIELD.match(text):
-        return bool(_lookup(text, context, expression))
+        return _Clause("truthy", text)
 
     raise TraitTableError(
         f"applies_when {expression!r} has a clause this build cannot read: "
@@ -206,8 +311,12 @@ def _clause(clause: str, context: dict[str, Any], expression: str) -> bool:
     )
 
 
-def evaluate(expression: str, context: dict[str, Any]) -> bool:
-    """True when every ``and``-joined clause of ``expression`` holds."""
+def parse(expression: str) -> list[_Clause]:
+    """Parse ``expression`` into its clauses, or raise :class:`TraitTableError`.
+
+    Parsing needs no context, which is what lets the loader refuse an
+    unreadable row before any tool is evaluated against it.
+    """
     text = (expression or "").strip()
     if not text:
         raise TraitTableError("an empty applies_when matches nothing; write 'always'.")
@@ -217,7 +326,57 @@ def evaluate(expression: str, context: dict[str, Any]) -> bool:
             f"applies_when {expression!r} splits a bracketed list across an "
             "'and'. A list literal may not contain the word 'and'."
         )
-    return all(_clause(clause, context, text) for clause in clauses)
+    return [_parse_clause(clause, text) for clause in clauses]
+
+
+def referenced_attributes(expression: str) -> list[str]:
+    """Every attribute ``expression`` names, in order."""
+    return [clause.field for clause in parse(expression) if clause.field]
+
+
+def _render_literal(value: Any) -> str:
+    if value is None:
+        return "none"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def canonical_expression(expression: str) -> str:
+    """``expression`` re-rendered from its parse: one spelling per meaning."""
+    parts = []
+    for clause in parse(expression):
+        if clause.op == "always":
+            parts.append("always")
+        elif clause.op == "truthy":
+            parts.append(clause.field)
+        elif clause.op == "present":
+            parts.append(f"{clause.field} present")
+        elif clause.op == "in":
+            items = ", ".join(_render_literal(v) for v in clause.value)
+            parts.append(f"{clause.field} in [{items}]")
+        else:
+            parts.append(f"{clause.field} {clause.op} {_render_literal(clause.value)}")
+    return " and ".join(parts)
+
+
+def _holds(clause: _Clause, context: dict[str, Any], expression: str) -> bool:
+    if clause.op == "always":
+        return True
+    value = _lookup(clause.field, context, expression)
+    if clause.op == "present":
+        return value is not None
+    if clause.op == "truthy":
+        return bool(value)
+    if clause.op == "in":
+        return value in clause.value
+    return value == clause.value if clause.op == "==" else value != clause.value
+
+
+def evaluate(expression: str, context: dict[str, Any]) -> bool:
+    """True when every ``and``-joined clause of ``expression`` holds."""
+    text = (expression or "").strip()
+    return all(_holds(clause, context, text) for clause in parse(expression))
 
 
 def applicable(table: TraitTable, context: dict[str, Any]) -> list[Trait]:
@@ -227,3 +386,74 @@ def applicable(table: TraitTable, context: dict[str, Any]) -> list[Trait]:
     regenerated file reads the same way every time.
     """
     return [trait for trait in table.traits if evaluate(trait.applies_when, context)]
+
+
+# --- deciding one tool ------------------------------------------------------------
+
+
+def trait_context(point: IntegrationPoint) -> dict[str, Any]:
+    """The attribute names the applies-when table evaluates against.
+
+    Built from the point alone: sync reads the manifest and the changeset, never
+    the declaration, so everything the table asks about has to be on the point.
+    Exactly :data:`KNOWN_ATTRIBUTES` (a test pins the two together). Lives here,
+    beside the table, rather than with the probe-backed point builder, so that
+    ``itest traits --for`` can decide a tool without importing a transport.
+    """
+    attributes = point.attributes
+    return {
+        "mutation": attributes.get("mutation"),
+        "egress": attributes.get("egress"),
+        "approval": attributes.get("approval"),
+        "active": attributes.get("active"),
+        "has_free_form_input": attributes.get("has_free_form_input"),
+        "auth.second_tenant_env": attributes.get("second_tenant_env"),
+        "audit.sink": attributes.get("audit_sink"),
+        "identity.runs_as": attributes.get("runs_as"),
+    }
+
+
+class TraitDecision(NamedTuple):
+    """Whether one trait applies to one tool, and what decided it."""
+
+    trait: Trait
+    applies: bool
+    #: ``rule: <applies_when>``, ``declared traits: ...``, or the active-tier
+    #: withholding. Printed by the plan and by ``itest traits --for``.
+    reason: str
+
+
+def trait_decisions(point: IntegrationPoint, table: TraitTable) -> list[TraitDecision]:
+    """Every trait in the table, decided for one declared tool, in table order.
+
+    The table decides, unless the declaration hand-picked a list — and a tool
+    whose declaration withholds the active tier loses its active traits whichever
+    way they were chosen. Withholding removes the check; it never leaves one
+    behind that must not run. Raises :class:`TraitTableError` for a hand-picked
+    trait the table does not define.
+    """
+    declared = point.attributes.get("traits")
+    if declared:
+        for trait_id in declared:
+            if trait_id != NO_TRAITS and table.get(trait_id) is None:
+                raise TraitTableError(
+                    f"{point.source}/{point.target} is declared with trait "
+                    f"{trait_id!r}, which the trait table does not define. "
+                    f"Known traits: {', '.join(table.ids)}."
+                )
+    context = trait_context(point)
+    withheld = point.attributes.get("active") is False
+
+    decisions: list[TraitDecision] = []
+    for trait in table.traits:
+        if declared:
+            applies = trait.id in declared
+            reason = f"declared traits: {', '.join(declared)}"
+        else:
+            applies = evaluate(trait.applies_when, context)
+            reason = f"rule: {trait.applies_when}"
+        if applies and withheld and trait.tier == "active":
+            applies = False
+            reason = "active: false withholds active-tier checks"
+        decisions.append(TraitDecision(trait, applies, reason))
+    return decisions

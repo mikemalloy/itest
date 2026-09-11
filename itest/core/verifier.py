@@ -7,19 +7,28 @@ point-level coverage. Output is available as a human table, JSON, or JUnit XML.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core import environments, planner, points, redact
-from itest.core.manifest import Manifest, load_manifest, save_manifest
+from itest.core import environments, lifecycle, planner, points, redact, stubgen
+from itest.core.manifest import (
+    IntegrationPoint,
+    Manifest,
+    TestEntry,
+    load_manifest,
+    save_manifest,
+)
 
 JUNIT_NAME = "itest-results.xml"
 
@@ -51,7 +60,9 @@ class VerifyConfigError(Exception):
 
 class TestResult(BaseModel):
     canonical: str
-    outcome: str  # passed | failed | skipped | error | missing | gated
+    #: passed | failed | skipped | error | missing | gated | not_applicable
+    #: (``not_applicable``: a retired check — its trait no longer applies).
+    outcome: str
     point_id: str | None = None
     detail: str = ""
 
@@ -86,6 +97,15 @@ class VerifyReport(BaseModel):
     points: list[PointResult] = Field(default_factory=list)
     tests: list[TestResult] = Field(default_factory=list)
     unregistered: list[str] = Field(default_factory=list)
+    #: The tool ledger (``{"servers": [...]}``), exactly the shape of
+    #: ``tests/fixtures/report/tool-ledger.json``. ``None`` — and absent from
+    #: the JSON — when the manifest records no declared tool.
+    tools: dict | None = None
+
+    def to_json(self, indent: int | None = 2) -> str:
+        """The JSON verify prints: ``tools`` appears only when there is one."""
+        exclude = {"tools"} if self.tools is None else None
+        return self.model_dump_json(indent=indent, exclude=exclude)
 
     @property
     def exit_code(self) -> int:
@@ -136,7 +156,10 @@ def _gated_canonicals(
     return {
         t.canonical
         for t in manifest.tests
-        if t.status != "orphaned" and not t.disabled and not resolution.allows(t.tier)
+        if t.status != "orphaned"
+        and not t.disabled
+        and not t.retired
+        and not resolution.allows(t.tier)
     }
 
 
@@ -150,6 +173,15 @@ def _disabled_canonicals(manifest: Manifest) -> set[str]:
     return {
         t.canonical for t in manifest.tests if t.disabled and t.status != "orphaned"
     }
+
+
+def _retired_canonicals(manifest: Manifest) -> set[str]:
+    """Canonical addresses of retired checks: kept on disk, never run.
+
+    A retired test's trait no longer applies to its tool. It is removed from
+    collection exactly as a disabled one is, and reported as ``not_applicable``.
+    """
+    return {t.canonical for t in manifest.tests if t.retired and t.status != "orphaned"}
 
 
 def _gating_args(manifest: Manifest, excluded: set[str]) -> tuple[list[str], set[str]]:
@@ -314,7 +346,8 @@ def run_verify(
     # Gated (tier-disallowed) and disabled tests are both kept out of collection.
     # Gated is tracked separately below because a fully-gated point still
     # reports [GATED]; a disabled test simply does not run.
-    excluded = gated | _disabled_canonicals(manifest)
+    retired = _retired_canonicals(manifest)
+    excluded = gated | _disabled_canonicals(manifest) | retired
 
     gating_args, ignored_files = _gating_args(manifest, excluded)
     # The distinct file paths the manifest registers. Orphaned entries name a
@@ -348,6 +381,9 @@ def run_verify(
         if test.canonical in gated:
             resolved[test.canonical] = ("gated", "")
             continue
+        if test.canonical in retired:
+            resolved[test.canonical] = ("not_applicable", "")
+            continue
         raw = outcomes.get(test.canonical)
         if raw:
             resolved[test.canonical] = (raw["outcome"], raw["detail"])
@@ -379,7 +415,7 @@ def run_verify(
         live = [
             t
             for t in manifest.tests_for_point(point.id)
-            if t.status != "orphaned" and not t.disabled
+            if t.status != "orphaned" and not t.disabled and not t.retired
         ]
         allowed = [t for t in live if t.canonical not in gated]
         # A point with live coverage, all of it gated, is itself gated: the
@@ -434,6 +470,10 @@ def run_verify(
     if durations_recorded:
         save_manifest(manifest, manifest_file)
 
+    tools = build_tool_ledger(
+        manifest, base_dir, resolved, outcomes, resolution.environment
+    )
+
     report = VerifyReport(
         total_points=len(manifest.points),
         passing=passing,
@@ -448,6 +488,7 @@ def run_verify(
         points=point_results,
         tests=test_results,
         unregistered=unregistered,
+        tools=tools,
     )
 
     if redact_accounts:
@@ -464,6 +505,366 @@ def run_verify(
             )
 
     return report
+
+
+# --- the tool ledger ------------------------------------------------------------
+
+#: A pytest outcome, as a tool check's status, when the check recorded no
+#: CheckResult of its own. A test that could not run (``error``) is critical: a
+#: check that cannot run is not a check, and the page must not read it as fine.
+_OUTCOME_STATUS = {
+    "passed": "pass",
+    "failed": "fail",
+    "error": "critical",
+    "skipped": "not_run",
+    "missing": "not_run",
+    "gated": "held_out",
+    "not_applicable": "n/a",
+}
+
+#: Statuses that mean the check actually ran and said something.
+_RAN = ("pass", "fail", "critical", "changed", "not_verifiable")
+
+#: Lifecycle states that count toward VERIFIED (derived in itest.core.lifecycle).
+_COUNTED = lifecycle.COUNTED_STATES
+
+_SCHEMA = re.compile(r"schema: (?P<schema>\S+)")
+
+
+def _docstring_schema(path: Path, test_name: str) -> str | None:
+    """The ``schema: <hash>`` a generated check's docstring was frozen with."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return None
+    name = test_name.split("[", 1)[0]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and (
+            node.name == name
+        ):
+            match = _SCHEMA.search(ast.get_docstring(node) or "")
+            return match["schema"] if match else None
+    return None
+
+
+def check_state(
+    *,
+    base_dir: Path,
+    path: str,
+    test_name: str,
+    ownership_hash: str,
+    point_schema: str | None,
+    retired: bool = False,
+    orphaned: bool = False,
+) -> str:
+    """How far one check's test can be trusted as a statement about the tool.
+
+    ``orphan`` and ``not_applicable`` come from the manifest. Otherwise the file
+    decides: whose it is (its content against the recorded ownership hash) and
+    what it was generated against (the docstring's ``schema:``). ``stale`` is
+    the dangerous one — a human edited the check, and the tool's schema has
+    moved since it was generated, so nobody has read it against the tool as it
+    is. An ITest-owned file is ``current``: a binding has no schema-dependent
+    body, and an engine module reads the manifest live. ``recipe_newer`` is not
+    computed: nothing records which recipe version a check was generated from.
+    """
+    if orphaned:
+        return "orphan"
+    if retired:
+        return "not_applicable"
+    file = base_dir / path
+    if file.exists() and stubgen.file_hash(file) == ownership_hash:
+        return "current"
+    schema = _docstring_schema(file, test_name) if file.exists() else None
+    if schema is not None and point_schema is not None and schema != point_schema:
+        return "stale"
+    return "hand_edited"
+
+
+def _short_detail(outcome: str, detail: str, raw: dict, environment: str | None):
+    """One line saying what happened, from pytest's own report."""
+    if outcome == "skipped":
+        return raw.get("reason") or "skipped"
+    if outcome == "missing":
+        return "registered, but pytest reported no result for it"
+    if outcome == "gated":
+        where = environment or "the safe floor"
+        return f"withheld: {where} does not run this tier"
+    if outcome == "not_applicable":
+        return "retired: the trait no longer applies to this tool"
+    if outcome == "passed":
+        return "passed"
+    lines = [line.strip() for line in (detail or "").splitlines() if line.strip()]
+    errors = [line[1:].strip() for line in lines if line.startswith("E ")]
+    text = (errors or lines or [outcome])[-1]
+    return text[:200]
+
+
+def _tool_from_test_name(entry: TestEntry) -> str:
+    """The tool a test covers, read back from its name (for an orphan)."""
+    name = entry.test_name
+    if name.startswith(f"{stubgen.ENGINE_TEST}[") and name.endswith("]"):
+        return name[len(stubgen.ENGINE_TEST) + 1 : -1].rsplit("-", 1)[0]
+    if "__" in name:
+        return name.removeprefix("test_").rsplit("__", 1)[0]
+    trait = (entry.trait or "").lower()
+    if trait and name.startswith(f"test_{trait}_"):
+        return name[len(f"test_{trait}_") :]
+    return f"point {entry.point_id}"
+
+
+def _pick_entry(entries: list[TestEntry], kind: str) -> TestEntry | None:
+    """The test that stands for a check: an engine trait's engine case, a
+    generated trait's binding (or its P30 per-trait stub)."""
+    engine = [e for e in entries if e.test_name.startswith(f"{stubgen.ENGINE_TEST}[")]
+    other = [e for e in entries if e not in engine]
+    preferred = (engine or other) if kind == "engine" else (other or engine)
+    return preferred[0] if preferred else None
+
+
+def _tool_checks(
+    point: IntegrationPoint,
+    manifest: Manifest,
+    base_dir: Path,
+    table,
+    resolved: dict[str, tuple[str, str]],
+    outcomes: dict[str, dict],
+    environment: str | None,
+) -> tuple[list[dict], list[dict]]:
+    """The ledger rows for one tool, and the exceptions they raise."""
+    entries = [
+        t
+        for t in manifest.tests
+        if t.point_id == point.id and t.trait and t.status != "orphaned"
+    ]
+    planned = point.traits_planned
+    if planned is None:  # a manifest no sync has recorded traits for yet
+        planned = [t for t in table.ids if any(e.trait == t for e in entries)]
+    schema = point.attributes.get("schema_hash")
+
+    checks: list[dict] = []
+    exceptions: list[dict] = []
+
+    def row(trait_id: str, entry: TestEntry | None) -> dict:
+        if entry is None:
+            return {
+                "trait": trait_id,
+                "status": "not_run",
+                "detail": "no test is registered for this check; run `itest sync`",
+                "test": "",
+            }
+        outcome, detail = resolved.get(entry.canonical, ("missing", ""))
+        raw = outcomes.get(entry.canonical) or {}
+        check = raw.get("check")
+        if check and outcome not in ("gated", "not_applicable"):
+            status, text = check.get("status", "fail"), check.get("detail", "")
+        else:
+            status = _OUTCOME_STATUS.get(outcome, "not_run")
+            text = _short_detail(outcome, detail, raw, environment)
+        state = check_state(
+            base_dir=base_dir,
+            path=entry.path,
+            test_name=entry.test_name,
+            ownership_hash=entry.ownership_hash,
+            point_schema=schema,
+            retired=entry.retired,
+        )
+        result = {
+            "trait": trait_id,
+            "status": status,
+            "detail": text,
+            "test": entry.canonical,
+            "state": state,
+        }
+        if state == "stale":
+            frozen = _docstring_schema(base_dir / entry.path, entry.test_name)
+            exceptions.append(
+                {
+                    "kind": "stale",
+                    "tool": point.target,
+                    "trait": trait_id,
+                    "message": (
+                        f"{entry.canonical} was edited by hand and generated "
+                        f"against schema {frozen}; the tool's schema is now "
+                        f"{schema}. Re-read it against the tool as it is."
+                    ),
+                }
+            )
+        elif status in ("critical", "fail", "changed"):
+            exceptions.append(
+                {
+                    "kind": status,
+                    "tool": point.target,
+                    "trait": trait_id,
+                    "message": text,
+                }
+            )
+        return result
+
+    for trait_id in planned:
+        trait = table.get(trait_id)
+        live = [e for e in entries if e.trait == trait_id and not e.retired]
+        checks.append(
+            row(trait_id, _pick_entry(live, trait.kind if trait else "generated"))
+        )
+    retired = {}
+    for entry in entries:
+        if entry.retired and entry.trait not in planned:
+            retired.setdefault(entry.trait, entry)
+    for trait_id, entry in retired.items():
+        checks.append(row(trait_id, entry))
+    return checks, exceptions
+
+
+def _tool_verified(tool: dict, planned: list[str]) -> bool:
+    """A coverage claim: every planned trait has a counted check that passed."""
+    if not planned:
+        return False
+    by_trait = {c["trait"]: c for c in tool["checks"]}
+    return all(
+        (check := by_trait.get(trait_id)) is not None
+        and check["status"] == "pass"
+        and check.get("state") in _COUNTED
+        for trait_id in planned
+    )
+
+
+def _tools_with(tools: list[dict], status: str) -> int:
+    return sum(
+        1 for tool in tools if any(c["status"] == status for c in tool["checks"])
+    )
+
+
+def build_tool_ledger(
+    manifest: Manifest,
+    base_dir: Path,
+    resolved: dict[str, tuple[str, str]],
+    outcomes: dict[str, dict],
+    environment: str | None,
+) -> dict | None:
+    """The ``tools`` section of verify's JSON: one entry per declared server.
+
+    Built only from what verify knows — the manifest's tool points and their
+    ``traits_planned``, the test registered for each check, pytest's outcome
+    and the ``CheckResult`` a check recorded — so nothing in it is illustrative:
+    a check that did not run says ``not_run``, never ``pass``. ``None`` when the
+    manifest records no declared tool.
+    """
+    tools = [p for p in manifest.points if p.type == "mcp_tool"]
+    if not tools:
+        return None
+    from itest.core.declarations.traits import load_traits
+
+    table = load_traits()
+    run_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    servers = []
+    for server in sorted({p.source for p in tools}):
+        points_here = [p for p in tools if p.source == server]
+        ids_here = {p.id for p in points_here}
+        files_here = {t.path for t in manifest.tests if t.point_id in ids_here}
+        prefix = stubgen.server_dir(server) + "/"
+
+        entries: list[dict] = []
+        exceptions: list[dict] = []
+        verified = 0
+        for point in points_here:
+            checks, raised = _tool_checks(
+                point, manifest, base_dir, table, resolved, outcomes, environment
+            )
+            counted = [c for c in checks if c.get("state") in _COUNTED]
+            egress = point.attributes.get("egress")
+            approval = point.attributes.get("approval")
+            tool = {
+                "name": point.target,
+                "point_id": point.id,
+                "mutation": str(point.attributes.get("mutation")),
+                "mutation_source": str(point.attributes.get("mutation_source")),
+                "egress": egress.get("to") if isinstance(egress, dict) else None,
+                "approval": approval if approval and approval != "none" else None,
+                "held_out": bool(counted)
+                and all(c["status"] == "held_out" for c in counted),
+                "schema_hash": point.attributes.get("schema_hash"),
+                "description_hash": point.attributes.get("description_hash"),
+                "checks": checks,
+            }
+            if _tool_verified(tool, point.traits_planned or []):
+                verified += 1
+            entries.append(tool)
+            exceptions.extend(raised)
+
+        orphans = [
+            t
+            for t in manifest.tests
+            if t.status == "orphaned"
+            and t.trait
+            and (t.path in files_here or t.path.startswith(prefix))
+        ]
+        exceptions.extend(
+            {
+                "kind": "orphan",
+                "tool": _tool_from_test_name(t),
+                "trait": t.trait,
+                "message": (
+                    f"{t.canonical} covers a tool {server} no longer lists. Kept, "
+                    "never deleted."
+                ),
+            }
+            for t in orphans
+        )
+        order = {"stale": 0, "critical": 1, "fail": 2, "changed": 3, "orphan": 4}
+        exceptions.sort(key=lambda e: order.get(e["kind"], 9))
+
+        all_checks = [c for tool in entries for c in tool["checks"]]
+        families = []
+        for family_id, family_name in table.families.items():
+            in_family = [
+                c
+                for c in all_checks
+                if (trait := table.get(c["trait"])) is not None
+                and trait.family == family_id
+                and c.get("state") not in ("not_applicable", "orphan")
+            ]
+            families.append(
+                {
+                    "id": family_id,
+                    "name": family_name,
+                    "checked": sum(1 for c in in_family if c["status"] in _RAN),
+                    "passed": sum(1 for c in in_family if c["status"] == "pass"),
+                    "not_verifiable": sum(
+                        1 for c in in_family if c["status"] == "not_verifiable"
+                    ),
+                }
+            )
+
+        servers.append(
+            {
+                "server": server,
+                "environment": environment,
+                "run_at": run_at,
+                "declaration": points_here[0].hcl_address,
+                "summary": {
+                    "declared": len(points_here),
+                    # Seen by the last sync: a held (unreachable) server's points
+                    # keep the last_seen of the run that last saw them.
+                    "live": sum(
+                        1 for p in points_here if p.last_seen == manifest.generated_at
+                    ),
+                    "undeclared": 0,
+                    "orphaned": len({t.point_id for t in orphans}),
+                    "verified": verified,
+                    "changed": _tools_with(entries, "changed"),
+                    "held_out": sum(1 for tool in entries if tool["held_out"]),
+                    "not_verifiable": sum(
+                        1 for c in all_checks if c["status"] == "not_verifiable"
+                    ),
+                    "critical": _tools_with(entries, "critical"),
+                },
+                "families": families,
+                "tools": entries,
+                "exceptions": exceptions,
+            }
+        )
+    return {"servers": servers}
 
 
 _STATUS_TAG = {
@@ -500,7 +901,7 @@ def render_human(report: VerifyReport, redacted: bool = False) -> str:
     if report.gated:
         rollup += f", {report.gated} gated"
     out.append(rollup + ".")
-    ran = sum(1 for t in report.tests if t.outcome != "gated")
+    ran = sum(1 for t in report.tests if t.outcome not in ("gated", "not_applicable"))
     out.append(f"Ran {ran} tests in {report.elapsed_seconds:.2f}s")
     # A fully-gated point announces itself as [GATED]. A gated test on a
     # point that still ran its other tests has no marker of its own — the

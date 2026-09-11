@@ -241,6 +241,8 @@
   .tag.wild{color:var(--warn);background:var(--warn-soft);border-color:transparent}
   .tag.ext{color:var(--muted);background:var(--surface-2)}
   .tag.mech{color:var(--accent);background:var(--accent-soft);border-color:transparent}
+  .tag.state{color:var(--warn);background:var(--warn-soft);border-color:transparent;font-weight:400}
+  .meta-row.attention span{color:var(--warn)}
   .row .ev{text-align:right;font-family:"IBM Plex Mono";font-size:11.5px}
   .row .ev a{color:var(--accent);text-decoration:none} .row .ev a:hover{text-decoration:underline}
 
@@ -365,7 +367,8 @@ const chev = `<svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill=
    other value goes through esc(). */
 const esc = s => String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-const cell = c => c ? `<span class="res ${c.cls}"><span class="dot"></span>${esc(c.txt)}</span>`
+const cell = c => c ? `<span class="res ${c.cls}"><span class="dot"></span>${esc(c.txt)}${
+                      c.state ? ` <span class="tag state">${esc(c.state)}</span>` : ""}</span>`
                     : `<span class="res none">—</span>`;
 const plain = t => `<span class="res none">${esc(t)}</span>`;
 const el = id => document.getElementById(id);
@@ -461,6 +464,7 @@ el("toolsMeta").textContent = PAGE.posture.toolsMeta;
       <p>${PAGE.tools.attest}</p>
     </div>
     <div class="sweepbar">${bars}<button class="exp" id="expandTools" aria-expanded="false">Expand all</button></div>
+    ${(PAGE.tools.attention || []).map(a => `<div class="meta-row attention"><span>${esc(a)}</span></div>`).join("")}
     <div id="toolGroups">${groups}</div>
     ${excBox(PAGE.tools.exceptionsHead, PAGE.tools.exceptions)}`;
   wireExpand("expandTools", "#toolGroups .grp");

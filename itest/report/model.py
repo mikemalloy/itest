@@ -6,11 +6,13 @@ is given — a prior manifest. Nothing is illustrative. When a source is absent
 the field is ``None`` and the renderer draws a named empty state; it never
 substitutes a plausible-looking value.
 
-Fields verify cannot supply today are modelled as ``Optional`` and listed in
-`docs/report.md`: the agent-tool ledger (P30/P31), the not-analyzed census
-(it lives in the plan, not in verify), the release commit, and the per-probe
-unauthenticated/authenticated outcomes (verify records a point's status but
-never which registered test was the anonymous probe).
+The agent-tool ledger is verify's ``tools`` section, emitted whenever the
+manifest records a declared tool (see ``verifier.build_tool_ledger``). Fields
+verify cannot supply today are modelled as ``Optional`` and listed in
+`docs/report.md`: the not-analyzed census (it lives in the plan, not in
+verify), the release commit, and the per-probe unauthenticated/authenticated
+outcomes (verify records a point's status but never which registered test was
+the anonymous probe).
 
 Verdict rules
 -------------
@@ -26,6 +28,10 @@ Evaluated in order; the first that matches wins.
 
 * any tool check has status ``changed`` (a declared property moved and no
   reviewer has confirmed it), or
+* any tool check is ``stale`` (hand-edited, and generated against a schema the
+  tool no longer has), or any declared tool is not verified — VERIFIED is a
+  coverage claim, and stale, not-applicable and orphaned checks do not count
+  toward it, or
 * a point reports ``stub`` while its manifest entry says ``implemented`` —
   the test was written but did not verify anything this run, or
 * any point reports ``stub`` at all. A stub is not coverage, so a run with
@@ -44,6 +50,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from itest.core import lifecycle
 from itest.core.manifest import Manifest
 
 #: The status vocabulary a tool check may carry. Pinned against the committed
@@ -56,7 +63,14 @@ CHECK_STATUSES = (
     "held_out",
     "not_verifiable",
     "n/a",
+    # A registered check that did not run: skipped, or not implemented yet.
+    "not_run",
 )
+
+#: A check's lifecycle state, and the ones that do not count toward VERIFIED.
+#: Defined once in ``itest.core.lifecycle``; re-exported here for the page.
+CHECK_STATES = lifecycle.CHECK_STATES
+UNCOUNTED_STATES = lifecycle.UNCOUNTED_STATES
 
 MUTATIONS = ("read", "write", "destructive", "informational")
 
@@ -109,6 +123,8 @@ class ToolCheck(_Strict):
     detail: str
     test: str
     change: ToolChange | None = None
+    #: One of :data:`CHECK_STATES`; ``None`` when no test is registered to judge.
+    state: str | None = None
 
 
 class ToolEntry(_Strict):
@@ -189,6 +205,19 @@ class ToolLedger(_Strict):
     def has_changed_check(self) -> bool:
         checks = [c for s in self.servers for t in s.tools for c in t.checks]
         return self.changed > 0 or any(c.status == "changed" for c in checks)
+
+    def has_stale_check(self) -> bool:
+        return any(
+            c.state == "stale" for s in self.servers for t in s.tools for c in t.checks
+        )
+
+    def state_counts(self, server: ToolServer) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for tool in server.tools:
+            for check in tool.checks:
+                if check.state:
+                    counts[check.state] = counts.get(check.state, 0) + 1
+        return counts
 
 
 # ---------------------------------------------------------------------------
@@ -584,7 +613,7 @@ def build(
     implemented_points = {
         t.point_id
         for t in manifest.tests
-        if t.status == "implemented" and not t.disabled
+        if t.status == "implemented" and not t.disabled and not t.retired
     }
     statuses = [p["status"] for p in verify_points]
     stuck = any(
@@ -594,6 +623,8 @@ def build(
         word = "BLOCKED"
     elif (
         (ledger and ledger.has_changed_check())
+        or (ledger and ledger.has_stale_check())
+        or (ledger and ledger.verified < ledger.declared)
         or stuck
         or any(s == "stub" for s in statuses)
     ):

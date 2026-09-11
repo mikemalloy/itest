@@ -1,5 +1,5 @@
 {
-  "$comment": "Contract for the agent-tools section of the readiness page. Produced by `itest verify --output json` once tool points exist (P30/P31); consumed by `itest report --html` (P32). P32 ships this file as a fixture and a snapshot test; P31 adds a test asserting verify emits exactly this shape. Field names are final; add fields only by extending, never renaming.",
+  "$comment": "Contract for the agent-tools section of the readiness page. Produced by `itest verify --output json` once tool points exist (P30/P31); consumed by `itest report --html` (P32). P32 ships this file as a fixture and a snapshot test; P31 adds a test asserting verify emits exactly this shape. Field names are final; add fields only by extending, never renaming. Extended by the trait-table work: each check's `state` (its lifecycle: current, stale, hand_edited, recipe_newer, not_applicable, orphan) and the `not_run` status (a registered check that did not run: skipped or not yet implemented).",
   "tools": {
     "servers": [
       {
@@ -36,10 +36,10 @@
             "schema_hash": "a1b2c3d4e5f6",
             "description_hash": "0f1e2d3c4b5a",
             "checks": [
-              { "trait": "A1", "status": "pass", "detail": "unauthenticated tools/call refused (401)", "test": "itest_tests/test_tools_reference_mcp.py::test_a1_delete_record" },
-              { "trait": "B1", "status": "pass", "detail": "declared destructive; annotations destructiveHint=true; name pattern delete_*", "test": "itest_tests/test_tools_reference_mcp.py::test_b1_delete_record" },
-              { "trait": "D2", "status": "pass", "detail": "schema unchanged since v0.2.0", "test": "itest_tests/test_tools_reference_mcp.py::test_d2_delete_record" },
-              { "trait": "D3", "status": "pass", "detail": "description unchanged since v0.2.0", "test": "itest_tests/test_tools_reference_mcp.py::test_d3_delete_record" }
+              { "trait": "A1", "status": "pass", "detail": "unauthenticated tools/call refused (401)", "test": "itest_tests/test_tools_reference_mcp.py::test_a1_delete_record", "state": "current" },
+              { "trait": "B1", "status": "pass", "detail": "declared destructive; annotations destructiveHint=true; name pattern delete_*", "test": "itest_tests/test_tools_reference_mcp.py::test_b1_delete_record", "state": "current" },
+              { "trait": "D2", "status": "pass", "detail": "schema unchanged since v0.2.0", "test": "itest_tests/test_tools_reference_mcp.py::test_d2_delete_record", "state": "hand_edited" },
+              { "trait": "D3", "status": "pass", "detail": "description unchanged since v0.2.0", "test": "itest_tests/test_tools_reference_mcp.py::test_d3_delete_record", "state": "current" }
             ]
           },
           {
@@ -53,8 +53,8 @@
             "schema_hash": "1a2b3c4d5e6f",
             "description_hash": "9e8d7c6b5a40",
             "checks": [
-              { "trait": "A1", "status": "pass", "detail": "unauthenticated tools/call refused (401)", "test": "…::test_a1_update_record" },
-              { "trait": "D3", "status": "changed", "detail": "description changed since v0.2.0", "test": "…::test_d3_update_record",
+              { "trait": "A1", "status": "pass", "detail": "unauthenticated tools/call refused (401)", "test": "…::test_a1_update_record", "state": "current" },
+              { "trait": "D3", "status": "changed", "detail": "description changed since v0.2.0", "test": "…::test_d3_update_record", "state": "current",
                 "change": { "previous": "Update fields on a record.", "current": "Update fields on a record and refresh its last-touched date." } }
             ]
           }
@@ -65,7 +65,8 @@
       }
     ]
   },
-  "status_vocabulary": ["pass", "fail", "critical", "changed", "held_out", "not_verifiable", "n/a"],
+  "status_vocabulary": ["pass", "fail", "critical", "changed", "held_out", "not_verifiable", "n/a", "not_run"],
+  "state_vocabulary": ["current", "stale", "hand_edited", "recipe_newer", "not_applicable", "orphan"],
   "mutation_vocabulary": ["read", "write", "destructive", "informational"],
   "mutation_source_vocabulary": ["detected", "declared", "confirmed"]
 }

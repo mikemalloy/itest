@@ -85,3 +85,14 @@ stage 5: Aurora + secrets; stage 6: agent Lambdas, SQS, event wiring). They
 were passed through `itest redact` (account IDs pseudonymized, Lambda
 environment values scrubbed) and are the acceptance targets for the IAM and
 event detectors.
+
+## `p30-manifests/`
+
+What a project looked like on disk before the trait table went live: the
+`.itest/manifest.yaml` and `itest_tests/` that `itest sync` wrote at commit
+`c515398` (P30 review fixes), for the reference MCP server (`reference-mcp/`,
+66 per-tool stubs, no `traits_planned`, no `trait_table_hash`) and for the
+declaration-free `alex-s6.json` state (`alex-s6/`). The migration tests copy
+them into a temporary checkout and assert that they load unchanged and that the
+first sync fills the new fields without rewriting a stub. The stub files are
+data: `p30-manifests/conftest.py` keeps pytest from collecting them in place.
