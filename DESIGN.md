@@ -438,10 +438,11 @@ Shipped:
   Trends and the since-line appear only with `--since <prior manifest>`, never
   as "steady"; `--redact` reuses verify's own scrubber rather than adding a
   second one. The verdict is not an exit code — that stays verify's job. Tests
-  pin the extracted data blocks, not pixels. Four things verify cannot supply
-  today are modelled Optional and listed in `docs/report.md`: the tool ledger
-  (P30/P31), the not-analyzed census (it lives in the plan), the release
-  commit, and which registered test was the anonymous probe — the last is why
+  pin the extracted data blocks, not pixels. Three things verify cannot supply
+  today are modelled Optional and listed in `docs/report.md`: the
+  not-analyzed census (it lives in the plan), the release commit, and which
+  registered test was the anonymous probe (the tool ledger, once on this list,
+  is now emitted by verify as `tools.servers[]`) — the last is why
   the API sweep shows one Status column rather than an
   Unauthenticated/Authenticated pair holding the same neutral value.
 
