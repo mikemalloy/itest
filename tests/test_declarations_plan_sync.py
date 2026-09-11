@@ -417,16 +417,19 @@ def test_an_override_for_a_tool_the_server_does_not_list_is_orphaned(
 # --- sync: the stub set comes from the table ---------------------------------
 
 #: Every trait the shipped table gives `delete_record` (destructive, free-form
-#: input, audited, with a second tenant declared), split by the tier it runs in.
+#: input, audited, with a second tenant declared, on a server that runs as a
+#: service identity), split by the tier it runs in.
 DELETE_READONLY = {
     "test_a1_delete_record",
     "test_b1_delete_record",
+    "test_c3_delete_record",
     "test_d1_delete_record",
     "test_d2_delete_record",
     "test_d3_delete_record",
 }
 DELETE_ACTIVE = {
     "test_a2_delete_record",
+    "test_a3_delete_record",
     "test_b2_delete_record",
     "test_b4_delete_record",
     "test_c1_delete_record",
@@ -437,19 +440,21 @@ DELETE_ACTIVE = {
 def test_sync_generates_one_stub_per_tool_and_applicable_trait(workdir: Path) -> None:
     result = _sync()
     assert result.exit_code == 0, result.output
-    assert "added 66 stub(s)" in result.output
+    assert "added 81 stub(s)" in result.output
 
     readonly = _functions(workdir / READONLY_FILE)
     active = _functions(workdir / ACTIVE_FILE)
 
-    assert len(readonly) == 41
-    assert len(active) == 25
+    assert len(readonly) == 48
+    assert len(active) == 33
     assert DELETE_READONLY <= readonly
     assert DELETE_ACTIVE <= active
     # get_guide is informational and takes no arguments: no isolation check, no
-    # containment check, no gating, no egress, no audit.
+    # containment check, no gating, no egress, no audit. The identity check
+    # still applies: the server acts as a service identity for every tool.
     assert {f for f in readonly | active if f.endswith("_get_guide")} == {
         "test_a1_get_guide",
+        "test_a3_get_guide",
         "test_b1_get_guide",
         "test_d1_get_guide",
         "test_d2_get_guide",
@@ -533,7 +538,7 @@ def test_editing_one_applies_when_line_changes_the_generated_suite(
     assert {f for f in readonly if f.startswith("test_b3_")} == {
         f"test_b3_{name}" for name in EXPECTED_TOOLS
     }
-    assert len(readonly) == 41 + 7
+    assert len(readonly) == 48 + 7
 
 
 def test_a_tool_with_active_false_gets_no_active_stubs(workdir: Path) -> None:
@@ -864,7 +869,7 @@ def test_verify_gates_the_active_tool_checks_off_the_safe_floor(
     result = runner.invoke(app, ["verify"])
     assert result.exit_code == 0, result.output
     assert "8 integration points" in result.output
-    assert "25 gated test(s) withheld by this environment" in result.output
+    assert "33 gated test(s) withheld by this environment" in result.output
     assert "No environment bound: running the safe floor" in result.output
     # Every point still reports the coverage it has: a stub is not a pass.
     assert result.output.count("[STUB] reference-mcp -> ") == 8
@@ -877,4 +882,4 @@ def test_verify_runs_the_active_checks_when_the_environment_allows_them(
     result = runner.invoke(app, ["verify", "--environment", "staging"])
     assert result.exit_code == 0, result.output
     assert "gated" not in result.output
-    assert "Ran 66 tests" in result.output
+    assert "Ran 81 tests" in result.output

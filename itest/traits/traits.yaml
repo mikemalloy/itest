@@ -1,10 +1,12 @@
 # The applies-when table: which checks a declared MCP tool gets.
 #
 # THIS IS DATA, NOT CODE. No hardcoded dict of trait rules exists anywhere in
-# the engine: `itest sync` reads this file, evaluates each `applies_when` against
-# the tool's own attributes, and generates one stub per (tool, applicable trait).
-# Editing one `applies_when` line here changes the generated suite — which is the
-# point, and is pinned by a test.
+# the engine: every `itest sync` reads this file, evaluates each `applies_when`
+# against every declared tool's current attributes, and adds or retires checks
+# to match. Editing one `applies_when` line here changes the suite on the next
+# sync — which is the point, and is pinned by a test. The manifest records a
+# hash of this table's parsed content, so the sync that follows an edit says
+# the table changed and which tools gained or lost checks.
 #
 # `applies_when` is a tiny expression over the tool's attributes. The whole
 # grammar:
@@ -18,17 +20,24 @@
 #   <A> and <B> and ...           every clause must hold
 #
 # The fields are the tool's attributes as plan recorded them: `mutation`,
-# `egress`, `approval`, `active`, `has_free_form_input`, plus the two facts its
-# server declared — `auth.second_tenant_env` and `audit.sink`. An unknown field
-# is an error, not a silently false clause: a typo here must not quietly delete a
-# check.
+# `egress`, `approval`, `active`, `has_free_form_input`, plus three facts its
+# server declared — `auth.second_tenant_env`, `audit.sink` and
+# `identity.runs_as`. An unknown field, an unreadable clause, an unknown
+# family, kind or tier all refuse the table at load: a typo here must not
+# quietly delete a check.
 #
-# `tier` is what the generated stub is registered as, and it is what the
-# environment policy gates on: an `active` trait's stubs go in their own file so a
+# `tier` is what the check is registered as, and it is what the environment
+# policy gates on: an `active` trait's checks go in their own file so a
 # disallowed environment never even imports them.
 #
-# This is the minimal form. P31 formalizes it (the recipes each `recipe` names
-# are its work); the shape of the file is what the engine depends on.
+# `kind` says who runs the check:
+#   engine     the engine runs it from the manifest; no per-tool file exists.
+#   generated  sync writes a thin per-tool binding stub, because the check
+#              needs a fact only a human can supply (a second tenant's
+#              fixture, an identity to compare against).
+#
+# `recipe` names the file in the bundled skill that says how the check is
+# implemented. `itest recipes` lists them and reports any that are missing.
 version: 1
 
 # Family names, for the readiness page's roll-up. The letter is the family id.
@@ -44,6 +53,7 @@ traits:
     name: refuses anonymous
     applies_when: always
     tier: readonly
+    kind: engine
     recipe: tool_authn.md
 
   - id: A2
@@ -51,13 +61,31 @@ traits:
     name: tenant isolation
     applies_when: auth.second_tenant_env present and mutation != informational
     tier: active
+    kind: generated
     recipe: tool_isolation.md
+
+  - id: A3
+    family: A
+    name: acts as declared identity
+    applies_when: identity.runs_as present
+    tier: active
+    kind: generated
+    recipe: tool_identity.md
+
+  - id: A4
+    family: A
+    name: caller identity passthrough
+    applies_when: identity.runs_as == passthrough
+    tier: active
+    kind: generated
+    recipe: tool_identity.md
 
   - id: B1
     family: B
     name: mutation class
     applies_when: always
     tier: readonly
+    kind: engine
     recipe: tool_mutation_class.md
 
   - id: B2
@@ -65,6 +93,7 @@ traits:
     name: destructive gating
     applies_when: mutation == destructive
     tier: active
+    kind: generated
     recipe: tool_gating.md
 
   - id: B3
@@ -72,6 +101,7 @@ traits:
     name: external egress
     applies_when: egress != none
     tier: readonly
+    kind: engine
     recipe: tool_egress.md
 
   - id: B4
@@ -79,6 +109,7 @@ traits:
     name: audit record
     applies_when: mutation in [write, destructive] and audit.sink present
     tier: active
+    kind: generated
     recipe: tool_audit.md
 
   - id: C1
@@ -86,6 +117,7 @@ traits:
     name: parameter scope
     applies_when: mutation != informational
     tier: active
+    kind: engine
     recipe: tool_containment.md
 
   - id: C2
@@ -93,6 +125,15 @@ traits:
     name: expression passthrough
     applies_when: has_free_form_input
     tier: active
+    kind: engine
+    recipe: tool_containment.md
+
+  - id: C3
+    family: C
+    name: output hygiene
+    applies_when: mutation != informational
+    tier: readonly
+    kind: engine
     recipe: tool_containment.md
 
   - id: D1
@@ -100,6 +141,7 @@ traits:
     name: inventory
     applies_when: always
     tier: readonly
+    kind: engine
     recipe: tool_provenance.md
 
   - id: D2
@@ -107,6 +149,7 @@ traits:
     name: schema drift
     applies_when: always
     tier: readonly
+    kind: engine
     recipe: tool_provenance.md
 
   - id: D3
@@ -114,4 +157,5 @@ traits:
     name: description drift
     applies_when: always
     tier: readonly
+    kind: engine
     recipe: tool_provenance.md

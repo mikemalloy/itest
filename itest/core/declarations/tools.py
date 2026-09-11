@@ -28,11 +28,11 @@ and nothing here can know which. Provenance is recorded per point:
 declaration filled the gap).
 
 **The attributes carry what the applies-when table asks about.** The table
-(``itest/traits/traits.yaml``) addresses ``auth.second_tenant_env`` and
-``audit.sink``, which are facts about the *server*, so they are copied onto each
-of its points. ``has_free_form_input`` is derived from the input schema here,
-because the schema itself is not kept — only its hash — and sync has nothing
-else to read.
+(``itest/traits/traits.yaml``) addresses ``auth.second_tenant_env``,
+``audit.sink`` and ``identity.runs_as``, which are facts about the *server*, so
+they are copied onto each of its points. ``has_free_form_input`` is derived
+from the input schema here, because the schema itself is not kept — only its
+hash — and sync has nothing else to read.
 """
 
 from __future__ import annotations
@@ -263,10 +263,11 @@ def build_points(
                     # Derived here because the schema itself is not kept, only
                     # its hash, and the applies-when table asks about it.
                     "has_free_form_input": has_free_form_input(tool.input_schema),
-                    # Two facts about the server, carried onto its points so the
+                    # Three facts about the server, carried onto its points so the
                     # table can address them without reloading the declaration.
                     "second_tenant_env": declaration.auth.second_tenant_env,
                     "audit_sink": declaration.audit.sink,
+                    "runs_as": declaration.identity.runs_as,
                     "traits": list(declared_traits) if declared_traits else None,
                 },
                 hcl_address=declaration_path(server),
@@ -304,4 +305,5 @@ def trait_context(point: IntegrationPoint) -> dict[str, Any]:
         "has_free_form_input": attributes.get("has_free_form_input"),
         "auth.second_tenant_env": attributes.get("second_tenant_env"),
         "audit.sink": attributes.get("audit_sink"),
+        "identity.runs_as": attributes.get("runs_as"),
     }
