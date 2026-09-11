@@ -136,8 +136,8 @@ it applies to a tool:
 itest traits --for reference-mcp/delete_record
 ```
 
-(A1's `applies_when` is `always`.) `itest traits` ships with the engine-check
-wiring in sync and verify; until it is on your install, the answer is the A1 row
+(A1's `applies_when` is `always`.) `itest traits` reads the tool's attributes
+from the manifest, so run it after `itest sync`; the rule itself is the A1 row
 of `itest/traits/traits.yaml`. If a stub for A1 ever appears in a test file, it
 predates the engine check; do not implement it by hand.
 

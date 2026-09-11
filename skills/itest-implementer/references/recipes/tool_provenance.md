@@ -89,9 +89,9 @@ during `itest verify`. To see whether they apply to a tool:
 itest traits --for reference-mcp/enrich
 ```
 
-(All three are `applies_when: always`.) `itest traits` ships with the
-engine-check wiring in sync and verify; until it is on your install, the answer
-is the D rows of `itest/traits/traits.yaml`.
+(All three are `applies_when: always`.) `itest traits` reads the tool's
+attributes from the manifest, so run it after `itest sync`; the rule itself is
+the D rows of `itest/traits/traits.yaml`.
 
 ## 7. What the reviewer does with a failure
 

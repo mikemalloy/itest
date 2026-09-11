@@ -90,8 +90,8 @@ plan time, before B1 could ever see it.
 itest traits --for reference-mcp/lookalike_read
 ```
 
-(B1's `applies_when` is `always`.) `itest traits` ships with the engine-check
-wiring in sync and verify; until it is on your install, the answer is the B1 row
+(B1's `applies_when` is `always`.) `itest traits` reads the tool's attributes
+from the manifest, so run it after `itest sync`; the rule itself is the B1 row
 of `itest/traits/traits.yaml`.
 
 The **observed** variant — next, active tier, needs a read tool named in the

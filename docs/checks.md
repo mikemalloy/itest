@@ -184,7 +184,7 @@ is not built; `lookalike_read` is its fixture.
 - A1 active (active tier, non-production only): an anonymous call on each
   mutating tool behind an open front door, with sentinel arguments — `critical`
   on admission. This is where the MCP probe's proven critical path belongs.
-- B1 observed (active); A2, A3, A4, B2, B4 generated checks; B3, C1, C2 checks.
+- B1 observed (active); A2, A3, A4, B2, B4 generated checks.
 - `itest explain <trait>` to print a check's docstring.
-- Wiring into sync, verify and the report — the tool ledger's statuses come from
-  here, but the wiring is its own change.
+- Engine checks B3, C1, C2, C3 (the table names them; `run_engine_check`
+  answers `not_verifiable`, "no engine check for <id>").
