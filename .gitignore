@@ -18,6 +18,20 @@ env/
 /itest_tests/
 itest-results.xml
 
+# Output of trying an example (itest plan/sync/verify/report inside
+# examples/<name>/). The committed declaration (.itest/tools/) and environment
+# policy (.itest/environments.yaml) stay tracked; everything the commands
+# generate does not. (.itest/ above already covers the state files; they are
+# named here so the intent survives an edit to that line.)
+examples/*/itest_tests/
+examples/*/.itest/manifest.yaml
+examples/*/.itest/plan.json
+examples/*/.itest/diagram.mmd
+examples/*/.itest/environment
+examples/*/.itest/_verify_report_*
+examples/*/readiness.html
+examples/*/itest-results.xml
+
 # Answers recorded by the itest-implementer skill. May name accounts,
 # profiles, regions, and local paths, so consumers should ignore it too —
 # it is machine-local configuration, not shared project state.

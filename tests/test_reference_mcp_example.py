@@ -242,3 +242,37 @@ def test_reference_mcp_runs_plan_sync_verify_report_from_its_own_directory(
     assert cells and "HELD OUT" not in cells
     assert "NOT RUN" in cells or "NOT VERIFIABLE" in cells  # active tier attempted
 
+
+# --- a dry run leaves the repo's own suite and status alone -----------------------
+
+
+def test_the_project_suite_is_only_tests() -> None:
+    """A bare `pytest` from the repo root collects tests/ and nothing else — not
+    the itest_tests/ a dry run of an example generates."""
+    import tomllib
+
+    text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    config = tomllib.loads(text)
+    assert config["tool"]["pytest"]["ini_options"]["testpaths"] == ["tests"]
+
+
+GENERATED = (
+    "examples/reference-mcp/itest_tests/tools_reference_mcp/test_x.py",
+    "examples/reference-mcp/itest_tests/tools_reference_mcp/conftest.py",
+    "examples/reference-mcp/.itest/manifest.yaml",
+    "examples/reference-mcp/.itest/plan.json",
+    "examples/reference-mcp/.itest/diagram.mmd",
+    "examples/reference-mcp/.itest/environment",
+    "examples/reference-mcp/readiness.html",
+    "examples/reference-api/itest_tests/test_route_edges.py",
+)
+
+
+@pytest.mark.parametrize("path", GENERATED)
+def test_what_a_dry_run_generates_is_gitignored(path: str) -> None:
+    if not (REPO_ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    ignored = subprocess.run(
+        ["git", "check-ignore", "-q", "--no-index", path], cwd=REPO_ROOT
+    )
+    assert ignored.returncode == 0, f"{path} is not ignored"

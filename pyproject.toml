@@ -79,3 +79,10 @@ select = [
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
 ]
+
+[tool.pytest.ini_options]
+# The project's own suite is tests/ and nothing else. A dry run of an example
+# (itest plan/sync in examples/<name>/) generates an itest_tests/ tree that
+# needs its server running; a bare `pytest` from the repo root must not
+# collect it.
+testpaths = ["tests"]

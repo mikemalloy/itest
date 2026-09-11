@@ -523,6 +523,12 @@ Shipped:
   traits` shows slug, code and standards; the readiness page heads each column
   with code and slug and shows the standards on hover.
 
+- `itest report --environment`: the report's own verify runs in the
+  environment given, with verify's resolution and refusals. `--out` is the
+  file-path flag on report and redact; `report --output` is a deprecated alias
+  for one release. `testpaths = ["tests"]` keeps the project suite to tests/,
+  and the examples' generated artifacts are gitignored.
+
 Not yet built (do not build without explicit instruction):
 - The remaining tool recipes (`tool_isolation`, `tool_identity`, `tool_gating`,
   `tool_egress`, `tool_audit`, `tool_containment`; `itest recipes` lists which
