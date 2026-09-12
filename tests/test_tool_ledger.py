@@ -229,8 +229,8 @@ def _fake_checks(workdir: Path) -> None:
         "def _engine(trait_id, point, target, *, authenticated):\n"
         '    if (trait_id, point["target"]) == '
         '("blast.mutation_class", "delete_record"):\n'
-        '        return _checks.CheckResult("critical", "anonymous call accepted", '
-        "None)\n"
+        '        return _checks.CheckResult("critical", "mutation class '
+        'contradicted", None)\n'
         '    if (trait_id, point["target"]) == '
         '("change.description_drift", "update_record"):\n'
         '        return _checks.CheckResult("changed", "description moved", None)\n'
@@ -247,7 +247,7 @@ def test_a_recorded_check_result_is_the_status(workdir: Path) -> None:
     assert checks[("delete_record", "blast.mutation_class")]["status"] == "critical"
     assert (
         checks[("delete_record", "blast.mutation_class")]["detail"]
-        == "anonymous call accepted"
+        == "mutation class contradicted"
     )
     assert checks[("update_record", "change.description_drift")]["status"] == "changed"
     assert checks[("get_guide", "change.inventory")] == {

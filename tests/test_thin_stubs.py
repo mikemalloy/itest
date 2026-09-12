@@ -145,7 +145,9 @@ def test_the_engine_module_parametrizes_over_the_manifest(workdir: Path) -> None
         if table.get(trait).kind == "engine" and table.get(trait).tier == "readonly"
     )
     assert sorted(_collect(workdir, ENGINE_FILE)) == expected
-    assert len(expected) == 40  # 8 tools × (B1, D1, D2, D3); no A1 over stdio
+    # 8 tools × (B1, D1, D2, D3) = 32, plus C3 on the 7 non-informational
+    # tools and B3 on enrich alone; no A1 over stdio.
+    assert len(expected) == 40
 
     # Every case is registered in the manifest, so verify maps its result.
     registered = {

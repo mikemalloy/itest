@@ -88,6 +88,7 @@ def test_it_is_planned_for_read_tools_only_when_a_snapshot_tool_is_declared(
     for tool in ("create_record", "update_record", "delete_record"):
         assert TRAIT not in planned[tool], tool
     result = runner.invoke(app, ["traits", "--for", "reference-mcp/lookalike_read"])
+    assert result.exit_code == 0, result.output
     line = next(line for line in result.output.splitlines() if f"{TRAIT} " in line)
     assert line.lstrip().startswith("APPLIES")
     assert "BLAST-1b" in line and "observation.snapshot_tool present" in line

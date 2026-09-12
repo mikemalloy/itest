@@ -30,7 +30,9 @@ from itest.probes.mcp import McpProbeError, list_tools
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _SERVER_PATH = REPO_ROOT / "examples" / "reference-mcp" / "server.py"
-_spec = importlib.util.spec_from_file_location("reference_mcp_server", _SERVER_PATH)
+_spec = importlib.util.spec_from_file_location(
+    "reference_mcp_server_private_hosts", _SERVER_PATH
+)
 assert _spec and _spec.loader
 reference_mcp = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = reference_mcp
@@ -201,3 +203,23 @@ def test_the_example_ships_an_open_mount_declaration_that_opts_in(
             if d.trait.id == "authority.anonymous"
         )
         assert decision.applies is True, point.target
+
+
+def test_a_stdio_declaration_never_reads_as_a_private_host_opt_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The opt-in loosens the host rule of an http url. A stdio server has no
+    url to opt in with, so setting the field there is inert and the plan
+    must not name it under "Private hosts allowed by declaration"."""
+    from test_declarations_plan_sync import _plan, make_workdir
+
+    workdir = make_workdir(tmp_path, monkeypatch)
+    path = workdir / ".itest" / "tools" / "reference-mcp.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["transport"]["allow_private_hosts"] = True
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    result = _plan()
+    assert result.exit_code == 0, result.output
+    assert "Private hosts" not in result.output
+    payload = json.loads(_plan("--output", "json").output)
+    assert payload["private_hosts_allowed"] == []

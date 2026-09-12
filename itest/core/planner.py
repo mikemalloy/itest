@@ -561,7 +561,11 @@ def plan_declarations(
     private_hosts: list[str] = []
 
     for declaration in declarations:
-        if declaration.transport.allow_private_hosts:
+        # The opt-in loosens the host rule of an http url; a stdio server has
+        # no url, so the field is inert there and is not reported.
+        if declaration.transport.kind == "http" and (
+            declaration.transport.allow_private_hosts
+        ):
             private_hosts.append(declaration.server)
         target = declared_tools.build_target(declaration, base_dir)
         if target is None:

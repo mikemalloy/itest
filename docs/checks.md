@@ -69,7 +69,7 @@ The statuses:
 |---|---|
 | `pass` | The check ran and the property holds. |
 | `fail` | The check ran and the property does not hold. |
-| `critical` | A **demonstrated** finding, never an inference from a listing: a read-classified tool that changed observable state (`blast.mutation_class_observed`), or — the active anonymous-refusal check, still on the ledger — an anonymous admission on a mutating tool. Stop and escalate. No readonly engine check produces it. |
+| `critical` | A **demonstrated** finding, never an inference from a listing: today, a read-classified tool that changed observable state (`blast.mutation_class_observed`). The planned active anonymous-refusal check (see "Not in this library yet") will use it for an anonymous admission on a mutating tool. Stop and escalate. No readonly engine check produces it. |
 | `changed` | The live server differs from what the last sync recorded. Sync makes this drift. |
 | `not_verifiable` | The check could not run; the detail says why. **Never a pass.** |
 
