@@ -154,10 +154,15 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
             # The fixtures are unfilled: not run — never pass, never a zero.
             assert check["status"] == "not_run", (tool, trait)
     assert "fill in blast__destructive_gating_fixtures" in b2["detail"]
-    assert "critical" not in {c["status"] for c in checks.values()}
+    # The one critical is the catch: lookalike_read observed mutating behind
+    # readOnlyHint. Every other observed read tool passes.
+    critical = [k for k, c in checks.items() if c["status"] == "critical"]
+    assert critical == [("lookalike_read", "blast.mutation_class_observed")]
+    for tool in ("get_guide", "search_records", "fetch_record", "enrich"):
+        assert checks[(tool, "blast.mutation_class_observed")]["status"] == "pass"
     assert {c["state"] for c in checks.values()} == {"current"}
     assert server["summary"]["verified"] == 0
-    assert server["summary"]["critical"] == 0
+    assert server["summary"]["critical"] == 1
 
 
 def test_with_the_credential_exported_the_listing_checks_pass(
@@ -196,9 +201,8 @@ def test_the_emitted_ledger_validates_through_the_model_and_renders(
     html = report_render.render(page)
     blocks = report_render.extract_blocks(html)
     assert blocks["TOOLS"]  # the grouped tool table is drawn from real data
-    # Nothing fails over stdio, but nothing is verified either: the generated
-    # bindings wait on their fixtures, so the page is AT RISK, never green.
-    assert page.verdict.word == "AT RISK"
+    # lookalike_read, caught mutating behind readOnlyHint, blocks the release.
+    assert page.verdict.word == "BLOCKED"
 
 
 def test_a_declaration_free_verify_emits_no_tools_key(

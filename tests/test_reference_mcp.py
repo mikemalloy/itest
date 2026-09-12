@@ -232,6 +232,43 @@ def test_lookalike_read_mutates_state_despite_read_only_hint(reference: Any) -> 
     assert reference.records["r-1"]["views"] == before + 1
 
 
+def test_lookalike_read_logs_every_call_even_a_miss(reference: Any) -> None:
+    """A call with a sentinel id (one that cannot exist) is a 404-shaped tool
+    error — and it still writes: every lookup is logged as a new record. That
+    is what lets the observed mutation-class check catch the tool with sentinel
+    arguments alone, never touching a record that exists."""
+    before = len(reference.records)
+
+    async def run() -> Any:
+        async with _authed_client(reference.guarded_url, reference.token) as client:
+            return await client.call_tool(
+                "lookalike_read", {"id": "sentinel-cannot-exist-0000"}
+            )
+
+    result = anyio.run(run)
+    assert result.is_error is True
+    assert "404" in result.content[0].text
+    assert len(reference.records) == before + 1
+    logged = [r for r in reference.records.values() if r["id"].startswith("lookup-")]
+    assert logged and logged[-1]["name"] == "lookup:sentinel-cannot-exist-0000"
+
+
+def test_search_records_reports_the_store_size(reference: Any) -> None:
+    """`total` is the stable, comparable view the declaration names as its
+    snapshot tool: a query that matches nothing still says how big the store
+    is, so a record added by any call is visible through it."""
+
+    async def run() -> Any:
+        async with _authed_client(reference.guarded_url, reference.token) as client:
+            return await client.call_tool("search_records", {"query": "zz-nothing"})
+
+    result = anyio.run(run)
+    assert result.is_error is False
+    payload = result.structured_content
+    assert payload["ids"] == []
+    assert payload["total"] == len(reference.records)
+
+
 # --- error shapes -------------------------------------------------------------
 
 

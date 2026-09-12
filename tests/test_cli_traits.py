@@ -67,8 +67,8 @@ def test_traits_prints_the_table(tmp_path: Path, monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
     assert lines[0] == (
-        f"Trait table {trait_table_hash()}: 14 traits in 4 families "
-        "(9 engine, 5 generated)."
+        f"Trait table {trait_table_hash()}: 15 traits in 4 families "
+        "(10 engine, 5 generated)."
     )
     b2 = next(
         line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
@@ -120,7 +120,7 @@ def test_traits_for_a_tool_decides_every_trait(synced: Path) -> None:
         "reference-mcp/delete_record: destructive (detected) [approval confirm_param]"
     )
     assert f"id={point_id}" in out
-    assert "11 of 14 traits apply" in out  # not authority.anonymous: stdio
+    assert "11 of 15 traits apply" in out  # no anonymous (stdio), no observed
     lines = out.splitlines()
     assert any(
         line.lstrip().startswith("APPLIES")
@@ -156,7 +156,7 @@ def test_traits_for_names_a_declared_override(synced: Path, monkeypatch) -> None
     monkeypatch.setitem(sys.modules, "itest.probes.mcp", None)
     result = _traits("--for", "reference-mcp/get_guide")
     assert result.exit_code == 0, result.output
-    assert "0 of 14 traits apply" in result.output
+    assert "0 of 15 traits apply" in result.output
     assert "declared traits: none-of-these" in result.output
 
 
@@ -173,6 +173,7 @@ def test_traits_for_json(synced: Path) -> None:
     assert [k for k, v in applies.items() if v] == [
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",

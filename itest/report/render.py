@@ -496,9 +496,12 @@ def _trait_label(slug: str | None, code: str | None) -> str:
     return f"{slug} · {code}" if code else slug
 
 
-def _code_number(code: str | None) -> int:
+def _code_number(code: str | None) -> tuple[int, str]:
+    """``AUTH-1`` -> (1, ""); ``BLAST-1b`` -> (1, "b"): a variant sorts right
+    after the row it varies."""
     tail = (code or "").rpartition("-")[2]
-    return int(tail) if tail.isdigit() else 10**6
+    digits = tail.rstrip("abcdefghijklmnopqrstuvwxyz")
+    return (int(digits) if digits.isdigit() else 10**6, tail[len(digits) :])
 
 
 def _column_rank(slug: str, check, ledger) -> tuple:

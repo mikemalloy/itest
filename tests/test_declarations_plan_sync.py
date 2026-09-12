@@ -502,6 +502,7 @@ def test_sync_generates_one_stub_per_tool_and_applicable_generated_trait(
     assert planned["get_guide"] == [
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",
@@ -965,7 +966,7 @@ def test_verify_gates_the_active_tool_checks_off_the_safe_floor(
     # listing checks (B1, D1-D3, on the anonymous listing) pass on every tool.
     assert result.exit_code == 0, result.output
     assert "8 integration points" in result.output
-    assert "33 gated test(s) withheld by this environment" in result.output
+    assert "38 gated test(s) withheld by this environment" in result.output
     assert "Ran 40 tests" in result.output
     assert "No environment bound: running the safe floor" in result.output
     assert result.output.count("[FAIL] reference-mcp -> ") == 0
@@ -978,7 +979,8 @@ def test_verify_runs_the_active_checks_when_the_environment_allows_them(
 ) -> None:
     assert _sync().exit_code == 0
     result = runner.invoke(app, ["verify", "--environment", "staging"])
-    assert result.exit_code == 0, result.output  # findings, never errors
-    assert "0 errored" in result.output
+    # 1: the active tier catches lookalike_read mutating behind readOnlyHint.
+    assert result.exit_code == 1, result.output
+    assert "1 failing" in result.output and "0 errored" in result.output
     assert "gated" not in result.output
-    assert "Ran 73 tests" in result.output
+    assert "Ran 78 tests" in result.output

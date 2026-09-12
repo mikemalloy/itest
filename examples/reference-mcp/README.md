@@ -16,12 +16,12 @@ Built on the official Python MCP SDK (`mcp` on PyPI, 2.x), using
 | Tool | Annotations | Mutation class | Branch it proves |
 |---|---|---|---|
 | `get_guide()` | *(none)* | informational | No hints and no parameters — only the **name** can classify it |
-| `search_records(query)` | `readOnlyHint=true` | read | A read with free-form input (no enum, no pattern) |
+| `search_records(query)` | `readOnlyHint=true` | read | A read with free-form input (no enum, no pattern); reports the store's size, so it is the declared snapshot tool |
 | `fetch_record(id)` | `readOnlyHint=true` | read | A 404-shaped tool error (`isError=true`) for an unknown id |
 | `create_record(name)` | `readOnlyHint=false`, `destructiveHint=false` | write | The plain additive write |
 | `update_record(id, name)` | `readOnlyHint=false`, `destructiveHint=false` | write | A write against an id that may not exist |
 | `delete_record(id, confirm)` | `destructiveHint=true` | destructive | The destructive tool, behind a `confirm` gate |
-| `lookalike_read(id)` | `readOnlyHint=true` | **read (a lie)** | **Annotation conflict** — declared read-only, mutates anyway |
+| `lookalike_read(id)` | `readOnlyHint=true` | **read (a lie)** | **Annotation conflict** — declared read-only, logs every call as a new record (a miss included) and bumps a hit's view counter |
 | `enrich(email)` | `readOnlyHint=true`, `openWorldHint=true` | read | *Describes* an external provider; opens no socket |
 
 ## The two deliberate defects
@@ -34,11 +34,15 @@ the open mount refused an anonymous caller would be broken: the bait would be
 gone.
 
 **`lookalike_read`.** It declares `readOnlyHint=true`, its name reads like a
-read, and it increments a counter on the record anyway. The conflict is
-**behavioral**, not declarative: the annotation and the name agree with each
-other, and both are wrong. No static reading of `tools/list` can catch it — only
-calling it and watching the store can. Do not "fix" it; that catch is a later
-recipe's job, and this server is where it will be regression-tested.
+read, and it writes anyway: every call is logged as a new record — a call with
+a sentinel id included — and a hit bumps the record's view counter. The
+conflict is **behavioral**, not declarative: the annotation and the name agree
+with each other, and both are wrong. No static reading of `tools/list` can
+catch it — only calling it and watching the store can, which is what
+`blast.mutation_class_observed` does through `search_records` (declared as
+`observation.snapshot_tool`): **CRITICAL**, naming the tool, `read`,
+`annotation readOnlyHint` and the `total` that moved. Do not "fix" it; this
+server is where that catch is regression-tested.
 
 One more load-bearing detail: **`delete_record` never raises.** A miss is
 reported in its payload, so a call with a *sentinel* id (one that cannot exist)
@@ -148,9 +152,11 @@ never says `critical`). The page reads **BLOCKED**, which is the truth about
 an MCP server mounted without authentication, and every cell carries the
 published id it answers (ASI03, CWE-306 …).
 
-`lookalike_read` passes the readonly mutation-class check on both mounts by
-design; only the active-tier observed check can catch it (see the tool table
-above).
+**Both mounts, in staging.** `lookalike_read` passes the readonly
+mutation-class check by design and is **CRITICAL** on the active-tier observed
+one (`blast.mutation_class_observed`): one sentinel call between two
+`search_records` snapshots, and the store grew. That alone blocks the release.
+In `prod` the active tier is held out, so the catch is never attempted there.
 
 ## Why a reference server has to exist
 

@@ -56,6 +56,7 @@ The shipped traits, and what each answers:
 | `authority.backing_least_privilege` | AUTH-3 | ASI03, LLM03, CWE-269 |
 | `authority.delegation` | AUTH-4 | ASI03, semgrep-server-8, CWE-441 |
 | `blast.mutation_class` | BLAST-1 | ASI02, LLM03, ACS-AgBOM |
+| `blast.mutation_class_observed` | BLAST-1b | ASI02, LLM03 |
 | `blast.destructive_gating` | BLAST-2 | ASI02, LLM03 |
 | `blast.egress` | BLAST-3 | ASI04, LLM02, semgrep-server-21 |
 | `blast.audit` | BLAST-4 | ACS-AgBOM, CWE-778 |
@@ -139,7 +140,7 @@ finds any of these:
 - a duplicate id, or an id that is not `<family>.<slug>` in lower case (an old
   `A1`-style id included) or does not start with its own family
 - a duplicate code, or one that is not upper-case letters, a hyphen and a
-  number
+  number (optionally one lower-case variant letter, `BLAST-1b`)
 - a `standards` entry outside the known prefixes (`ASI`, `LLM`,
   `semgrep-server-`, `semgrep-client-`, `CWE-`, `ACS-`), named in the error —
   an empty list is fine
@@ -180,9 +181,22 @@ error, never a clause that happened not to be reached.
 
 Fields: `mutation`, `egress`, `approval`, `active`, `has_free_form_input`,
 `auth.second_tenant_env`, `audit.sink`, `identity.runs_as`, `transport.kind`
-(`stdio` | `http`) and `auth.enforced_over_stdio` (a boolean, default false).
-Each one comes from the tool's point in the manifest; the last five are facts
-about the server, copied onto each of its points at plan time.
+(`stdio` | `http`), `auth.enforced_over_stdio` (a boolean, default false) and
+`observation.snapshot_tool` (a read tool's name, or absent). Each one comes
+from the tool's point in the manifest; the last six are facts about the
+server, copied onto each of its points at plan time.
+
+`blast.mutation_class_observed` (BLAST-1b) is the row that watches behaviour:
+
+```
+applies_when: mutation in [read, informational] and observation.snapshot_tool present
+```
+
+Active tier, engine kind. It applies to a read or informational tool of a
+server whose declaration names the read tool state is observed through, and
+to nothing else: a write or destructive tool already declares mutation. A
+`code` may carry one lower-case variant letter for exactly this kind of
+sibling row.
 
 The one row that uses `or` is `authority.anonymous`:
 

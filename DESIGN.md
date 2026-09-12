@@ -259,7 +259,9 @@ unlock it. Every string in a result is scrubbed
 of the credential and of credential-shaped text. A server is listed once per run.
 The agreement check for mutation class (`blast.mutation_class`) has a limit it states rather than
 hides: a tool whose annotation and name agree and both lie passes it, and only a
-behavioural check can do better. `docs/checks.md` is the reference.
+behavioural check can do better — `blast.mutation_class_observed` is that
+check, active tier, and it catches `lookalike_read`. `docs/checks.md` is the
+reference.
 
 ## Declarations (Ring 3)
 
@@ -558,6 +560,15 @@ Shipped:
   (`reference-mcp-open.yaml`, url by name, no auth scheme) and its README
   documents the two-terminal demo; a stdio-only run passes
   `--allow-unreachable` for the mount whose url is unset.
+- `blast.mutation_class_observed` (BLAST-1b, active, engine): for a read or
+  informational tool of a server that declares `observation.snapshot_tool`,
+  a snapshot through that tool, one call with sentinel arguments, a snapshot
+  again — three calls in one session (`itest.probes.mcp.session_calls`, which
+  has no mutation opt-in at all) — and a difference is `critical`, naming the
+  tool, its claimed class, the annotation that claimed it and what changed.
+  `lookalike_read` is caught by behaviour; the agreement check still passes it
+  by design. Never run against a write or destructive tool; held out in
+  production.
 - `itest report --environment`: the report's own verify runs in the
   environment given, with verify's resolution and refusals. `--out` is the
   file-path flag on report and redact; `report --output` is a deprecated alias
@@ -568,11 +579,6 @@ Not yet built (do not build without explicit instruction):
 - The remaining tool recipes (`tool_isolation`, `tool_identity`, `tool_gating`,
   `tool_egress`, `tool_audit`, `tool_containment`; `itest recipes` lists which
   exist) and the skill flow that writes a declaration by asking.
-- **mutation class observed** (active tier): call a read-classified tool with a sentinel and
-  look at the store afterwards through a read tool named in the declaration. A
-  tool that lies *consistently* — `lookalike_read` declares `readOnlyHint=true`,
-  is named like a read, and mutates — passes `blast.mutation_class` agreement by design and is this
-  check's fixture.
 - **anonymous-refusal active** (active tier, non-production only): an anonymous `tools/call`
   on each mutating tool behind an open front door, with sentinel arguments —
   `critical` on admission. This is where the MCP probe's proven critical path

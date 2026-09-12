@@ -3,7 +3,7 @@ Recipes the trait table references, in recipes:
   present  recipes/tool_authn.md           authority.anonymous
   missing  recipes/tool_isolation.md       authority.tenant_isolation
   missing  recipes/tool_identity.md        authority.backing_least_privilege, authority.delegation
-  missing  recipes/tool_mutation_class.md  blast.mutation_class
+  missing  recipes/tool_mutation_class.md  blast.mutation_class, blast.mutation_class_observed
   missing  recipes/tool_gating.md          blast.destructive_gating
   missing  recipes/tool_egress.md          blast.egress
   missing  recipes/tool_audit.md           blast.audit

@@ -27,6 +27,13 @@ transport:
 # No auth block: the open mount has no scheme and takes no credential. That
 # absence is the defect, stated rather than hidden.
 
+observation:
+  # A read tool whose output is a stable, comparable view of the store:
+  # search_records reports the store's size. Its presence is what makes the
+  # observed mutation-class check (blast.mutation_class_observed) applicable —
+  # the check that catches lookalike_read by behaviour.
+  snapshot_tool: search_records
+
 sentinels:
   # The same sentinels as reference-mcp.yaml: an id no record can have, and a
   # record that exists and is safe to read.

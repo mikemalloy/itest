@@ -213,6 +213,20 @@ class Audit(Strict):
     sink: str | None = None
 
 
+class Observation(Strict):
+    """How the server's state is observed: a read tool whose output is a
+    stable, comparable view of it (for reference-mcp, ``search_records``).
+
+    A declared fact, not a guess. Its presence is what makes the observed
+    mutation-class check (``blast.mutation_class_observed``) applicable: the
+    check snapshots through this tool, calls a read-classified tool once with
+    sentinel arguments, snapshots again, and compares. Absent, that check is
+    withheld — never generated and quietly passing.
+    """
+
+    snapshot_tool: str | None = None
+
+
 class Approval(Strict):
     """What has to happen before a destructive call goes through."""
 
@@ -320,6 +334,7 @@ class Declaration(Strict):
     tenancy: Tenancy = Field(default_factory=Tenancy)
     identity: Identity = Field(default_factory=Identity)
     audit: Audit = Field(default_factory=Audit)
+    observation: Observation = Field(default_factory=Observation)
     approval: Approval = Field(default_factory=Approval)
     sentinels: Sentinels
     environments: Environments = Field(default_factory=Environments)

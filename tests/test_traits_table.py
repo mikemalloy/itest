@@ -40,13 +40,14 @@ CONTEXT = {
     "identity.runs_as": "service",
     "transport.kind": "stdio",
     "auth.enforced_over_stdio": False,
+    "observation.snapshot_tool": "search_records",
 }
 
 
 # --- the shipped table --------------------------------------------------------
 
 
-def test_the_shipped_table_is_the_fourteen_traits() -> None:
+def test_the_shipped_table_is_the_fifteen_traits() -> None:
     table = load_traits()
     assert table.ids == [
         "authority.anonymous",
@@ -54,6 +55,7 @@ def test_the_shipped_table_is_the_fourteen_traits() -> None:
         "authority.backing_least_privilege",
         "authority.delegation",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "blast.destructive_gating",
         "blast.egress",
         "blast.audit",
@@ -75,6 +77,7 @@ def test_the_shipped_table_is_the_fourteen_traits() -> None:
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "authority.delegation",
+        "blast.mutation_class_observed",
         "blast.destructive_gating",
         "blast.audit",
         "containment.parameter_scope",
@@ -93,6 +96,7 @@ def test_the_kind_column_says_who_runs_each_check() -> None:
     assert {k for k, v in kinds.items() if v == "engine"} == {
         "authority.anonymous",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "blast.egress",
         "containment.parameter_scope",
         "containment.expression_passthrough",
@@ -144,6 +148,7 @@ def test_an_informational_tool_gets_only_the_always_traits() -> None:
     assert [t.id for t in applicable(load_traits(), context)] == [
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",  # a snapshot tool is declared
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",

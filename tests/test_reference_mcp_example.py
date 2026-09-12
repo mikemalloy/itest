@@ -357,8 +357,10 @@ def test_reference_mcp_stdio_only_needs_allow_unreachable(
     manifest = load_manifest(example / ".itest" / "manifest.yaml")
     assert len(manifest.points) == 8
     verify = runner.invoke(app, ["verify", "--environment", "staging"])
-    assert verify.exit_code == 0, verify.output
-    assert "0 failing" in verify.output and "0 errored" in verify.output
+    # 1: lookalike_read is caught mutating behind readOnlyHint (active tier).
+    assert verify.exit_code == 1, verify.output
+    assert "1 failing" in verify.output and "0 errored" in verify.output
+    assert "[FAIL] reference-mcp -> lookalike_read" in verify.output
     assert "authority.anonymous" not in verify.output
 
 

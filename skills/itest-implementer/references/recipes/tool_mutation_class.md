@@ -1,13 +1,16 @@
-recipe-version: 1
+recipe-version: 2
 
-# Recipe: `tool_mutation_class` — `blast.mutation_class`, mutation class
+# Recipe: `tool_mutation_class` — `blast.mutation_class` and `blast.mutation_class_observed`, mutation class
 
-**This is an engine check, tier `readonly`, and it never calls the tool.** ITest
-runs it itself from the manifest's `mcp_tool` point and the server's live tool
-list. There is no test file to write and nothing that can go stale.
+Two engine checks share this recipe. **`blast.mutation_class` (BLAST-1) is
+readonly tier and never calls the tool**: it compares statements. **`blast.mutation_class_observed`
+(BLAST-1b) is active tier and calls the tool once**: it watches behaviour. ITest
+runs both itself from the manifest's `mcp_tool` point and the server's live
+tool list. There is no test file to write and nothing that can go stale.
 
-The check lives in `itest/checks/blast_radius.py` (`check_blast__mutation_class`); `docs/checks.md`
-is the library's reference. This file is the policy.
+Both live in `itest/checks/blast_radius.py` (`check_blast__mutation_class`,
+`check_blast__mutation_class_observed`); `docs/checks.md` is the library's
+reference. This file is the policy.
 
 ## 1. What the check proves
 
@@ -41,10 +44,11 @@ call. `blast.mutation_class` passes it, by design, and `tests/test_checks.py` pi
 annotation lie is visible only by **observing behaviour**: calling the tool with a
 sentinel and looking at what changed afterwards.
 
-That is **mutation class observed**, the next recipe in this family: active tier, and it
-needs a read tool named in the declaration to look at the store with. It is not
-built. `lookalike_read` is its fixture. Until it ships, a `blast.mutation_class` `pass` means "the
-statements agree", never "the tool does what it says".
+That is **`blast.mutation_class_observed`** (§8 below): active tier, and it
+needs a read tool named in the declaration to look at the store with.
+`lookalike_read` is its fixture and it catches it. A `blast.mutation_class`
+`pass` on its own still means "the statements agree", never "the tool does
+what it says"; the observed row is what says the second thing.
 
 ## 3. Statuses, and what each means for a reviewer
 
@@ -96,9 +100,9 @@ itest traits --for reference-mcp/lookalike_read
 from the manifest, so run it after `itest sync`; the rule itself is the `blast.mutation_class` row
 of `itest/traits/traits.yaml`.
 
-The **observed** variant — next, active tier, needs a read tool named in the
-declaration — will be a generated check following
-[`tool_recipe_shape.md`](tool_recipe_shape.md). It is not claimed here.
+The **observed** variant (§8) is an engine check too: nothing to generate.
+It appears in the active engine module for every read or informational tool
+of a server whose declaration names `observation.snapshot_tool`.
 
 ## 7. What the reviewer does with a failure
 
@@ -114,4 +118,75 @@ declaration — will be a generated check following
 - **`not_verifiable` (unknown)** — the server says nothing about the tool. Ask
   its owner to annotate it; meanwhile a declared class records a person's belief,
   and `blast.mutation_class` will say plainly that nothing corroborates it.
-- **`pass` on a tool you suspect** — `blast.mutation_class` cannot help (§2). Note it for mutation class observed.
+- **`pass` on a tool you suspect** — `blast.mutation_class` cannot help (§2). Declare
+  `observation.snapshot_tool` and let `blast.mutation_class_observed` (§8) watch it.
+
+## 8. `blast.mutation_class_observed` — the observed variant
+
+**Active tier. It calls the tool.** For a tool whose resolved class is `read`
+or `informational` — the stricter of what the manifest recorded and what the
+live listing says now — it takes three calls in **one session** against the
+same state:
+
+1. a snapshot: the declared `observation.snapshot_tool`, called with sentinel
+   arguments, its result normalised (the structured content the server sent,
+   or its text) and hashed;
+2. the tool under test, once, with sentinel arguments — required parameters
+   only, `sentinels.nonexistent_id` for strings, `0` and `false` for the rest;
+3. the snapshot again.
+
+A difference means the tool mutated while claiming not to.
+
+### What it proves
+
+That one call of this tool, with arguments that address nothing real, changed
+what the snapshot tool shows. That is a demonstrated mutation behind a
+read-only claim — the thing no reading of `tools/list` can show.
+
+### What it cannot prove
+
+**One call, one observation window.** A tool that mutates only under other
+arguments, only for a record that exists, only sometimes, or in state the
+snapshot tool does not show, is not caught, and a `pass` says so in its
+detail. A `pass` means "nothing observable moved this once", not "this tool
+never writes". The snapshot tool is the reviewer's choice: pick one whose
+output reflects the state a lying read tool would touch (`search_records`
+reports the store's size, which is why the reference declaration names it).
+
+### Statuses
+
+| status | means |
+|---|---|
+| `critical` | The snapshots differ. The detail names the tool, its claimed class, what claimed it (`annotation readOnlyHint`, or `name get_*`), the snapshot tool, both hashes and what changed. An agent has been told this tool is safe to call freely. |
+| `pass` | No observable change through the snapshot tool after one sentinel call. |
+| `not_verifiable` | No `observation.snapshot_tool` declared (never a pass); the snapshot tool is not listed, is not a read tool, or answered with an error; the tool is not listed or has no sentinel form; the session was refused or failed; or the tool's class is write, destructive or unknown — the check never calls those, and nothing is opened. |
+
+### Where it runs
+
+Active tier: proving a read tool mutates means causing that mutation once, so
+it runs only where the committed policy (`.itest/environments.yaml`) allows
+`active`, and a production environment refuses it — `held_out` on the page.
+The single-session path it uses has **no mutation opt-in at all**: a write or
+destructive class anywhere in the sequence refuses the whole sequence before
+anything is opened.
+
+### Evidence fields
+
+| field | meaning |
+|---|---|
+| `snapshot_tool` | The declared read tool state was observed through. |
+| `claimed`, `claimed_by` | The class the tool claims, and what claimed it. |
+| `arguments`, `called`, `call_status` | What the tool was called with, whether it was, and how it answered (`ok`, or `error` for a tool error — it ran either way). |
+| `before`, `after` | `{hash, view}` of each snapshot. |
+
+### What the reviewer does with a `critical`
+
+Stop and escalate. The tool is reachable by an agent under a read-only label,
+so every policy that let the agent call reads freely has been letting it
+write. Then: fix the server's annotation (`readOnlyHint=false`, and
+`destructiveHint` as appropriate) or the tool itself; re-run `itest plan` —
+the class moves, the plan says so, and the traits the new class brings
+(`blast.destructive_gating`, `blast.audit`, `authority.anonymous`'s handling)
+arrive as trait changes. Do not "declare it a write" to silence the check: the
+server describing itself falsely is the defect, and a declaration that sides
+with the truth against the annotation is refused at plan time anyway.

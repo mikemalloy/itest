@@ -65,6 +65,9 @@ identity:
 audit:
   sink: stderr-json
 
+observation:
+  snapshot_tool: search_records                  # a read tool whose output is a stable view
+
 approval:
   destructive_requires: none                     # none | confirm_param | human | policy
 
@@ -197,6 +200,20 @@ every tool on the server gets the check, and a subprocess launched without the
 credential that still answers is a real finding. Over `http` the check always
 applies. [docs/checks.md](checks.md) has the reasoning.
 
+### How state is observed is a declared fact
+
+`observation.snapshot_tool` names a read tool whose output is a stable,
+comparable view of the server's state — for the reference server,
+`search_records`, which reports the store's size. It is what the observed
+mutation-class check (`blast.mutation_class_observed`, active tier) snapshots
+through: snapshot, one call of a read-classified tool with sentinel
+arguments, snapshot again; a difference is a tool that mutates while claiming
+not to. ITest never guesses which tool to watch with. Absent, the check is
+withheld from every tool on the server — not generated and quietly passing —
+and a check reached without it says "declare observation.snapshot_tool to
+enable observed mutation-class checking". Choose a tool whose view would move
+if a lying read tool wrote: a count, a listing, a version.
+
 ### Absence grants nothing
 
 Every optional section defaults to its least claim: no auth, no audit sink,
@@ -272,5 +289,7 @@ decided each trait for one tool.
   named like a read, and mutates anyway. Nothing in the listing disagrees with
   anything else, so detection is *correct* to call it a read and the cross-check
   has nothing to flag. Catching it takes a call and a look at the store
-  afterwards — a behavioural check, not a declaration. It is deliberately left
-  undeclared in the example for exactly that reason.
+  afterwards — `blast.mutation_class_observed`, through the
+  `observation.snapshot_tool` the declaration names — not a declared class.
+  It is deliberately left undeclared under `tools:` in the example for exactly
+  that reason.

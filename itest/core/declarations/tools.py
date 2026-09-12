@@ -311,6 +311,9 @@ def build_points(
                     # "anonymous" caller is a meaningful thing to refuse.
                     "transport_kind": declaration.transport.kind,
                     "enforced_over_stdio": declaration.auth.enforced_over_stdio,
+                    # The read tool state is observed through, for the
+                    # observed mutation-class check; absent withholds it.
+                    "snapshot_tool": declaration.observation.snapshot_tool,
                     "traits": list(declared_traits) if declared_traits else None,
                 },
                 hcl_address=declaration_path(server),

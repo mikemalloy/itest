@@ -275,18 +275,22 @@ def test_the_generated_suite_runs_and_nothing_is_an_error(
     and a "failure" there would be noise. With no credential exported the run
     is anonymous, and B1/D1-D3 pass on the anonymous listing for every tool;
     the traits the library has no check for skip; every generated binding
-    skips on its unfilled fixture. Nothing is an error, nothing fails, and
-    nothing else passes."""
+    skips on its unfilled fixture. The one failure is the catch: the observed
+    mutation-class check sees lookalike_read write behind readOnlyHint.
+    Nothing is an error, and nothing else passes."""
     monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     assert _sync().exit_code == 0
     result = runner.invoke(
         app, ["verify", "--environment", "staging", "--output", "json"]
     )
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output
     report = json.loads(result.output)
     assert report["errored"] == 0
     failed = sorted(t["canonical"] for t in report["tests"] if t["outcome"] == "failed")
-    assert failed == []
+    assert failed == [
+        f"{ENGINE_ACTIVE_FILE}::test_engine"
+        "[lookalike_read-blast.mutation_class_observed]"
+    ]
     assert not any("authority.anonymous" in t["canonical"] for t in report["tests"])
     passed = {t["canonical"] for t in report["tests"] if t["outcome"] == "passed"}
     assert passed == {
@@ -307,6 +311,9 @@ def test_the_generated_suite_runs_and_nothing_is_an_error(
             "change.schema_drift",
             "change.description_drift",
         )
+    } | {
+        f"{ENGINE_ACTIVE_FILE}::test_engine[{tool}-blast.mutation_class_observed]"
+        for tool in ("get_guide", "search_records", "fetch_record", "enrich")
     }
     others = {
         t["outcome"]
@@ -314,7 +321,7 @@ def test_the_generated_suite_runs_and_nothing_is_an_error(
         if t["outcome"] not in ("failed", "passed")
     }
     assert others == {"skipped"}
-    assert len(report["tests"]) == 73
+    assert len(report["tests"]) == 78
     assert report["unregistered"] == []
 
 

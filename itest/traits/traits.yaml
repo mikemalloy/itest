@@ -37,8 +37,9 @@
 # The fields are the tool's attributes as plan recorded them: `mutation`,
 # `egress`, `approval`, `active`, `has_free_form_input`, plus facts its
 # server declared — `auth.second_tenant_env`, `audit.sink`,
-# `identity.runs_as`, `transport.kind` (stdio | http) and
-# `auth.enforced_over_stdio`. An unknown field, an unreadable clause, an
+# `identity.runs_as`, `transport.kind` (stdio | http),
+# `auth.enforced_over_stdio` and `observation.snapshot_tool`. An unknown
+# field, an unreadable clause, an
 # unknown family, kind or tier all refuse the table at load: a typo here must
 # not quietly delete a check.
 #
@@ -119,6 +120,23 @@ traits:
     kind: engine
     recipe: tool_mutation_class.md
     standards: [ASI02, LLM03, ACS-AgBOM]
+
+  - id: blast.mutation_class_observed
+    code: BLAST-1b
+    family: blast
+    name: mutation class (observed)
+    # The behavioural sibling of blast.mutation_class: snapshot state through
+    # the declared snapshot tool, call a read-classified tool once with
+    # sentinel arguments, snapshot again. A difference is a tool that mutates
+    # while claiming not to — critical. Never run against a write or
+    # destructive tool (they already declare mutation), and active tier:
+    # proving a read tool mutates means causing that mutation once, so it
+    # runs only where the committed policy allows it and never in production.
+    applies_when: mutation in [read, informational] and observation.snapshot_tool present
+    tier: active
+    kind: engine
+    recipe: tool_mutation_class.md
+    standards: [ASI02, LLM03]
 
   - id: blast.destructive_gating
     code: BLAST-2

@@ -82,14 +82,16 @@ KNOWN_ATTRIBUTES = (
     "identity.runs_as",
     "transport.kind",
     "auth.enforced_over_stdio",
+    "observation.snapshot_tool",
 )
 
 #: A trait id: ``<family>.<slug>``, lower case. The family half must be the
 #: row's own family, so an id says where it belongs.
 _TRAIT_ID = re.compile(r"^(?P<family>[a-z][a-z0-9_]*)\.[a-z][a-z0-9_]*$")
 
-#: A display code: letters, a hyphen, a number (``AUTH-1``). Never an identity.
-_TRAIT_CODE = re.compile(r"^[A-Z]+-[0-9]+$")
+#: A display code: letters, a hyphen, a number, and optionally one lower-case
+#: letter for a variant (``AUTH-1``, ``BLAST-1b``). Never an identity.
+_TRAIT_CODE = re.compile(r"^[A-Z]+-[0-9]+[a-z]?$")
 
 #: The published id families a ``standards`` entry may come from, with what
 #: each looks like. A typo in one is an error; an empty list is fine.
@@ -252,7 +254,8 @@ def _check_rows(path: object, raw: dict) -> None:
         if "code" in row and not _TRAIT_CODE.match(str(row["code"])):
             raise TraitTableError(
                 f"{path}: trait {trait_id} has code {row['code']!r}. A code is "
-                "upper-case letters, a hyphen and a number, e.g. AUTH-1."
+                "upper-case letters, a hyphen and a number (a variant may add "
+                "one lower-case letter), e.g. AUTH-1 or BLAST-1b."
             )
         standards = row.get("standards") or []
         if isinstance(standards, list):
@@ -514,6 +517,9 @@ def trait_context(point: IntegrationPoint) -> dict[str, Any]:
         "transport.kind": attributes.get("transport_kind"),
         # A stdio server that checks a credential of its own; default false.
         "auth.enforced_over_stdio": bool(attributes.get("enforced_over_stdio")),
+        # The read tool state is observed through; absent withholds the
+        # observed mutation-class check.
+        "observation.snapshot_tool": attributes.get("snapshot_tool"),
     }
 
 

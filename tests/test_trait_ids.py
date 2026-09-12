@@ -74,6 +74,7 @@ TABLE = {
         ["ASI03", "semgrep-server-8", "CWE-441"],
     ),
     "blast.mutation_class": ("BLAST-1", "blast", ["ASI02", "LLM03", "ACS-AgBOM"]),
+    "blast.mutation_class_observed": ("BLAST-1b", "blast", ["ASI02", "LLM03"]),
     "blast.destructive_gating": ("BLAST-2", "blast", ["ASI02", "LLM03"]),
     "blast.egress": ("BLAST-3", "blast", ["ASI04", "LLM02", "semgrep-server-21"]),
     "blast.audit": ("BLAST-4", "blast", ["ACS-AgBOM", "CWE-778"]),
@@ -135,7 +136,8 @@ def test_an_old_id_migrates_and_a_new_one_is_left_alone() -> None:
 def test_the_shipped_table_is_slugs_codes_and_standards() -> None:
     table = load_traits()
     assert table.ids == list(TABLE)
-    assert set(CANONICAL.values()) == set(table.ids)
+    # Every old id maps to a row; a row added after the rename has no old id.
+    assert set(CANONICAL.values()) <= set(table.ids)
     assert table.families == {
         "authority": "Authority",
         "blast": "Blast radius",
@@ -484,6 +486,7 @@ def test_a_binding_generated_with_an_old_id_still_dispatches() -> None:
     assert set(checks.ENGINE_CHECKS) == {
         "authority.anonymous",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",

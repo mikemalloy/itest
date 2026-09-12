@@ -81,6 +81,7 @@ EXPECTED_TRAITS = {
     "get_guide": [
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",
@@ -89,6 +90,7 @@ EXPECTED_TRAITS = {
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "containment.parameter_scope",
         "containment.expression_passthrough",
         "containment.output_hygiene",
@@ -100,6 +102,7 @@ EXPECTED_TRAITS = {
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "containment.parameter_scope",
         "containment.expression_passthrough",
         "containment.output_hygiene",
@@ -148,6 +151,7 @@ EXPECTED_TRAITS = {
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "containment.parameter_scope",
         "containment.expression_passthrough",
         "containment.output_hygiene",
@@ -159,6 +163,7 @@ EXPECTED_TRAITS = {
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "blast.egress",
         "containment.parameter_scope",
         "containment.expression_passthrough",
@@ -354,7 +359,8 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
         result = runner.invoke(
             app, ["verify", "--environment", "staging", "--output", "json"]
         )
-        assert result.exit_code == 0, result.output  # nothing errors
+        # 1, not 2: the observed check catches lookalike_read; nothing errors.
+        assert result.exit_code == 1, result.output
         report = json.loads(result.output)
         assert report["errored"] == 0
         outcomes = {t["canonical"]: t["outcome"] for t in report["tests"]}
@@ -491,8 +497,8 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
 
     payload = _plan_json()
     changes = {(c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]}
-    # The table grew A3 and C3 since P30, and A1 left every stdio tool: over
-    # stdio there is no anonymous caller, so that check is retired in place.
+    # The table grew A3, B1b and C3 since P30, and A1 left every stdio tool:
+    # over stdio there is no anonymous caller, so that check is retired in place.
     assert changes == (
         {
             (tool, "authority.backing_least_privilege", "gained")
@@ -502,6 +508,11 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
             (tool, "containment.output_hygiene", "gained")
             for tool in EXPECTED_TRAITS
             if tool != "get_guide"
+        }
+        | {
+            (tool, "blast.mutation_class_observed", "gained")
+            for tool in EXPECTED_TRAITS
+            if tool not in ("create_record", "update_record", "delete_record")
         }
         | {(tool, "authority.anonymous", "retired") for tool in EXPECTED_TRAITS}
     )
