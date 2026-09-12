@@ -132,24 +132,16 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
 
     checks = _checks(ledger)
     # An engine trait's row is its engine case; a generated trait's, its binding.
-    a1 = checks[("delete_record", "authority.anonymous")]
-    assert (
-        a1["test"] == f"{ENGINE_FILE}::test_engine[delete_record-authority.anonymous]"
-    )
+    d1 = checks[("delete_record", "change.inventory")]
+    assert d1["test"] == f"{ENGINE_FILE}::test_engine[delete_record-change.inventory]"
     b2 = checks[("delete_record", "blast.destructive_gating")]
     assert b2["test"] == f"{ACTIVE_FILE}::test_delete_record__blast__destructive_gating"
+    # Over stdio the process boundary is the authentication boundary, so no
+    # tool carries an authority.anonymous cell — not a failing one, not a
+    # not_verifiable one. The rule is the table's, and the ledger reflects it.
+    assert not any(trait == "authority.anonymous" for _, trait in checks)
     # The engine checks ran for real, against reference-mcp over stdio, with no
     # credential exported. Every status is the library's own CheckResult.
-    for tool in READ_TOOLS:
-        check = checks[(tool, "authority.anonymous")]
-        assert check["status"] == "fail", (tool, check)
-        assert "anonymous call" in check["detail"]
-    for tool in MUTATING_TOOLS:
-        check = checks[(tool, "authority.anonymous")]
-        assert check["status"] == "not_verifiable", (tool, check)
-        assert check["detail"].startswith(
-            "anonymous session admitted; this tool mutates"
-        )
     for (tool, trait), check in checks.items():
         if trait in LISTING_TRAITS:
             # No credential resolves, so the run is anonymous; the stdio server
@@ -162,10 +154,15 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
             # The fixtures are unfilled: not run — never pass, never a zero.
             assert check["status"] == "not_run", (tool, trait)
     assert "fill in blast__destructive_gating_fixtures" in b2["detail"]
-    assert "critical" not in {c["status"] for c in checks.values()}
+    # The one critical is the catch: lookalike_read observed mutating behind
+    # readOnlyHint. Every other observed read tool passes.
+    critical = [k for k, c in checks.items() if c["status"] == "critical"]
+    assert critical == [("lookalike_read", "blast.mutation_class_observed")]
+    for tool in ("get_guide", "search_records", "fetch_record", "enrich"):
+        assert checks[(tool, "blast.mutation_class_observed")]["status"] == "pass"
     assert {c["state"] for c in checks.values()} == {"current"}
     assert server["summary"]["verified"] == 0
-    assert server["summary"]["critical"] == 0
+    assert server["summary"]["critical"] == 1
 
 
 def test_with_the_credential_exported_the_listing_checks_pass(
@@ -187,10 +184,8 @@ def test_with_the_credential_exported_the_listing_checks_pass(
     assert (
         checks[("lookalike_read", "blast.mutation_class")]["status"] == "pass"
     )  # the pinned limit
-    # A1 is unchanged by the credential: it always probes anonymously.
-    assert {checks[(t, "authority.anonymous")]["status"] for t in READ_TOOLS} == {
-        "fail"
-    }
+    # The credential does not conjure an anonymous check over stdio either.
+    assert not any(trait == "authority.anonymous" for _, trait in checks)
     assert token not in json.dumps(payload)
 
 
@@ -206,8 +201,7 @@ def test_the_emitted_ledger_validates_through_the_model_and_renders(
     html = report_render.render(page)
     blocks = report_render.extract_blocks(html)
     assert blocks["TOOLS"]  # the grouped tool table is drawn from real data
-    # Real A1 failures on the read tools block the release; nothing verified
-    # could never have been VERIFIED either way.
+    # lookalike_read, caught mutating behind readOnlyHint, blocks the release.
     assert page.verdict.word == "BLOCKED"
 
 
@@ -234,9 +228,9 @@ def _fake_checks(workdir: Path) -> None:
         + "\n\nimport itest.checks as _checks\n\n\n"
         "def _engine(trait_id, point, target, *, authenticated):\n"
         '    if (trait_id, point["target"]) == '
-        '("authority.anonymous", "delete_record"):\n'
-        '        return _checks.CheckResult("critical", "anonymous call accepted", '
-        "None)\n"
+        '("blast.mutation_class", "delete_record"):\n'
+        '        return _checks.CheckResult("critical", "mutation class '
+        'contradicted", None)\n'
         '    if (trait_id, point["target"]) == '
         '("change.description_drift", "update_record"):\n'
         '        return _checks.CheckResult("changed", "description moved", None)\n'
@@ -250,16 +244,16 @@ def test_a_recorded_check_result_is_the_status(workdir: Path) -> None:
     _fake_checks(workdir)
     payload = _verify()
     checks = _checks(payload["tools"])
-    assert checks[("delete_record", "authority.anonymous")]["status"] == "critical"
+    assert checks[("delete_record", "blast.mutation_class")]["status"] == "critical"
     assert (
-        checks[("delete_record", "authority.anonymous")]["detail"]
-        == "anonymous call accepted"
+        checks[("delete_record", "blast.mutation_class")]["detail"]
+        == "mutation class contradicted"
     )
     assert checks[("update_record", "change.description_drift")]["status"] == "changed"
     assert checks[("get_guide", "change.inventory")] == {
         "trait": "change.inventory",
         "code": "CHANGE-1",
-        "standards": ["ASI04", "LLM03", "semgrep-client-14"],
+        "standards": ["ASI04", "LLM04", "semgrep-client-1", "ACS-AgBOM"],
         "status": "pass",
         "detail": "change.inventory held",
         "test": f"{ENGINE_FILE}::test_engine[get_guide-change.inventory]",
@@ -284,7 +278,7 @@ def test_a_hand_edited_file_marks_its_checks_hand_edited(workdir: Path) -> None:
         checks[("delete_record", "blast.destructive_gating")]["state"] == "hand_edited"
     )
     assert (
-        checks[("delete_record", "authority.anonymous")]["state"] == "current"
+        checks[("delete_record", "change.inventory")]["state"] == "current"
     )  # engine module
 
 
@@ -535,7 +529,7 @@ def test_an_owned_binding_whose_schema_moved_is_stale_without_a_sync(
         assert checks[key]["state"] == "stale", key
     assert checks[("create_record", "blast.audit")]["state"] == "current"
     assert (
-        checks[("delete_record", "authority.anonymous")]["state"] == "current"
+        checks[("delete_record", "change.inventory")]["state"] == "current"
     )  # engine module
     (server,) = payload["tools"]["servers"]
     stale = [e for e in server["exceptions"] if e["kind"] == "stale"]

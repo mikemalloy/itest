@@ -67,8 +67,8 @@ def test_traits_prints_the_table(tmp_path: Path, monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
     assert lines[0] == (
-        f"Trait table {trait_table_hash()}: 14 traits in 4 families "
-        "(9 engine, 5 generated)."
+        f"Trait table {trait_table_hash()}: 15 traits in 4 families "
+        "(10 engine, 5 generated)."
     )
     b2 = next(
         line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
@@ -102,8 +102,8 @@ def test_traits_json_is_the_table(tmp_path: Path, monkeypatch) -> None:
         "name": "refuses anonymous",
         "kind": "engine",
         "tier": "readonly",
-        "applies_when": "always",
-        "standards": ["ASI03", "LLM02", "semgrep-server-4"],
+        "applies_when": "transport.kind == http or auth.enforced_over_stdio",
+        "standards": ["ASI03", "LLM02", "semgrep-server-4", "CWE-306"],
         "recipe": "tool_authn.md",
     }
 
@@ -120,7 +120,7 @@ def test_traits_for_a_tool_decides_every_trait(synced: Path) -> None:
         "reference-mcp/delete_record: destructive (detected) [approval confirm_param]"
     )
     assert f"id={point_id}" in out
-    assert "12 of 14 traits apply" in out
+    assert "11 of 15 traits apply" in out  # no anonymous (stdio), no observed
     lines = out.splitlines()
     assert any(
         line.lstrip().startswith("APPLIES")
@@ -156,7 +156,7 @@ def test_traits_for_names_a_declared_override(synced: Path, monkeypatch) -> None
     monkeypatch.setitem(sys.modules, "itest.probes.mcp", None)
     result = _traits("--for", "reference-mcp/get_guide")
     assert result.exit_code == 0, result.output
-    assert "0 of 14 traits apply" in result.output
+    assert "0 of 15 traits apply" in result.output
     assert "declared traits: none-of-these" in result.output
 
 
@@ -171,9 +171,9 @@ def test_traits_for_json(synced: Path) -> None:
     assert payload["table_changed_since_sync"] is False
     applies = {t["id"]: t["applies"] for t in payload["traits"]}
     assert [k for k, v in applies.items() if v] == [
-        "authority.anonymous",
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",
@@ -298,11 +298,11 @@ def test_the_table_shows_slug_code_family_kind_tier_rule_standards_recipe(
         line for line in lines if line.lstrip().startswith("authority.anonymous ")
     )
     assert "AUTH-1" in anonymous
-    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4, CWE-306" in anonymous
     gating = next(
         line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
     )
-    assert "BLAST-2" in gating and "—" in gating  # no mapping yet, said so
+    assert "BLAST-2" in gating and "ASI02, LLM03" in gating
 
 
 def test_traits_json_carries_code_and_standards(tmp_path: Path, monkeypatch) -> None:
@@ -312,10 +312,11 @@ def test_traits_json_carries_code_and_standards(tmp_path: Path, monkeypatch) -> 
     assert by_id["change.description_drift"]["code"] == "CHANGE-3"
     assert by_id["change.description_drift"]["standards"] == [
         "ASI04",
+        "ASI01",
         "LLM01",
-        "semgrep-client-12",
+        "semgrep-client-2",
     ]
-    assert by_id["blast.egress"]["standards"] == []
+    assert by_id["blast.egress"]["standards"] == ["ASI04", "LLM02", "semgrep-server-21"]
 
 
 def test_traits_for_shows_each_decision_with_its_rule_and_standards(
@@ -325,9 +326,10 @@ def test_traits_for_shows_each_decision_with_its_rule_and_standards(
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
     anonymous = next(line for line in lines if "authority.anonymous " in line)
-    assert anonymous.lstrip().startswith("APPLIES")
-    assert "AUTH-1" in anonymous and "rule: always" in anonymous
-    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    assert anonymous.lstrip().startswith("does not apply")  # stdio, no own check
+    assert "AUTH-1" in anonymous
+    assert "rule: transport.kind == http or auth.enforced_over_stdio" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4, CWE-306" in anonymous
     isolation = next(line for line in lines if "authority.tenant_isolation " in line)
     assert isolation.lstrip().startswith("does not apply")
     assert "rule: auth.second_tenant_env present" in isolation
@@ -335,4 +337,48 @@ def test_traits_for_shows_each_decision_with_its_rule_and_standards(
     payload = json.loads(_traits("--for", "reference-mcp/get_guide", "--json").output)
     first = payload["traits"][0]
     assert (first["id"], first["code"]) == ("authority.anonymous", "AUTH-1")
-    assert first["standards"] == ["ASI03", "LLM02", "semgrep-server-4"]
+    assert first["standards"] == ["ASI03", "LLM02", "semgrep-server-4", "CWE-306"]
+
+
+# --- authority.anonymous and the transport ------------------------------------------
+
+ANONYMOUS_RULE = "rule: transport.kind == http or auth.enforced_over_stdio"
+
+
+def test_traits_for_says_why_a_stdio_server_gets_no_anonymous_check(
+    synced: Path,
+) -> None:
+    """Over stdio the process boundary is the authentication boundary, so the
+    check does not apply — and the reader is told which rule decided."""
+    result = _traits("--for", "reference-mcp/get_guide")
+    assert result.exit_code == 0, result.output
+    line = next(
+        line for line in result.output.splitlines() if "authority.anonymous " in line
+    )
+    assert line.lstrip().startswith("does not apply")
+    assert ANONYMOUS_RULE in line
+
+
+def test_traits_for_shows_the_anonymous_check_when_stdio_enforcement_is_declared(
+    synced: Path, monkeypatch
+) -> None:
+    from test_declarations_plan_sync import _declare
+
+    monkeypatch.delitem(sys.modules, "itest.probes.mcp")
+    _declare(
+        synced,
+        auth={
+            "scheme": "bearer",
+            "credential_env": "REFERENCE_MCP_TOKEN",
+            "enforced_over_stdio": True,
+        },
+    )
+    assert _sync().exit_code == 0
+    monkeypatch.setitem(sys.modules, "itest.probes.mcp", None)
+    result = _traits("--for", "reference-mcp/get_guide")
+    assert result.exit_code == 0, result.output
+    line = next(
+        line for line in result.output.splitlines() if "authority.anonymous " in line
+    )
+    assert line.lstrip().startswith("APPLIES")
+    assert ANONYMOUS_RULE in line

@@ -7,12 +7,15 @@ what a first-time reader clones is what has to work.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -43,6 +46,29 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_DIR = REPO_ROOT / "examples" / "reference-mcp"
 POLICY_FILE = EXAMPLE_DIR / ".itest" / "environments.yaml"
 DECLARATION_FILE = EXAMPLE_DIR / ".itest" / "tools" / "reference-mcp.yaml"
+OPEN_DECLARATION_FILE = EXAMPLE_DIR / ".itest" / "tools" / "reference-mcp-open.yaml"
+
+_spec = importlib.util.spec_from_file_location(
+    "reference_mcp_server_example", EXAMPLE_DIR / "server.py"
+)
+assert _spec and _spec.loader
+reference_mcp = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = reference_mcp
+_spec.loader.exec_module(reference_mcp)
+
+
+@pytest.fixture(scope="module")
+def http_server() -> Iterator[Any]:
+    """Terminal one of the two-terminal demo: `python server.py --http`."""
+    with reference_mcp.serve_in_thread(token="dry-run-token") as running:
+        yield running
+
+
+def _stdio_declaration():
+    """The stdio declaration, beside the open-mount one the example also ships."""
+    return next(
+        d for d in load_declarations(EXAMPLE_DIR) if d.server == "reference-mcp"
+    )
 
 
 def copy_example(destination: Path) -> Path:
@@ -85,7 +111,7 @@ def test_the_policy_permits_active_in_staging_and_refuses_it_in_prod() -> None:
 def test_the_example_declaration_loads_against_its_own_policy() -> None:
     """`active_allowed_in: [staging]` is refused without a policy permitting it;
     with the shipped one it loads."""
-    (declaration,) = load_declarations(EXAMPLE_DIR)
+    declaration = _stdio_declaration()
     assert declaration.environments.active_allowed_in == ["staging"]
 
 
@@ -103,6 +129,7 @@ def test_the_example_policy_is_tracked_by_git() -> None:
     ).stdout.split()
     assert "examples/reference-mcp/.itest/environments.yaml" in tracked
     assert "examples/reference-mcp/.itest/tools/reference-mcp.yaml" in tracked
+    assert "examples/reference-mcp/.itest/tools/reference-mcp-open.yaml" in tracked
 
 
 # --- the transport command ----------------------------------------------------
@@ -119,7 +146,7 @@ def test_a_stdio_target_launches_in_the_declarations_project_directory(
 ) -> None:
     """Relative argv resolves against the directory holding `.itest/`, not the
     process's cwd and not the repository root."""
-    (declaration,) = load_declarations(EXAMPLE_DIR)
+    declaration = _stdio_declaration()
     target = build_target(declaration, EXAMPLE_DIR)
     assert target is not None
     assert target.command[1:] == ["server.py"]
@@ -129,7 +156,7 @@ def test_a_stdio_target_launches_in_the_declarations_project_directory(
 def test_a_bare_python_is_the_interpreter_itest_runs_under() -> None:
     """Not the first `python` on PATH: that one may not have the server's
     dependencies, and the venv's `itest` is often run without activating it."""
-    (declaration,) = load_declarations(EXAMPLE_DIR)
+    declaration = _stdio_declaration()
     target = build_target(declaration, EXAMPLE_DIR)
     assert target is not None
     assert target.command[0] == sys.executable
@@ -154,9 +181,14 @@ def test_plan_launches_the_example_server_from_any_working_directory(
     no_python_on_path(tmp_path, monkeypatch)
     assert not os.environ["PATH"].startswith(str(Path(sys.executable).parent))
 
-    points, orphaned, unreachable = planner.plan_declarations(example)
-    assert unreachable == {}
+    points, orphaned, unreachable, private_hosts = planner.plan_declarations(example)
+    # The open mount's url is unset here: named as unreachable, never a crash.
+    assert unreachable == {
+        "reference-mcp-open": "unreachable: REFERENCE_MCP_OPEN_URL not set"
+    }
+    assert private_hosts == ["reference-mcp-open"]
     assert len(points) == 8
+    assert {p.source for p in points} == {"reference-mcp"}
     assert orphaned == []
 
 
@@ -167,54 +199,109 @@ ENGINE = f"{SERVER_DIR}/test_reference_mcp__engine.py"
 ENGINE_ACTIVE = f"{SERVER_DIR}/test_reference_mcp__engine_active.py"
 GENERATED_ACTIVE = f"{SERVER_DIR}/test_reference_mcp__generated_active.py"
 CONFTEST = f"{SERVER_DIR}/conftest.py"
+OPEN_DIR = "itest_tests/tools_reference_mcp_open"
+OPEN_ENGINE = f"{OPEN_DIR}/test_reference_mcp_open__engine.py"
+OPEN_ENGINE_ACTIVE = f"{OPEN_DIR}/test_reference_mcp_open__engine_active.py"
+OPEN_GENERATED_ACTIVE = f"{OPEN_DIR}/test_reference_mcp_open__generated_active.py"
+OPEN_CONFTEST = f"{OPEN_DIR}/conftest.py"
+
+
+def _ledger_checks(blocks: dict) -> list[tuple[str, str, str]]:
+    """(server group heading, tool, status token) for every cell on the page."""
+    return [
+        (group["g"], row["n"], cell["txt"])
+        for group in blocks["TOOLS"]
+        for row in group["rows"]
+        for cell in row["cells"]
+        if cell
+    ]
 
 
 @pytest.mark.slow
 def test_reference_mcp_runs_plan_sync_verify_report_from_its_own_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, http_server: Any
 ) -> None:
-    """The four commands a first-time reader runs, from a clean copy of the
-    example: no --tf-json, no terraform, no `python` on PATH, no stub file made
-    by hand, no edit to anything shipped. The real server runs throughout."""
+    """The two-terminal demo, as the README describes it: `server.py --http`
+    in one terminal, both urls exported in the other, then the four commands a
+    first-time reader runs from a clean copy of the example — no --tf-json, no
+    terraform, no `python` on PATH, no stub file made by hand, no edit to
+    anything shipped. The stdio server and the open HTTP mount are both probed."""
     example = copy_example(tmp_path / "reference-mcp")
     monkeypatch.chdir(example)
     no_python_on_path(tmp_path, monkeypatch)
     monkeypatch.setenv("REFERENCE_MCP_TOKEN", "dry-run-token")
+    monkeypatch.setenv("REFERENCE_MCP_OPEN_URL", http_server.open_url)
 
-    # plan: eight tool points, nothing unreachable.
+    # plan: eight tools on each of the two servers, nothing unreachable, and
+    # the open mount named for loosening the private-host guard.
     plan = runner.invoke(app, ["plan", "--output", "json"])
     assert plan.exit_code == 0, plan.output
     payload = json.loads(plan.output)
     assert payload["unreachable_servers"] == {}
-    assert sorted(p["target"] for p in payload["new_points"]) == sorted(TOOLS)
+    assert payload["private_hosts_allowed"] == ["reference-mcp-open"]
+    for server in ("reference-mcp", "reference-mcp-open"):
+        targets = [p["target"] for p in payload["new_points"] if p["source"] == server]
+        assert sorted(targets) == sorted(TOOLS), server
     assert {p["type"] for p in payload["new_points"]} == {"mcp_tool"}
+    human = runner.invoke(app, ["plan"])
+    assert "private hosts allowed by declaration" in human.output
 
     # sync: answered at the prompt, as a person runs it.
     sync = runner.invoke(app, ["sync"], input="y\n")
     assert sync.exit_code == 0, sync.output
     assert "Applied:" in sync.output
 
-    # The generated tree is exactly what sync writes, and nothing else.
+    # The generated tree is exactly what sync writes, and nothing else. The open
+    # mount declares no second tenant or audit sink, and its identity defaults
+    # to passthrough, so its generated bindings are the two identity checks.
     written = sorted(
         path.relative_to(example).as_posix()
         for path in (example / "itest_tests").rglob("*.py")
     )
-    assert written == sorted([CONFTEST, ENGINE, ENGINE_ACTIVE, GENERATED_ACTIVE])
+    assert written == sorted(
+        [
+            CONFTEST,
+            ENGINE,
+            ENGINE_ACTIVE,
+            GENERATED_ACTIVE,
+            OPEN_CONFTEST,
+            OPEN_ENGINE,
+            OPEN_ENGINE_ACTIVE,
+            OPEN_GENERATED_ACTIVE,
+        ]
+    )
     manifest = load_manifest(example / ".itest" / "manifest.yaml")
-    assert {t.path for t in manifest.tests} == {ENGINE, ENGINE_ACTIVE, GENERATED_ACTIVE}
-    assert len([p for p in manifest.points if p.type == "mcp_tool"]) == 8
+    assert {t.path for t in manifest.tests} == {
+        ENGINE,
+        ENGINE_ACTIVE,
+        GENERATED_ACTIVE,
+        OPEN_ENGINE,
+        OPEN_ENGINE_ACTIVE,
+        OPEN_GENERATED_ACTIVE,
+    }
+    assert len([p for p in manifest.points if p.type == "mcp_tool"]) == 16
     for path in written:  # no hand-written stub anywhere
         text = (example / path).read_text(encoding="utf-8")
         assert stubgen.STUB_SKIP_LINE not in text, path
+    # The anonymous check is planned only where an anonymous caller exists.
+    planned = {(p.source, p.target): p.traits_planned for p in manifest.points}
+    assert all(
+        "authority.anonymous" not in planned[("reference-mcp", t)] for t in TOOLS
+    )
+    assert all(
+        "authority.anonymous" in planned[("reference-mcp-open", t)] for t in TOOLS
+    )
 
-    # verify in staging: the suite runs; A1's findings are real, not errors.
+    # verify in staging: the suite runs; the open mount's findings are real
+    # failures (an anonymous call answered on a read tool), never errors.
     verify = runner.invoke(app, ["verify", "--environment", "staging"])
-    assert verify.exit_code in (0, 1), verify.output
-    assert "8 integration points" in verify.output
+    assert verify.exit_code == 1, verify.output
+    assert "16 integration points" in verify.output
     assert "0 errored" in verify.output
     assert "gated" not in verify.output
+    assert "reference-mcp-open -> " in verify.output
 
-    # report: a page naming all eight tools under a verdict band.
+    # report: a page naming every tool under a verdict band.
     page = tmp_path / "readiness.html"
     # The page reflects the environment verified: report runs its verify in
     # staging too, so the active-tier checks are attempted, never held out.
@@ -227,20 +314,54 @@ def test_reference_mcp_runs_plan_sync_verify_report_from_its_own_directory(
         assert tool in html, tool
     blocks = extract_blocks(html)
     verdict = blocks["PAGE"]["verdict"]
-    assert verdict["word"] in ("VERIFIED", "AT RISK", "BLOCKED")
+    assert verdict["word"] == "BLOCKED"  # the open mount's anonymous reads
     assert f"Verdict: {verdict['word']}" in report.output
     assert 'class="verdict' in html
     assert "<b>staging</b>" in verdict["sub"]
     assert "no environment bound" not in verdict["sub"]
-    cells = [
-        cell["txt"]
-        for group in blocks["TOOLS"]
-        for row in group["rows"]
-        for cell in row["cells"]
-        if cell
-    ]
+    cells = [status for _group, _tool, status in _ledger_checks(blocks)]
     assert cells and "HELD OUT" not in cells
     assert "NOT RUN" in cells or "NOT VERIFIABLE" in cells  # active tier attempted
+    assert "FAIL" in cells
+    # Every cell carries a standards id, and the band names what is not covered.
+    headers = [h for group in blocks["TOOLS"] for h in group["headers"]]
+    assert headers and all(h["std"] for h in headers)
+    band = blocks["PAGE"]["standards"]
+    assert [r["id"] for r in band["rows"]] == [f"ASI{n:02d}" for n in range(1, 11)]
+    assert {r["label"] for r in band["rows"]} >= {"covered", "not covered"}
+
+
+@pytest.mark.slow
+def test_reference_mcp_stdio_only_needs_allow_unreachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without the HTTP server the open mount's url is unset: plan names it,
+    sync refuses until --allow-unreachable accepts the gap, and the stdio run
+    is then green — there is no anonymous cell to fail over stdio."""
+    example = copy_example(tmp_path / "reference-mcp")
+    monkeypatch.chdir(example)
+    monkeypatch.setenv("REFERENCE_MCP_TOKEN", "dry-run-token")
+    monkeypatch.delenv("REFERENCE_MCP_OPEN_URL", raising=False)
+
+    plan = runner.invoke(app, ["plan"])
+    assert plan.exit_code == 0, plan.output
+    assert "unreachable: REFERENCE_MCP_OPEN_URL not set" in plan.output
+
+    refused = runner.invoke(app, ["sync", "--auto-approve"])
+    assert refused.exit_code == 1, refused.output
+    assert "reference-mcp-open" in refused.output
+    assert not (example / ".itest" / "manifest.yaml").exists()
+
+    sync = runner.invoke(app, ["sync", "--auto-approve", "--allow-unreachable"])
+    assert sync.exit_code == 0, sync.output
+    manifest = load_manifest(example / ".itest" / "manifest.yaml")
+    assert len(manifest.points) == 8
+    verify = runner.invoke(app, ["verify", "--environment", "staging"])
+    # 1: lookalike_read is caught mutating behind readOnlyHint (active tier).
+    assert verify.exit_code == 1, verify.output
+    assert "1 failing" in verify.output and "0 errored" in verify.output
+    assert "[FAIL] reference-mcp -> lookalike_read" in verify.output
+    assert "authority.anonymous" not in verify.output
 
 
 # --- a dry run leaves the repo's own suite and status alone -----------------------

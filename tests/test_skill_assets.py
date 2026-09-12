@@ -162,7 +162,11 @@ def test_every_tool_recipe_is_named_by_the_trait_table() -> None:
 @pytest.mark.parametrize("stem", sorted(ENGINE_RECIPES | {TOOL_RECIPE_SHAPE}))
 def test_tool_recipes_carry_a_version_line(stem: str) -> None:
     text = (RECIPE_DIR / f"{stem}.md").read_text(encoding="utf-8")
-    assert text.splitlines()[0] == "recipe-version: 1"
+    first = text.splitlines()[0]
+    assert re.fullmatch(r"recipe-version: [0-9]+", first), first
+    # The mutation-class recipe grew its observed variant (§8): version 2.
+    expected = 2 if stem == "tool_mutation_class" else 1
+    assert first == f"recipe-version: {expected}"
 
 
 @pytest.mark.parametrize("stem", sorted(ENGINE_RECIPES))

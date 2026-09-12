@@ -108,6 +108,146 @@
       "since": "",
       "toolsMeta": "reference-mcp \u00b7 staging"
     },
+    "standards": {
+      "empty": "",
+      "eyebrow": "OWASP Top 10 for Agentic Applications (ASI) \u00b7 3 covered, 7 not covered",
+      "rows": [
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 1
+            },
+            {
+              "cls": "warn",
+              "l": "changed",
+              "n": 1
+            }
+          ],
+          "checks": 2,
+          "coverage": "not_covered",
+          "id": "ASI01",
+          "label": "not covered",
+          "note": "model-behaviour risk; ITest asserts boundaries, not judgment (but see change.description_drift, which is goal-hijack surface)",
+          "quiet": true,
+          "title": "Agent Goal Hijack"
+        },
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 1
+            }
+          ],
+          "checks": 1,
+          "coverage": "covered",
+          "id": "ASI02",
+          "label": "covered",
+          "note": "",
+          "quiet": false,
+          "title": "Tool Misuse"
+        },
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 2
+            }
+          ],
+          "checks": 2,
+          "coverage": "covered",
+          "id": "ASI03",
+          "label": "covered",
+          "note": "",
+          "quiet": false,
+          "title": "Identity & Privilege Abuse"
+        },
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 2
+            },
+            {
+              "cls": "warn",
+              "l": "changed",
+              "n": 1
+            }
+          ],
+          "checks": 3,
+          "coverage": "covered",
+          "id": "ASI04",
+          "label": "covered",
+          "note": "",
+          "quiet": false,
+          "title": "Agentic Supply Chain Vulnerabilities"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI05",
+          "label": "not covered",
+          "note": "no check in this run cites it",
+          "quiet": true,
+          "title": "Unexpected Code Execution"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI06",
+          "label": "not covered",
+          "note": "model-behaviour risk",
+          "quiet": true,
+          "title": "Memory & Context Poisoning"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI07",
+          "label": "not covered",
+          "note": "multi-agent transport, out of scope",
+          "quiet": true,
+          "title": "Insecure Inter-Agent Communication"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI08",
+          "label": "not covered",
+          "note": "system-level behaviour, out of scope",
+          "quiet": true,
+          "title": "Cascading Failures"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI09",
+          "label": "not covered",
+          "note": "not covered as a check; ITest's own answer is that a report never overstates: stale blocks VERIFIED",
+          "quiet": true,
+          "title": "Human-Agent Trust Exploitation"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI10",
+          "label": "not covered",
+          "note": "model-behaviour risk",
+          "quiet": true,
+          "title": "Rogue Agents"
+        }
+      ]
+    },
     "toolBand": {
       "cls": "risk",
       "review": "1 change to review",
@@ -361,9 +501,11 @@
           "standards": [
             "ASI03",
             "LLM02",
-            "semgrep-server-4"
+            "semgrep-server-4",
+            "CWE-306"
           ],
-          "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4"
+          "std": "ASI03",
+          "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4, CWE-306"
         },
         {
           "code": "BLAST-1",
@@ -371,9 +513,11 @@
           "slug": "blast.mutation_class",
           "standards": [
             "ASI02",
-            "LLM06"
+            "LLM03",
+            "ACS-AgBOM"
           ],
-          "title": "blast.mutation_class \u00b7 BLAST-1 \u2014 ASI02, LLM06"
+          "std": "ASI02",
+          "title": "blast.mutation_class \u00b7 BLAST-1 \u2014 ASI02, LLM03, ACS-AgBOM"
         },
         {
           "code": "CHANGE-2",
@@ -381,9 +525,11 @@
           "slug": "change.schema_drift",
           "standards": [
             "ASI04",
-            "LLM03"
+            "LLM04",
+            "ACS-AgBOM"
           ],
-          "title": "change.schema_drift \u00b7 CHANGE-2 \u2014 ASI04, LLM03"
+          "std": "ASI04",
+          "title": "change.schema_drift \u00b7 CHANGE-2 \u2014 ASI04, LLM04, ACS-AgBOM"
         },
         {
           "code": "CHANGE-3",
@@ -391,10 +537,12 @@
           "slug": "change.description_drift",
           "standards": [
             "ASI04",
+            "ASI01",
             "LLM01",
-            "semgrep-client-12"
+            "semgrep-client-2"
           ],
-          "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, LLM01, semgrep-client-12"
+          "std": "ASI04",
+          "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, ASI01, LLM01, semgrep-client-2"
         }
       ],
       "rows": [
@@ -402,19 +550,45 @@
           "cells": [
             {
               "cls": "ok",
+              "standards": [
+                "ASI03",
+                "LLM02",
+                "semgrep-server-4",
+                "CWE-306"
+              ],
+              "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4, CWE-306",
               "txt": "PASS"
             },
             {
               "cls": "ok",
+              "standards": [
+                "ASI02",
+                "LLM03",
+                "ACS-AgBOM"
+              ],
+              "title": "blast.mutation_class \u00b7 BLAST-1 \u2014 ASI02, LLM03, ACS-AgBOM",
               "txt": "PASS"
             },
             {
               "cls": "ok",
+              "standards": [
+                "ASI04",
+                "LLM04",
+                "ACS-AgBOM"
+              ],
               "state": "hand-edited",
+              "title": "change.schema_drift \u00b7 CHANGE-2 \u2014 ASI04, LLM04, ACS-AgBOM",
               "txt": "PASS"
             },
             {
               "cls": "ok",
+              "standards": [
+                "ASI04",
+                "ASI01",
+                "LLM01",
+                "semgrep-client-2"
+              ],
+              "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, ASI01, LLM01, semgrep-client-2",
               "txt": "PASS"
             }
           ],
@@ -442,9 +616,11 @@
           "standards": [
             "ASI03",
             "LLM02",
-            "semgrep-server-4"
+            "semgrep-server-4",
+            "CWE-306"
           ],
-          "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4"
+          "std": "ASI03",
+          "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4, CWE-306"
         },
         {
           "code": "CHANGE-3",
@@ -452,10 +628,12 @@
           "slug": "change.description_drift",
           "standards": [
             "ASI04",
+            "ASI01",
             "LLM01",
-            "semgrep-client-12"
+            "semgrep-client-2"
           ],
-          "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, LLM01, semgrep-client-12"
+          "std": "ASI04",
+          "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, ASI01, LLM01, semgrep-client-2"
         }
       ],
       "rows": [
@@ -463,10 +641,24 @@
           "cells": [
             {
               "cls": "ok",
+              "standards": [
+                "ASI03",
+                "LLM02",
+                "semgrep-server-4",
+                "CWE-306"
+              ],
+              "title": "authority.anonymous \u00b7 AUTH-1 \u2014 ASI03, LLM02, semgrep-server-4, CWE-306",
               "txt": "PASS"
             },
             {
               "cls": "warn",
+              "standards": [
+                "ASI04",
+                "ASI01",
+                "LLM01",
+                "semgrep-client-2"
+              ],
+              "title": "change.description_drift \u00b7 CHANGE-3 \u2014 ASI04, ASI01, LLM01, semgrep-client-2",
               "txt": "CHANGED"
             }
           ],

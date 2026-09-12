@@ -53,6 +53,13 @@ approval:
   # per-tool below — a blanket claim here would be a false one.
   destructive_requires: none
 
+observation:
+  # A read tool whose output is a stable, comparable view of the store:
+  # search_records reports the store's size. Its presence is what makes the
+  # observed mutation-class check (blast.mutation_class_observed) applicable —
+  # the check that catches lookalike_read by behaviour.
+  snapshot_tool: search_records
+
 sentinels:
   # An id no record can have. A mutating probe carries it so the probe is
   # proven by being ADMITTED, never by destroying something.

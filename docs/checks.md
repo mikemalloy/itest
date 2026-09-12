@@ -9,8 +9,10 @@ Two kinds of check share it:
 
 - **Engine checks.** ITest runs them itself, from the manifest's point and the
   server's live tool list. An engine check has no per-tool file, so nothing can
-  go stale. Most are readonly tier; **`containment.parameter_scope` and `containment.expression_passthrough` are active tier** — they will
-  call tools with sentinel injection arguments, which is safe only on a
+  go stale. Most are readonly tier; **`blast.mutation_class_observed`,
+  `containment.parameter_scope` and `containment.expression_passthrough` are
+  active tier** — they call tools (the first to observe a mutation, the
+  others with sentinel injection arguments), which is safe only on a
   non-production environment — and run only where the committed policy
   (`.itest/environments.yaml`) allows `active`. Most traits are engine checks.
 - **Generated checks.** For the few traits that need a fact only a person can
@@ -67,7 +69,7 @@ The statuses:
 |---|---|
 | `pass` | The check ran and the property holds. |
 | `fail` | The check ran and the property does not hold. |
-| `critical` | A **demonstrated** anonymous admission on a write or destructive tool — never an inference from a listing. Stop and escalate. No readonly engine check produces it; it is reserved for anonymous-refusal active. |
+| `critical` | A **demonstrated** finding, never an inference from a listing: today, a read-classified tool that changed observable state (`blast.mutation_class_observed`). The planned active anonymous-refusal check (see "Not in this library yet") will use it for an anonymous admission on a mutating tool. Stop and escalate. No readonly engine check produces it. |
 | `changed` | The live server differs from what the last sync recorded. Sync makes this drift. |
 | `not_verifiable` | The check could not run; the detail says why. **Never a pass.** |
 
@@ -102,16 +104,48 @@ answers — written to be printed by a future `itest explain`.
 
 | id | module | what it calls | statuses | standards |
 |---|---|---|---|---|
-| **`authority.anonymous`** (AUTH-1) refuses anonymous | `authority.py` | anonymous `initialize` + `tools/list` once per server (the front door); behind an admitted session, one anonymous `tools/call` of a **read or informational** tool with sentinel arguments. Never calls a write, destructive or unknown tool. | `pass` (front door refused, or the read call refused — at the transport or by an auth-shaped tool error), `fail` (a read tool answered, or ran and returned any other tool error), `not_verifiable` (mutating tool behind an open door, unknown, hidden, no sentinel, transport). Never `critical`. | OWASP Agentic ASI03; LLM02; Semgrep server tab row 4 |
-| **`blast.mutation_class`** (BLAST-1) mutation class (agreement) | `blast_radius.py` | the reference listing only | `pass` (all statements agree), `changed` (live class ≠ manifest), `fail` (annotation and name disagree, unsettled), `not_verifiable` (unknown, declaration only, not listed) | OWASP Agentic ASI02; LLM06; AgBOM mutation attribute |
-| **`change.inventory`** (CHANGE-1) inventory | `change.py` | the reference listing; the project manifest | `pass`, `fail` (`not in tools/list; orphan`), `not_verifiable`; `evidence.undeclared` on every result | OWASP Agentic ASI04; Semgrep client tab row 14 |
-| **`change.schema_drift`** (CHANGE-2) schema drift | `change.py` | the reference listing | `pass`, `changed` (both hashes), `not_verifiable` | OWASP Agentic ASI04; Semgrep client tab rows 12, 14 |
-| **`change.description_drift`** (CHANGE-3) description drift | `change.py` | the reference listing | `pass`, `changed` (both hashes), `not_verifiable` | OWASP Agentic ASI04; LLM01; Semgrep client tab row 12 |
+| **`authority.anonymous`** (AUTH-1) refuses anonymous | `authority.py` | anonymous `initialize` + `tools/list` once per server (the front door); behind an admitted session, one anonymous `tools/call` of a **read or informational** tool with sentinel arguments. Never calls a write, destructive or unknown tool. | `pass` (front door refused, or the read call refused — at the transport or by an auth-shaped tool error), `fail` (a read tool answered, or ran and returned any other tool error), `not_verifiable` (mutating tool behind an open door, unknown, hidden, no sentinel, transport, or a stdio server that does not declare its own credential check). Never `critical`. | ASI03; LLM02; semgrep-server-4; CWE-306 |
+| **`blast.mutation_class`** (BLAST-1) mutation class (agreement) | `blast_radius.py` | the reference listing only | `pass` (all statements agree), `changed` (live class ≠ manifest), `fail` (annotation and name disagree, unsettled), `not_verifiable` (unknown, declaration only, not listed) | ASI02; LLM03; ACS-AgBOM |
+| **`blast.mutation_class_observed`** (BLAST-1b, **active**) mutation class (observed) | `blast_radius.py` | three calls in one session: the declared `observation.snapshot_tool` with sentinel arguments, the **read or informational** tool under test once with sentinel arguments, the snapshot tool again. Never calls a write, destructive or unknown tool. | `critical` (the snapshots differ: the tool mutated while claiming not to; the detail names the tool, its claimed class, the annotation or name that claimed it, and what changed), `pass` (no observable change; one call, one window), `not_verifiable` (no snapshot tool declared — never a pass; the snapshot tool is not a read tool, not listed or errored; the tool is not listed, has no sentinel form, or is mutating; the session was refused or failed) | ASI02; LLM03 |
+| **`change.inventory`** (CHANGE-1) inventory | `change.py` | the reference listing; the project manifest | `pass`, `fail` (`not in tools/list; orphan`), `not_verifiable`; `evidence.undeclared` on every result | ASI04; LLM04; semgrep-client-1; ACS-AgBOM |
+| **`change.schema_drift`** (CHANGE-2) schema drift | `change.py` | the reference listing | `pass`, `changed` (both hashes), `not_verifiable` | ASI04; LLM04; ACS-AgBOM |
+| **`change.description_drift`** (CHANGE-3) description drift | `change.py` | the reference listing | `pass`, `changed` (both hashes), `not_verifiable` | ASI04; ASI01; LLM01; semgrep-client-2 |
 
 The recipes explain each result for a reviewer:
 [`tool_authn.md`](../skills/itest-implementer/references/recipes/tool_authn.md),
 [`tool_mutation_class.md`](../skills/itest-implementer/references/recipes/tool_mutation_class.md),
 [`tool_provenance.md`](../skills/itest-implementer/references/recipes/tool_provenance.md).
+
+### `authority.anonymous` applies only where "anonymous" is meaningful
+
+Over **stdio** there is no anonymous caller. The server is a subprocess, and
+whoever can spawn it is, by definition, authorised: the process boundary is the
+authentication boundary. A stdio server that admits a `tools/call` from the
+process that launched it has not failed anything — it has done what stdio is —
+and a check reporting "anonymous call succeeded on a read tool" there would be
+ITest crying wolf. A security team's first run on its own stdio servers would
+be a screen of that noise, which is the failure mode that gets a tool switched
+off. So the trait's rule is
+
+```
+applies_when: transport.kind == http or auth.enforced_over_stdio
+```
+
+and a stdio server whose declaration does not claim its own credential check
+gets **no** `authority.anonymous` check at all — not a pass, not a fail, not a
+`not_verifiable`. It does not apply, and `itest traits --for <server>/<tool>`
+prints `does not apply` with that rule, so a reader does not conclude the
+check was forgotten. A stdio server that *does* check a credential of its own
+(`auth.enforced_over_stdio: true` — a fact only its owner knows) gets the
+check on every tool, because then an unauthenticated subprocess launch is a
+meaningful thing to refuse. A network transport always gets it.
+
+The check defends itself too. If it is reached against a stdio target whose
+point does not carry that declared fact — a manifest from before the rule
+moved, a hand-edited table — it returns `not_verifiable` with "stdio
+transport: the process boundary is the authentication boundary; declare
+auth.enforced_over_stdio if this server checks credentials itself", before a
+subprocess is spawned. It never fails.
 
 ### `authority.anonymous` judges only what it observed
 
@@ -144,8 +178,9 @@ check. A listing is never evidence enough.
 
 ## Sentinel rules
 
-`authority.anonymous` is the only engine check that calls a tool, and it sends only values that
-cannot address anything real:
+`authority.anonymous` and `blast.mutation_class_observed` are the only engine
+checks that call a tool, and they send only values that cannot address
+anything real:
 
 - required parameters only — nothing optional;
 - a string gets the declaration's `sentinels.nonexistent_id`, read from
@@ -157,9 +192,11 @@ cannot address anything real:
 - a tool needing a string sentinel on a server with no declaration at the
   project root is `not_verifiable`, never called with a guessed value.
 
-Refuse-by-default stays: no check passes `allow_mutating`, and
-`tests/test_checks.py` proves it by spying on every `call_tool` across every engine
-check, every reference tool and all three mounts.
+Refuse-by-default stays: no check passes a mutation opt-in — the
+single-session path the observed check uses (`itest.probes.mcp.session_calls`)
+has none at all, and refuses the whole sequence if any call in it is write or
+destructive — and `tests/test_checks.py` proves it by spying on every call
+across every engine check, every reference tool and all three mounts.
 
 ## The scrub rule
 
@@ -188,23 +225,31 @@ Checks read the project root from the working directory, as `itest verify` does:
 never `[]`), `.itest/tools/<server>.yaml` for `authority.anonymous`'s sentinel, and `.itest/.env`
 for a credential by name.
 
-## The pinned limit of `blast.mutation_class`
+## The pinned limit of `blast.mutation_class`, and the check that has none
 
 `blast.mutation_class` compares **statements** — the manifest, the annotation, the name, the
 declaration. A tool whose annotation and name agree and are both false looks
 consistent, and `blast.mutation_class` passes it. `lookalike_read` in `examples/reference-mcp/` is
 annotated read-only, named like a read, and mutates; `blast.mutation_class` passes it, **by design**,
 and `tests/test_checks.py` pins that pass. An annotation lie is visible only by
-observing behaviour, which is **mutation class observed** — active tier, a sentinel call
-followed by a look at the store through a read tool named in the declaration. It
-is not built; `lookalike_read` is its fixture.
+observing behaviour, which is **`blast.mutation_class_observed`** (BLAST-1b, active
+tier): a snapshot through the read tool the declaration names as
+`observation.snapshot_tool`, one call of the tool with sentinel arguments, a
+snapshot again — three calls in one session, so an in-memory server keeps its
+state between them. `lookalike_read` is its fixture and it is **`critical`**
+there: the detail names the tool, `read`, `annotation readOnlyHint`, and what
+moved in `search_records`'s view. Its own limit is stated in every `pass`: one
+call, one observation window — a tool that mutates only under other
+conditions is not caught. It is active tier because proving a read tool
+mutates means causing that mutation once; a production environment holds it
+out. `tool_mutation_class.md` §8 is the recipe.
 
 ## Not in this library yet
 
 - anonymous-refusal active (active tier, non-production only): an anonymous call on each
   mutating tool behind an open front door, with sentinel arguments — `critical`
   on admission. This is where the MCP probe's proven critical path belongs.
-- mutation class observed (active); `authority.tenant_isolation`, `authority.backing_least_privilege`, `authority.delegation`, `blast.destructive_gating`, `blast.audit` generated checks.
+- `authority.tenant_isolation`, `authority.backing_least_privilege`, `authority.delegation`, `blast.destructive_gating`, `blast.audit` generated checks.
 - `itest explain <trait>` to print a check's docstring.
 - Engine checks `blast.egress`, `containment.parameter_scope`, `containment.expression_passthrough`, `containment.output_hygiene` (the table names them; `run_engine_check`
   answers `not_verifiable`, "no engine check for <id>").

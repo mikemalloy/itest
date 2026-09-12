@@ -473,6 +473,16 @@ def _describe(exc: BaseException, statuses: list[int]) -> tuple[str, str]:
     return "error", summary
 
 
+@dataclass(frozen=True)
+class SessionCall:
+    """One call in a :func:`session_calls` sequence: the tool, its arguments
+    (sentinels), and the caller's answer to what the tool does."""
+
+    name: str
+    arguments: dict[str, Any]
+    mutation_class: str | None = None
+
+
 # --- the public operations ----------------------------------------------------
 
 
@@ -601,6 +611,86 @@ def call_tool(
         )
 
     return _judge(name, result, credential, authenticated, resolved_class)
+
+
+def session_calls(
+    target: McpTarget,
+    calls: list[SessionCall],
+    *,
+    authenticated: bool,
+    base_dir: Path | None = None,
+) -> list[CallResult]:
+    """Call several tools, in order, in ONE session.
+
+    The observed mutation-class check needs three calls against the same state
+    — a snapshot, the call under test, a snapshot — and over stdio every
+    :func:`call_tool` spawns a fresh server whose in-memory store starts over.
+    This is the single-session form of the same operation, under stricter
+    rules: there is **no** ``allow_mutating`` here at all. A ``write`` or
+    ``destructive`` class anywhere in the sequence refuses the whole sequence
+    before anything is opened — no subprocess spawned, no request sent — and
+    every call in it comes back ``refused`` naming the tool that did it.
+
+    Otherwise one result per call, in order. A tool error is an outcome and
+    the sequence goes on; a transport failure or a timeout ends it, and every
+    call from that one on is an ``error`` naming the failure. Never raises for
+    anything the server did; :class:`McpProbeError` only for a target or a
+    credential the probe cannot use at all.
+    """
+    mutating = [
+        call.name
+        for call in calls
+        if (call.mutation_class or "unknown").strip().lower() in MUTATING_CLASSES
+    ]
+    if mutating:
+        detail = (
+            f"refused the whole sequence: {mutating[0]!r} is "
+            f"{next(c.mutation_class for c in calls if c.name == mutating[0])!r}, "
+            "and session_calls never mutates — there is no opt-in. Nothing was "
+            "opened."
+        )
+        return [CallResult(ok=False, status="refused", detail=detail) for _ in calls]
+    if not calls:
+        return []
+
+    credential = _resolve(target, authenticated, base_dir)
+    client, statuses = _client(target, credential)
+    results: list[CallResult] = []
+
+    async def run() -> None:
+        with anyio.fail_after(target.timeout_s * len(calls)):
+            async with client as connected:
+                for call in calls:
+                    answer = await connected.call_tool(call.name, call.arguments)
+                    results.append(
+                        _judge(
+                            call.name,
+                            answer,
+                            credential,
+                            authenticated,
+                            (call.mutation_class or "unknown").strip().lower(),
+                        )
+                    )
+
+    try:
+        anyio.run(run)
+    except TimeoutError:
+        failure = f"timed out after {target.timeout_s * len(calls)}s"
+        status = "error"
+    except BaseException as exc:  # noqa: BLE001 - every failure is an outcome here
+        status, failure = _describe(exc, statuses)
+    else:
+        return results
+    for call in calls[len(results) :]:
+        results.append(
+            CallResult(
+                ok=False,
+                status=status,  # type: ignore[arg-type]
+                detail=_scrub(f"calling {call.name!r}: {failure}", credential),
+                raw=None,
+            )
+        )
+    return results
 
 
 def _judge(

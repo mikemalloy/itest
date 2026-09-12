@@ -40,6 +40,13 @@ CALLABLE_CLASSES = frozenset({"read", "informational"})
 #: The front door held: the whole server passes, and no tool is called.
 FRONT_DOOR_REFUSED = "server refuses anonymous sessions; per-tool call not attempted"
 
+#: A stdio target whose declaration does not claim its own credential check:
+#: there is no anonymous caller to refuse, so nothing is attempted.
+STDIO_BOUNDARY = (
+    "stdio transport: the process boundary is the authentication boundary; "
+    "declare auth.enforced_over_stdio if this server checks credentials itself"
+)
+
 #: A mutating tool behind an open front door: what only the active tier can prove.
 MUTATING_DEFERRED = (
     "anonymous session admitted; this tool mutates, so its own guard can only be "
@@ -135,6 +142,15 @@ def check_authority__anonymous(
     credential, and over stdio the credential variable is stripped from the
     subprocess environment. ``authenticated`` does not change what it does.
 
+    **0. Is there an anonymous caller at all?** Over stdio the process
+    boundary is the authentication boundary: whoever can spawn the subprocess
+    is authorised, so "anonymous" means nothing unless the server checks a
+    credential of its own. The table (``transport.kind == http or
+    auth.enforced_over_stdio``) keeps this check off a plain stdio server; if
+    it is reached anyway, a stdio target whose point does not carry
+    ``enforced_over_stdio`` is ``not_verifiable`` with :data:`STDIO_BOUNDARY`,
+    before anything is spawned. Never ``fail``.
+
     **1. The front door, once per server.** An anonymous ``initialize`` +
     ``tools/list``, cached for the run.
 
@@ -168,8 +184,9 @@ def check_authority__anonymous(
     It never returns ``critical``: that status means a *demonstrated* anonymous
     admission on a mutating tool, which only the active-tier check can show.
 
-    Standards: OWASP Agentic Top 10 ASI03 (Identity and Privilege Abuse); the
-    Semgrep MCP security cheatsheet, server tab, row 4.
+    Standards: OWASP Agentic Top 10 ASI03 (Identity and Privilege Abuse); OWASP
+    LLM Top 10 LLM02 (Sensitive Information Disclosure, what a fail is); the
+    Semgrep MCP security cheatsheet, server tab, row 4; CWE-306.
     """
     server, tool = server_of(point), tool_of(point)
     recorded = str(attributes_of(point).get("mutation") or "unknown")
@@ -185,6 +202,12 @@ def check_authority__anonymous(
         "called": False,
         "arguments": None,
     }
+
+    # 0. Over stdio, "anonymous" needs the server's own credential check to
+    # mean anything. Decided from the point (what plan recorded from the
+    # declaration), before a subprocess is spawned.
+    if target.kind == "stdio" and not attributes_of(point).get("enforced_over_stdio"):
+        return not_verifiable(STDIO_BOUNDARY, evidence)
 
     # 1. The front door.
     try:

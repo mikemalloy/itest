@@ -73,6 +73,7 @@ verifier already decided.
 | Agent tools — band, tiles | `tools.servers[].summary`, `.families[]` | verify JSON `tools` |
 | Agent tools — rows | one row per `tools[]`, one column per trait in `checks[]` | verify JSON `tools` |
 | Agent tools — exceptions | `tools.servers[].exceptions[]`, with the check's `change` diff | verify JSON `tools` |
+| Standards band | `tools.standards[]` — one row per OWASP Agentic entry (id, title, coverage, status counts, the reason when not covered); derived from the checks when an older document lacks it | verify JSON `tools`, `itest/traits/standards.yaml` for titles |
 | API sweep — rows | `attributes.method`, `attributes.path` per route_edge point | verify JSON + manifest `type` |
 | API sweep — status cell | the point's status, as `PASS`/`FAIL`/`ERROR`/`STUB`/`GATED` | verify JSON `points[].status` |
 | Integration graph | iam_edge points (nodes) and event_edge points (chain) | verify JSON + manifest `type` |

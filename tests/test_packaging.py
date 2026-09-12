@@ -24,10 +24,13 @@ PROBE = """\
 import importlib.resources as r, itest, itest.traits
 assert "site-packages" in itest.__file__, itest.__file__
 table = r.files("itest.traits").joinpath("traits.yaml")
+catalog = r.files("itest.traits").joinpath("standards.yaml")
 template = r.files("itest.report").joinpath("templates/readiness.html")
 assert table.is_file(), "traits.yaml missing from the wheel"
+assert catalog.is_file(), "standards.yaml missing from the wheel"
 assert template.is_file(), "readiness.html missing from the wheel"
 assert "traits:" in table.read_text(encoding="utf-8")
+assert "ASI01" in catalog.read_text(encoding="utf-8")
 assert "itest:data:PAGE" in template.read_text(encoding="utf-8")
 print("ok")
 """

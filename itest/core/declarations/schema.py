@@ -108,6 +108,12 @@ class Transport(Strict):
     #: ``kind: http``. Present alongside a stdio command when the same server
     #: can also be probed over HTTP.
     url_env: str | None = None
+    #: Let an ``http`` url on a loopback, link-local, RFC1918 or unique-local
+    #: host be probed. The private-host guard is the SSRF rule and stays on by
+    #: default; this exists for a local reference or test server and nothing
+    #: else — a real deployment never needs it, and a declaration that sets it
+    #: is named in every plan so it is never silent.
+    allow_private_hosts: bool = False
 
     @field_validator("url_env")
     @classmethod
@@ -139,6 +145,13 @@ class Auth(Strict):
     #: presence is what makes a tenant-isolation check possible at all: with one
     #: identity there is nothing to cross.
     second_tenant_env: str | None = None
+    #: Whether a ``stdio`` server checks a credential of its own rather than
+    #: trusting whoever spawned it. Over stdio the process boundary *is* the
+    #: authentication boundary — there is no anonymous caller — so the
+    #: anonymous-refusal check applies to a stdio server only when its owner
+    #: states this. A fact only the server's owner knows; ``false`` withholds
+    #: the check, it never loosens anything.
+    enforced_over_stdio: bool = False
 
     @field_validator("credential_env")
     @classmethod
@@ -198,6 +211,20 @@ class Audit(Strict):
     """
 
     sink: str | None = None
+
+
+class Observation(Strict):
+    """How the server's state is observed: a read tool whose output is a
+    stable, comparable view of it (for reference-mcp, ``search_records``).
+
+    A declared fact, not a guess. Its presence is what makes the observed
+    mutation-class check (``blast.mutation_class_observed``) applicable: the
+    check snapshots through this tool, calls a read-classified tool once with
+    sentinel arguments, snapshots again, and compares. Absent, that check is
+    withheld — never generated and quietly passing.
+    """
+
+    snapshot_tool: str | None = None
 
 
 class Approval(Strict):
@@ -307,6 +334,7 @@ class Declaration(Strict):
     tenancy: Tenancy = Field(default_factory=Tenancy)
     identity: Identity = Field(default_factory=Identity)
     audit: Audit = Field(default_factory=Audit)
+    observation: Observation = Field(default_factory=Observation)
     approval: Approval = Field(default_factory=Approval)
     sentinels: Sentinels
     environments: Environments = Field(default_factory=Environments)

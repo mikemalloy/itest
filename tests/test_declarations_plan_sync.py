@@ -462,8 +462,10 @@ DELETE_STUBS = {
     "test_delete_record__blast__destructive_gating",
     "test_delete_record__blast__audit",
 }
+#: No authority.anonymous: the reference server is probed over stdio, where
+#: the process boundary is the authentication boundary, and its declaration
+#: does not claim a credential check of its own.
 DELETE_ENGINE = [
-    "authority.anonymous",
     "blast.mutation_class",
     "containment.parameter_scope",
     "containment.expression_passthrough",
@@ -498,9 +500,9 @@ def test_sync_generates_one_stub_per_tool_and_applicable_generated_trait(
     # containment check, no gating, no egress, no audit. The identity check
     # still applies: the server acts as a service identity for every tool.
     assert planned["get_guide"] == [
-        "authority.anonymous",
         "authority.backing_least_privilege",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",
@@ -623,7 +625,6 @@ def test_a_tool_with_active_false_gets_no_active_stubs(workdir: Path) -> None:
     assert not {f for f in active if f.startswith("test_delete_record__")}
     # The readonly (engine) traits still apply; only the active ones went.
     assert _traits_planned(workdir)["delete_record"] == [
-        "authority.anonymous",
         "blast.mutation_class",
         "containment.output_hygiene",
         "change.inventory",
@@ -960,20 +961,17 @@ def test_verify_gates_the_active_tool_checks_off_the_safe_floor(
     monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     assert _sync().exit_code == 0
     result = runner.invoke(app, ["verify"])
-    # reference-mcp over stdio has no guard: A1 fails its five read tools.
-    assert result.exit_code == 1, result.output
+    # reference-mcp is probed over stdio, where the process boundary is the
+    # authentication boundary: no anonymous check exists to fail, and the
+    # listing checks (B1, D1-D3, on the anonymous listing) pass on every tool.
+    assert result.exit_code == 0, result.output
     assert "8 integration points" in result.output
-    assert "33 gated test(s) withheld by this environment" in result.output
-    assert "Ran 48 tests" in result.output
+    assert "38 gated test(s) withheld by this environment" in result.output
+    assert "Ran 40 tests" in result.output
     assert "No environment bound: running the safe floor" in result.output
-    # Every point reports the coverage it has. The read tools fail A1. The
-    # mutating tools pass on the listing checks (B1, D1-D3, run on the anonymous
-    # listing); their A1 is deferred to the active tier and skips, which is not
-    # a pass and is not a fail.
-    assert result.output.count("[FAIL] reference-mcp -> ") == 5
-    assert result.output.count("[PASS] reference-mcp -> ") == 3
-    for tool in ("create_record", "update_record", "delete_record"):
-        assert f"[PASS] reference-mcp -> {tool} " in result.output
+    assert result.output.count("[FAIL] reference-mcp -> ") == 0
+    assert result.output.count("[PASS] reference-mcp -> ") == 8
+    assert "authority.anonymous" not in result.output
 
 
 def test_verify_runs_the_active_checks_when_the_environment_allows_them(
@@ -981,7 +979,8 @@ def test_verify_runs_the_active_checks_when_the_environment_allows_them(
 ) -> None:
     assert _sync().exit_code == 0
     result = runner.invoke(app, ["verify", "--environment", "staging"])
-    assert result.exit_code == 1, result.output  # A1's real findings, not errors
-    assert "0 errored" in result.output
+    # 1: the active tier catches lookalike_read mutating behind readOnlyHint.
+    assert result.exit_code == 1, result.output
+    assert "1 failing" in result.output and "0 errored" in result.output
     assert "gated" not in result.output
-    assert "Ran 81 tests" in result.output
+    assert "Ran 78 tests" in result.output

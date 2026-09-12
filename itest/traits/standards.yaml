@@ -1,0 +1,116 @@
+# The published standards ITest's traits answer, with their titles — and, for
+# the OWASP Agentic Top 10, a statement of what ITest does NOT cover.
+#
+# This file is a catalogue of titles and scope claims. It is not a second list
+# of checks: which ids a run cites, and how many checks cite each, is derived
+# from the ledger's checks at emit time (`itest.traits.standards`), so the two
+# cannot drift. A `coverage` here is ITest's claim about its own scope; a run
+# whose checks never cite a "covered" id reports it not covered anyway, because
+# coverage is a statement about evidence, not intent.
+#
+# `rollup: every` — every entry appears in the rollup; an uncited one is
+# rendered not_covered with its note. That is deliberate: a tool that prints
+# "not covered" beside five entries is more credible than one that stays
+# silent and lets a reader assume coverage.
+# `rollup: cited` — an entry appears only when a check cites it. The LLM Top
+# 10 is a neighbouring framework, not ITest's coverage claim.
+version: 1
+
+frameworks:
+  - id: ASI
+    name: OWASP Top 10 for Agentic Applications (December 2025)
+    rollup: every
+    entries:
+      - id: ASI01
+        title: Agent Goal Hijack
+        coverage: not_covered
+        note: >-
+          model-behaviour risk; ITest asserts boundaries, not judgment (but see
+          change.description_drift, which is goal-hijack surface)
+      - id: ASI02
+        title: Tool Misuse
+        coverage: covered
+      - id: ASI03
+        title: Identity & Privilege Abuse
+        coverage: covered
+      - id: ASI04
+        title: Agentic Supply Chain Vulnerabilities
+        coverage: covered
+      - id: ASI05
+        title: Unexpected Code Execution
+        coverage: partial
+        note: >-
+          containment.expression_passthrough probes the boundary; static
+          analysis finds the code path
+      - id: ASI06
+        title: Memory & Context Poisoning
+        coverage: not_covered
+        note: model-behaviour risk
+      - id: ASI07
+        title: Insecure Inter-Agent Communication
+        coverage: not_covered
+        note: multi-agent transport, out of scope
+      - id: ASI08
+        title: Cascading Failures
+        coverage: not_covered
+        note: system-level behaviour, out of scope
+      - id: ASI09
+        title: Human-Agent Trust Exploitation
+        coverage: not_covered
+        note: >-
+          not covered as a check; ITest's own answer is that a report never
+          overstates: stale blocks VERIFIED
+      - id: ASI10
+        title: Rogue Agents
+        coverage: not_covered
+        note: model-behaviour risk
+
+  - id: LLM
+    name: OWASP Top 10 for LLM Applications (2026 edition)
+    rollup: cited
+    entries:
+      - {id: LLM01, title: Prompt Injection}
+      - {id: LLM02, title: Sensitive Information Disclosure}
+      - {id: LLM03, title: Excessive Agency}
+      - {id: LLM04, title: Supply Chain}
+      - {id: LLM05, title: Data and Model Poisoning}
+      - {id: LLM06, title: Unbounded Consumption}
+      - {id: LLM07, title: Misinformation}
+      - {id: LLM08, title: Hidden Context Exposure}
+      - {id: LLM09, title: Vector and Embedding Weaknesses}
+      - {id: LLM10, title: Improper Output Handling}
+
+  # Semgrep MCP security cheatsheet rows. The title names the tab and row;
+  # the cheatsheet's own wording is not reproduced here.
+  - id: semgrep
+    name: Semgrep MCP security cheatsheet
+    rollup: cited
+    entries:
+      - {id: semgrep-server-4, title: "server tab, row 4"}
+      - {id: semgrep-server-8, title: "server tab, row 8"}
+      - {id: semgrep-server-18, title: "server tab, row 18"}
+      - {id: semgrep-server-19, title: "server tab, row 19"}
+      - {id: semgrep-server-20, title: "server tab, row 20"}
+      - {id: semgrep-server-21, title: "server tab, row 21"}
+      - {id: semgrep-server-22, title: "server tab, row 22"}
+      - {id: semgrep-client-1, title: "client tab, row 1"}
+      - {id: semgrep-client-2, title: "client tab, row 2"}
+
+  - id: CWE
+    name: Common Weakness Enumeration
+    rollup: cited
+    entries:
+      - {id: CWE-77, title: "Improper Neutralization of Special Elements used in a Command ('Command Injection')"}
+      - {id: CWE-89, title: "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"}
+      - {id: CWE-209, title: Generation of Error Message Containing Sensitive Information}
+      - {id: CWE-269, title: Improper Privilege Management}
+      - {id: CWE-306, title: Missing Authentication for Critical Function}
+      - {id: CWE-441, title: "Unintended Proxy or Intermediary ('Confused Deputy')"}
+      - {id: CWE-639, title: Authorization Bypass Through User-Controlled Key}
+      - {id: CWE-778, title: Insufficient Logging}
+
+  - id: ACS
+    name: OWASP Agent Control Standard v0.1
+    rollup: cited
+    entries:
+      - {id: ACS-AgBOM, title: Agent Bill of Materials}

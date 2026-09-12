@@ -117,7 +117,14 @@ def build_target(
     url = resolve_url(declaration, base_dir)
     if not url:
         return None
-    return McpTarget(kind="http", url=url, credential_env=credential_env)
+    return McpTarget(
+        kind="http",
+        url=url,
+        credential_env=credential_env,
+        # The declaration's opt-in, for a local reference or test server. The
+        # plan names every server that sets it.
+        allow_private_hosts=transport.allow_private_hosts,
+    )
 
 
 def annotations_hash(annotations: dict[str, Any] | None) -> str:
@@ -294,11 +301,19 @@ def build_points(
                     # Derived here because the schema itself is not kept, only
                     # its hash, and the applies-when table asks about it.
                     "has_free_form_input": has_free_form_input(tool.input_schema),
-                    # Three facts about the server, carried onto its points so the
+                    # Facts about the server, carried onto its points so the
                     # table can address them without reloading the declaration.
                     "second_tenant_env": declaration.auth.second_tenant_env,
                     "audit_sink": declaration.audit.sink,
                     "runs_as": declaration.identity.runs_as,
+                    # How the server is reached, and whether a stdio server
+                    # checks a credential itself: what decides whether an
+                    # "anonymous" caller is a meaningful thing to refuse.
+                    "transport_kind": declaration.transport.kind,
+                    "enforced_over_stdio": declaration.auth.enforced_over_stdio,
+                    # The read tool state is observed through, for the
+                    # observed mutation-class check; absent withholds it.
+                    "snapshot_tool": declaration.observation.snapshot_tool,
                     "traits": list(declared_traits) if declared_traits else None,
                 },
                 hcl_address=declaration_path(server),

@@ -47,11 +47,13 @@ transport:
   kind: stdio                                    # stdio | http
   command: [python, server.py]                   # launched in the project directory
   url_env: REFERENCE_MCP_URL                     # a NAME, never a URL
+  allow_private_hosts: false                     # default; see below
 
 auth:
   scheme: bearer                                 # none | bearer
   credential_env: REFERENCE_MCP_TOKEN            # a NAME, never a token
   second_tenant_env: REFERENCE_MCP_TOKEN_TENANT_B
+  enforced_over_stdio: false                     # default; see below
 
 tenancy:
   scoped_by: credential                          # credential | parameter | both
@@ -62,6 +64,9 @@ identity:
 
 audit:
   sink: stderr-json
+
+observation:
+  snapshot_tool: search_records                  # a read tool whose output is a stable view
 
 approval:
   destructive_requires: none                     # none | confirm_param | human | policy
@@ -160,6 +165,55 @@ Under `detect` the flip is drift, and the checks the new class brings or drops
 show up as trait changes. With a declared class, a disagreement still refuses
 the plan exactly as above.
 
+### A private host is refused unless the declaration says otherwise
+
+An `http` url is checked against the private-host guard before any connection:
+loopback, link-local (the metadata endpoint included), RFC1918 and IPv6
+unique-local are refused, literal or resolved. That is the SSRF rule, and it
+stays on. `transport.allow_private_hosts: true` is the one opt-in, and it
+exists for a local reference or test server — the reference server's HTTP
+mounts on a loopback port, say. A real deployment never needs it. A
+declaration that sets it should be visible in review, and it is never silent
+in the plan either: every plan lists such a server under "Private hosts
+allowed by declaration". It loosens the host rule only; a scheme other than
+http/https is refused either way.
+[`examples/reference-mcp/.itest/tools/reference-mcp-open.yaml`](../examples/reference-mcp/.itest/tools/reference-mcp-open.yaml)
+is the deliberately defective example that uses it.
+
+### Over stdio, the process boundary is the authentication boundary
+
+A `stdio` server is a subprocess: whoever can launch it is authorised, and
+there is no anonymous caller for it to refuse. So the anonymous-refusal check
+(`authority.anonymous`) does not apply to a stdio server — unless its owner
+states that the server checks a credential of its own rather than trusting the
+spawn:
+
+```yaml
+auth:
+  enforced_over_stdio: true
+```
+
+That is a fact only the server's owner knows: nothing in a tool listing says
+whether the process read a token before answering. It defaults to `false`, and
+`false` withholds the check rather than producing a passing one. With `true`,
+every tool on the server gets the check, and a subprocess launched without the
+credential that still answers is a real finding. Over `http` the check always
+applies. [docs/checks.md](checks.md) has the reasoning.
+
+### How state is observed is a declared fact
+
+`observation.snapshot_tool` names a read tool whose output is a stable,
+comparable view of the server's state — for the reference server,
+`search_records`, which reports the store's size. It is what the observed
+mutation-class check (`blast.mutation_class_observed`, active tier) snapshots
+through: snapshot, one call of a read-classified tool with sentinel
+arguments, snapshot again; a difference is a tool that mutates while claiming
+not to. ITest never guesses which tool to watch with. Absent, the check is
+withheld from every tool on the server — not generated and quietly passing —
+and a check reached without it says "declare observation.snapshot_tool to
+enable observed mutation-class checking". Choose a tool whose view would move
+if a lying read tool wrote: a count, a listing, a version.
+
 ### Absence grants nothing
 
 Every optional section defaults to its least claim: no auth, no audit sink,
@@ -235,5 +289,7 @@ decided each trait for one tool.
   named like a read, and mutates anyway. Nothing in the listing disagrees with
   anything else, so detection is *correct* to call it a read and the cross-check
   has nothing to flag. Catching it takes a call and a look at the store
-  afterwards — a behavioural check, not a declaration. It is deliberately left
-  undeclared in the example for exactly that reason.
+  afterwards — `blast.mutation_class_observed`, through the
+  `observation.snapshot_tool` the declaration names — not a declared class.
+  It is deliberately left undeclared under `tools:` in the example for exactly
+  that reason.

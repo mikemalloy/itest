@@ -31,7 +31,7 @@ traits:
     tier: active                   # static | readonly | active (the environment policy's tiers)
     kind: generated                # engine | generated
     recipe: tool_gating.md         # the skill file that says how the check works
-    standards: []                  # the published ids the trait answers; [] until confident
+    standards: [ASI02, LLM03]      # the published ids the trait answers; never invented
 ```
 
 | column | meaning |
@@ -43,7 +43,7 @@ traits:
 | `tier` | What the check runs as, and what the environment policy gates on. Active-tier checks live in their own file. |
 | `kind` | Who runs the check (see below). |
 | `recipe` | The file in the bundled skill (`itest-implementer/references/recipes/`) that describes the check. |
-| `standards` | The published ids the trait answers, taken from its recipe's "Standards mapping" section. Empty until a mapping is confident — never an invented id. |
+| `standards` | The published ids the trait answers (below). Verified against the published lists, never invented; an unknown prefix refuses the table. |
 
 ### Ids, codes and standards
 
@@ -51,26 +51,53 @@ The shipped traits, and what each answers:
 
 | id | code | standards |
 |---|---|---|
-| `authority.anonymous` | AUTH-1 | ASI03, LLM02, semgrep-server-4 |
-| `authority.tenant_isolation` | AUTH-2 | — |
-| `authority.backing_least_privilege` | AUTH-3 | — |
-| `authority.delegation` | AUTH-4 | — |
-| `blast.mutation_class` | BLAST-1 | ASI02, LLM06 |
-| `blast.destructive_gating` | BLAST-2 | — |
-| `blast.egress` | BLAST-3 | — |
-| `blast.audit` | BLAST-4 | — |
-| `containment.parameter_scope` | CONTAIN-1 | — |
-| `containment.expression_passthrough` | CONTAIN-2 | — |
-| `containment.output_hygiene` | CONTAIN-3 | — |
-| `change.inventory` | CHANGE-1 | ASI04, LLM03, semgrep-client-14 |
-| `change.schema_drift` | CHANGE-2 | ASI04, LLM03 |
-| `change.description_drift` | CHANGE-3 | ASI04, LLM01, semgrep-client-12 |
+| `authority.anonymous` | AUTH-1 | ASI03, LLM02, semgrep-server-4, CWE-306 |
+| `authority.tenant_isolation` | AUTH-2 | ASI03, LLM02, semgrep-server-18, CWE-639 |
+| `authority.backing_least_privilege` | AUTH-3 | ASI03, LLM03, CWE-269 |
+| `authority.delegation` | AUTH-4 | ASI03, semgrep-server-8, CWE-441 |
+| `blast.mutation_class` | BLAST-1 | ASI02, LLM03, ACS-AgBOM |
+| `blast.mutation_class_observed` | BLAST-1b | ASI02, LLM03 |
+| `blast.destructive_gating` | BLAST-2 | ASI02, LLM03 |
+| `blast.egress` | BLAST-3 | ASI04, LLM02, semgrep-server-21 |
+| `blast.audit` | BLAST-4 | ACS-AgBOM, CWE-778 |
+| `containment.parameter_scope` | CONTAIN-1 | ASI02, semgrep-server-19, CWE-639 |
+| `containment.expression_passthrough` | CONTAIN-2 | ASI05, semgrep-server-20, semgrep-server-22, CWE-77, CWE-89 |
+| `containment.output_hygiene` | CONTAIN-3 | LLM02, LLM10, CWE-209 |
+| `change.inventory` | CHANGE-1 | ASI04, LLM04, semgrep-client-1, ACS-AgBOM |
+| `change.schema_drift` | CHANGE-2 | ASI04, LLM04, ACS-AgBOM |
+| `change.description_drift` | CHANGE-3 | ASI04, ASI01, LLM01, semgrep-client-2 |
 
-A standards entry is one of: `ASI..` (OWASP Top 10 for Agentic Applications),
-`LLM..` (OWASP Top 10 for LLM Applications), `semgrep-<tab>-<row>` (the Semgrep
-MCP security cheatsheet), `CWE-..`, or `ACS-..` (the OWASP Agent Control
-Standard). The traits with a dash have no recipe yet, so nothing has been mapped
-with confidence; they get one when their recipe ships.
+The ids were verified on 2026-09-11 against the published 2026 lists. A
+standards entry is one of:
+
+- `ASI01`–`ASI10` — OWASP Top 10 for Agentic Applications (December 2025):
+  ASI01 Agent Goal Hijack, ASI02 Tool Misuse, ASI03 Identity & Privilege
+  Abuse, ASI04 Agentic Supply Chain, ASI05 Unexpected Code Execution, and
+  ASI06–ASI10, which ITest does not cover (`itest standards` says so).
+- `LLM01`–`LLM10` — OWASP Top 10 for LLM Applications, 2026 edition: LLM01
+  Prompt Injection, LLM02 Sensitive Information Disclosure, LLM03 Excessive
+  Agency (LLM03 in 2026, not LLM06), LLM04 Supply Chain, LLM10 Improper Output
+  Handling.
+- `semgrep-server-<row>` / `semgrep-client-<row>` — the Semgrep MCP security
+  cheatsheet, by tab and row.
+- `CWE-<n>` — a Common Weakness Enumeration entry.
+- `ACS-AgBOM` — the Agent Bill of Materials from the OWASP Agent Control
+  Standard v0.1.
+
+Anything else refuses the table, naming the value; an empty list stays legal.
+The ids ride into verify's ledger on every check (`tools.servers[].tools[]
+.checks[].standards`), into the readiness page (the first id beside each
+trait's slug, the full list in the cell's detail) and into
+`itest traits` / `itest traits --for`.
+
+**Why `change.description_drift` maps to ASI04 *and* ASI01 *and* LLM01.** It
+is the counter-intuitive row and the strongest thing this table says. A tool's
+description is the text the model reads when deciding whether to call that
+tool. So an unreviewed change to it is a behaviour change shipped without
+review — supply chain, ASI04 and LLM04's neighbourhood — and a *malicious* one
+is an injection aimed squarely at the agent's tool choice: a prompt injection
+(LLM01) whose target is the agent's goal (ASI01, Agent Goal Hijack). The hash
+comparison is the same either way; what it defends is not one thing.
 
 **Old ids.** The first tables used AN-style ids (`A1`, `B2`, …). They read as
 OWASP ids to a security reader and were ours, so they were renamed; the map is
@@ -113,9 +140,10 @@ finds any of these:
 - a duplicate id, or an id that is not `<family>.<slug>` in lower case (an old
   `A1`-style id included) or does not start with its own family
 - a duplicate code, or one that is not upper-case letters, a hyphen and a
-  number
-- a `standards` entry outside the known prefixes (`ASI`, `LLM`, `semgrep-`,
-  `CWE-`, `ACS-`) — an empty list is fine
+  number (optionally one lower-case variant letter, `BLAST-1b`)
+- a `standards` entry outside the known prefixes (`ASI`, `LLM`,
+  `semgrep-server-`, `semgrep-client-`, `CWE-`, `ACS-`), named in the error —
+  an empty list is fine
 - an unknown family
 - a `kind` other than `engine` or `generated`
 - a `tier` the environment policy does not define
@@ -140,12 +168,49 @@ always                        every tool
 <field> == <value>            equality (none, true, false, integers and bare words are literals)
 <field> != <value>            inequality
 <field> in [<a>, <b>]         membership
-<A> and <B> and ...           every clause holds (there is no `or`)
+<A> and <B> and ...           every clause holds
+<A> or <B>                    either side holds
 ```
 
+`and` binds tighter than `or`, so `a and b or c` reads as `(a and b) or c`.
+There are no parentheses and no `not`: the grammar is deliberately the
+smallest that expresses the rows that ship, and a rule that needs more is a
+rule worth arguing about in a review. Every clause is evaluated — nothing
+short-circuits — so an unknown attribute anywhere in an expression is an
+error, never a clause that happened not to be reached.
+
 Fields: `mutation`, `egress`, `approval`, `active`, `has_free_form_input`,
-`auth.second_tenant_env`, `audit.sink`, `identity.runs_as`. Each one comes from
-the tool's point in the manifest; the last three are facts about the server.
+`auth.second_tenant_env`, `audit.sink`, `identity.runs_as`, `transport.kind`
+(`stdio` | `http`), `auth.enforced_over_stdio` (a boolean, default false) and
+`observation.snapshot_tool` (a read tool's name, or absent). Each one comes
+from the tool's point in the manifest; the last six are facts about the
+server, copied onto each of its points at plan time.
+
+`blast.mutation_class_observed` (BLAST-1b) is the row that watches behaviour:
+
+```
+applies_when: mutation in [read, informational] and observation.snapshot_tool present
+```
+
+Active tier, engine kind. It applies to a read or informational tool of a
+server whose declaration names the read tool state is observed through, and
+to nothing else: a write or destructive tool already declares mutation. A
+`code` may carry one lower-case variant letter for exactly this kind of
+sibling row.
+
+The one row that uses `or` is `authority.anonymous`:
+
+```
+applies_when: transport.kind == http or auth.enforced_over_stdio
+```
+
+Over stdio the process boundary *is* the authentication boundary — whoever can
+spawn the subprocess is authorised — so there is no anonymous caller to refuse
+unless the server checks a credential of its own. A plain stdio server gets
+**no** anonymous check: not a passing one, not a failing one, not a
+`not_verifiable` one. `itest traits --for <server>/<tool>` prints
+`does not apply` with that rule beside it, so the absence is explained rather
+than looking forgotten. [docs/checks.md](checks.md) says why in full.
 
 A per-tool `traits:` list in the declaration replaces the table for that tool.
 `[none-of-these]` withholds every check, and it requires `notes`. `active: false`
@@ -230,7 +295,47 @@ itest traits --for <server>/<tool>      # every trait decided for one tool: APPL
 itest traits --json                     # either of the above as JSON
 itest recipes [--recipes-dir DIR]       # every recipe the table names: path, present/missing, traits
 itest recipes --json
+itest standards --from verify.json      # this run's checks through the published standards
+itest standards --json                  # the rollup as JSON (reads stdin when --from is omitted)
 ```
+
+## The standards view
+
+A security reader wants to see the report through the framework they already
+report against. The families stay the skeleton — a clean partition that carries
+the tier semantics and never gets renumbered when OWASP publishes an edition —
+and a trait maps to *several* ids, so standards cannot be the structure. They
+are a **second lens** over the same checks:
+
+- **In the ledger.** `itest verify --output json` emits `tools.standards[]`
+  beside `tools.servers[]`: one entry per published id any check in the run
+  cites — `id`, `title`, `framework`, `coverage`, `note`, `checks`, and
+  `statuses` (pass / fail / critical / changed / not_verifiable /
+  not_applicable / held_out / not_run). It is derived at emit time from the
+  checks themselves, never from a hand-maintained second list, so the two
+  cannot drift — and under the same state filter as the families rollup: a
+  retired (`not_applicable`) or orphaned check is not this run's evidence, so
+  a standard cited only by one is not covered.
+- **What is not covered, named.** `itest/traits/standards.yaml` ships the full
+  OWASP Agentic list (ASI01–ASI10) and the LLM list (LLM01–LLM10) with their
+  titles. Every ASI entry appears in the rollup: cited ones carry their
+  counts; uncited ones read `not_covered` with a one-line reason
+  (model-behaviour risk, multi-agent transport out of scope, …). ASI05 is
+  `partial` — `containment.expression_passthrough` probes the boundary; static
+  analysis finds the code path — and ASI01 stays `not_covered` even though
+  `change.description_drift` cites it, because goal hijack is a
+  model-behaviour risk and ITest asserts boundaries, not judgment. Coverage is
+  a statement about *this run's evidence*: a covered id nothing in the run
+  cites reads `not_covered` too. LLM ids appear only where a check cites them;
+  that list is a neighbouring framework, not ITest's coverage claim.
+- **On the page.** A "Standards" band sits under the tool posture tiles: one
+  row per ASI entry, the status counts as a compact bar, and covered / partial
+  / not covered stated plainly. Uncovered rows are present and quiet — a scope
+  statement, not a finding. The families grid beside it is unchanged.
+- **In the terminal.** `itest standards` prints the same rollup from a
+  `verify --output json` document (`--from`, or stdin), with `--json` for the
+  list exactly as the ledger carries it. It reads only the ledger and the
+  shipped catalogue; no server is contacted.
 
 Both commands read only the manifest and the table; no server is contacted.
 `--for` decides from the attributes the manifest recorded. It says so when the

@@ -145,7 +145,9 @@ def test_the_engine_module_parametrizes_over_the_manifest(workdir: Path) -> None
         if table.get(trait).kind == "engine" and table.get(trait).tier == "readonly"
     )
     assert sorted(_collect(workdir, ENGINE_FILE)) == expected
-    assert len(expected) == 48
+    # 8 tools × (B1, D1, D2, D3) = 32, plus C3 on the 7 non-informational
+    # tools and B3 on enrich alone; no A1 over stdio.
+    assert len(expected) == 40
 
     # Every case is registered in the manifest, so verify maps its result.
     registered = {
@@ -269,32 +271,29 @@ def test_ownership_hashes_cover_stubs_and_the_engine_module_not_conftest(
 def test_the_generated_suite_runs_and_nothing_is_an_error(
     workdir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The engine checks now run for real against reference-mcp over stdio. That
-    transport has no guard, so A1 fails exactly the five read tools (an anonymous
-    call answered); the three mutating tools' A1 is not_verifiable (deferred to
-    the active tier) and skips. With no credential exported the run is
-    anonymous, and B1/D1-D3 pass on the anonymous listing for every tool; the
-    traits the library has no check for skip; every generated binding skips on
-    its unfilled fixture. Nothing is an error, and nothing else passes."""
+    """The engine checks now run for real against reference-mcp over stdio.
+    Over stdio the process boundary is the authentication boundary, so no
+    authority.anonymous case exists — there is no anonymous caller to refuse,
+    and a "failure" there would be noise. With no credential exported the run
+    is anonymous, and B1/D1-D3 pass on the anonymous listing for every tool;
+    the traits the library has no check for skip; every generated binding
+    skips on its unfilled fixture. The one failure is the catch: the observed
+    mutation-class check sees lookalike_read write behind readOnlyHint.
+    Nothing is an error, and nothing else passes."""
     monkeypatch.delenv("REFERENCE_MCP_TOKEN", raising=False)
     assert _sync().exit_code == 0
     result = runner.invoke(
         app, ["verify", "--environment", "staging", "--output", "json"]
     )
-    assert result.exit_code == 1, result.output  # the real A1 findings
+    assert result.exit_code == 1, result.output
     report = json.loads(result.output)
     assert report["errored"] == 0
     failed = sorted(t["canonical"] for t in report["tests"] if t["outcome"] == "failed")
-    assert failed == sorted(
-        f"{ENGINE_FILE}::test_engine[{tool}-authority.anonymous]"
-        for tool in (
-            "get_guide",
-            "search_records",
-            "fetch_record",
-            "lookalike_read",
-            "enrich",
-        )
-    )
+    assert failed == [
+        f"{ENGINE_ACTIVE_FILE}::test_engine"
+        "[lookalike_read-blast.mutation_class_observed]"
+    ]
+    assert not any("authority.anonymous" in t["canonical"] for t in report["tests"])
     passed = {t["canonical"] for t in report["tests"] if t["outcome"] == "passed"}
     assert passed == {
         f"{ENGINE_FILE}::test_engine[{tool}-{trait}]"
@@ -314,6 +313,9 @@ def test_the_generated_suite_runs_and_nothing_is_an_error(
             "change.schema_drift",
             "change.description_drift",
         )
+    } | {
+        f"{ENGINE_ACTIVE_FILE}::test_engine[{tool}-blast.mutation_class_observed]"
+        for tool in ("get_guide", "search_records", "fetch_record", "enrich")
     }
     others = {
         t["outcome"]
@@ -321,7 +323,7 @@ def test_the_generated_suite_runs_and_nothing_is_an_error(
         if t["outcome"] not in ("failed", "passed")
     }
     assert others == {"skipped"}
-    assert len(report["tests"]) == 81
+    assert len(report["tests"]) == 78
     assert report["unregistered"] == []
 
 
@@ -441,7 +443,7 @@ def test_one_passive_engine_module_collects_every_non_active_tier(
     }
     assert {
         "get_guide-change.inventory",
-        "get_guide-authority.anonymous",
+        "get_guide-change.schema_drift",
         "delete_record-change.inventory",
     } <= ids
     assert not {

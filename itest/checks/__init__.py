@@ -20,7 +20,8 @@ unknown trait or an unusable server: each returns ``not_verifiable`` with the
 reason, because a check that could not run must never read as one that passed.
 
 Engine checks today: ``authority.anonymous`` (:mod:`.authority`),
-``blast.mutation_class`` agreement (:mod:`.blast_radius`), and
+``blast.mutation_class`` agreement and ``blast.mutation_class_observed``
+(:mod:`.blast_radius`), and
 ``change.inventory`` / ``change.schema_drift`` / ``change.description_drift``
 (:mod:`.change`). The generated registry is empty until the
 ``authority.tenant_isolation`` / ``blast.destructive_gating`` / ``blast.audit``

@@ -73,7 +73,7 @@ for — a guessed assertion that passes is worse than no test.
 check per trait the trait table (`itest/traits/traits.yaml`) applies to it, and
 the trait decides what you do:
 
-- **Engine traits** — `authority.anonymous`, `blast.mutation_class`, `change.inventory`, `change.schema_drift`, `change.description_drift` today. There is **nothing to write**:
+- **Engine traits** — `authority.anonymous`, `blast.mutation_class`, `blast.mutation_class_observed`, `change.inventory`, `change.schema_drift`, `change.description_drift` today. There is **nothing to write**:
   ITest runs these itself from the manifest during `itest verify`. Say so, point
   the user at the recipe that explains the result
   ([`tool_authn`](references/recipes/tool_authn.md),

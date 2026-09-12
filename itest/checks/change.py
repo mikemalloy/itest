@@ -43,9 +43,10 @@ def check_change__inventory(
     repeated so any one row shows it), ``[]`` when there are none, and ``None``
     when there is no manifest to compare against.
 
-    Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain); the Semgrep
-    MCP security cheatsheet, client tab, row 14 (name collisions — a newly
-    appearing, unreviewed tool is where a colliding name comes from).
+    Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain); OWASP LLM Top
+    10 LLM04 (Supply Chain); the Semgrep MCP security cheatsheet, client tab,
+    row 1 (name collisions — a newly appearing, unreviewed tool is where a
+    colliding name comes from); the Agent Control Standard's AgBOM inventory.
     """
     server, tool = server_of(point), tool_of(point)
     listing = listing_label(authenticated)
@@ -119,8 +120,9 @@ def check_change__schema_drift(
       reports it), or the manifest recorded no hash.
 
     Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain) — a tool whose
-    contract moves under a pinned review; the Semgrep MCP security cheatsheet,
-    client tab, rows 12 and 14 (untrusted descriptions, name collisions).
+    contract moves under a pinned review; OWASP LLM Top 10 LLM04 (Supply
+    Chain); the Agent Control Standard's AgBOM. (Semgrep MCP security
+    cheatsheet: the neighbouring rows are cited by the two sibling checks.)
     """
     return _hash_check("schema_hash", "input schema", point, target, authenticated)
 
@@ -142,8 +144,11 @@ def check_change__description_drift(
     - ``not_verifiable`` — no listing, the tool is not listed (change.inventory
       reports it), or the manifest recorded no hash.
 
-    Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain); OWASP LLM Top
-    10 LLM01 (prompt injection, via the description); the Semgrep MCP security
-    cheatsheet, client tab, row 12 (tool descriptions treated as untrusted).
+    Standards: OWASP Agentic Top 10 ASI04 (Agentic Supply Chain) and ASI01
+    (Agent Goal Hijack — a description is what the model reads when choosing a
+    tool, so a malicious rewording is an injection aimed at that choice); OWASP
+    LLM Top 10 LLM01 (prompt injection, via the description); the Semgrep MCP
+    security cheatsheet, client tab, row 2 (tool descriptions treated as
+    untrusted).
     """
     return _hash_check("description_hash", "description", point, target, authenticated)

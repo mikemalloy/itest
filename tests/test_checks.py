@@ -61,6 +61,7 @@ ENV = "REFERENCE_MCP_TOKEN"
 ENGINE_TRAITS = (
     "authority.anonymous",
     "blast.mutation_class",
+    "blast.mutation_class_observed",
     "change.inventory",
     "change.schema_drift",
     "change.description_drift",
@@ -182,6 +183,10 @@ def test_the_registry_holds_exactly_the_engine_checks() -> None:
     assert (
         checks.ENGINE_CHECKS["blast.mutation_class"].__name__
         == "check_blast__mutation_class"
+    )
+    assert (
+        checks.ENGINE_CHECKS["blast.mutation_class_observed"].__name__
+        == "check_blast__mutation_class_observed"
     )
     assert (
         checks.ENGINE_CHECKS["change.description_drift"].__name__
@@ -356,7 +361,12 @@ def test_a1_every_mutating_tool_on_an_open_server_is_deferred(
 def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
     project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A server can admit anonymous sessions and still refuse the call."""
+    """A server can admit anonymous sessions and still refuse the call.
+
+    (Every stdio A1 test below states ``enforced_over_stdio=True`` on its
+    point: over stdio the check runs only for a server whose owner declares it
+    checks a credential of its own; otherwise it is not_verifiable at once.)
+    """
 
     def refused(*args: Any, **kwargs: Any) -> CallResult:
         return CallResult(
@@ -368,7 +378,7 @@ def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
     monkeypatch.setattr(authority, "call_tool", refused)
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -377,23 +387,52 @@ def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
     assert result.evidence["anonymous_listing"] == "admitted"
 
 
-def test_a1_over_stdio_without_the_credential(
+STDIO_BOUNDARY = (
+    "stdio transport: the process boundary is the authentication boundary; "
+    "declare auth.enforced_over_stdio if this server checks credentials itself"
+)
+
+
+def test_a1_over_stdio_without_declared_enforcement_is_not_verifiable(
+    project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Whoever can spawn the subprocess is authorised: there is no anonymous
+    caller to refuse. The table keeps the check off such a server; if it is
+    reached anyway, it says so and never fails — and touches nothing."""
+    calls: list[Any] = []
+    monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(authority, "live_listing", lambda *a, **k: calls.append(a))
+    for name in ("search_records", "delete_record"):
+        result = run_engine_check(
+            "authority.anonymous",
+            point(manifest_points, name),
+            stdio_target(),
+            authenticated=True,
+        )
+        assert result.status == "not_verifiable", (name, result.detail)
+        assert result.detail == STDIO_BOUNDARY
+        assert result.evidence["called"] is False
+    assert calls == []
+
+
+def test_a1_over_stdio_with_declared_enforcement_but_no_credential_check(
     project: Path, manifest_points: list[Any]
 ) -> None:
-    """stdio has no transport guard: the reference server admits a subprocess
-    launched without its credential. A read answered is a fail; a destructive
-    tool is deferred to the active tier and is not called."""
+    """A stdio server whose owner declares it checks credentials itself — and
+    which does not: the reference server admits a subprocess launched without
+    its token. A read answered is a fail; a destructive tool is deferred to
+    the active tier and is not called."""
     target = stdio_target()
     read = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "search_records"),
+        point(manifest_points, "search_records", enforced_over_stdio=True),
         target,
         authenticated=True,
     )
     assert read.status == "fail"
     destructive = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "delete_record"),
+        point(manifest_points, "delete_record", enforced_over_stdio=True),
         target,
         authenticated=True,
     )
@@ -457,7 +496,7 @@ def test_a1_an_auth_shaped_tool_error_is_a_refusal_inside_the_tool(
     monkeypatch.setattr(authority, "call_tool", _tool_error(message))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -485,7 +524,7 @@ def test_a1_any_other_tool_error_means_the_tool_logic_was_reached(
     monkeypatch.setattr(authority, "call_tool", _tool_error(message))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -528,7 +567,7 @@ def test_a1_a_transport_error_on_the_call_is_not_verifiable(
     monkeypatch.setattr(authority, "call_tool", timed_out)
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -543,7 +582,7 @@ def test_a1_an_unreachable_server_is_not_verifiable(
     for name in ("get_guide", "delete_record"):
         result = run_engine_check(
             "authority.anonymous",
-            point(manifest_points, name),
+            point(manifest_points, name, enforced_over_stdio=True),
             dead,
             authenticated=False,
         )
@@ -558,7 +597,7 @@ def test_a1_without_a_declaration_there_is_no_sentinel(
     monkeypatch.chdir(tmp_path)
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "fetch_record"),
+        point(manifest_points, "fetch_record", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -573,7 +612,9 @@ def test_a1_an_unknown_class_is_never_called(
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide", mutation="unknown"),
+        point(
+            manifest_points, "get_guide", mutation="unknown", enforced_over_stdio=True
+        ),
         stdio_target(),
         authenticated=True,
     )
@@ -586,7 +627,7 @@ def test_a1_a_tool_hidden_from_the_anonymous_listing_is_not_called(
 ) -> None:
     calls: list[Any] = []
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
-    hidden = point(manifest_points, "get_guide")
+    hidden = point(manifest_points, "get_guide", enforced_over_stdio=True)
     hidden["target"] = "hidden_reader"
     result = run_engine_check(
         "authority.anonymous", hidden, stdio_target(), authenticated=True
@@ -605,7 +646,9 @@ def test_a1_the_stricter_of_recorded_and_live_class_decides(
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "delete_record", mutation="read"),
+        point(
+            manifest_points, "delete_record", mutation="read", enforced_over_stdio=True
+        ),
         stdio_target(),
         authenticated=True,
     )
@@ -779,6 +822,161 @@ def test_b1_a_tool_the_server_no_longer_lists_is_not_verifiable(
     )
     assert result.status == "not_verifiable"
     assert "change.inventory" in result.detail
+
+
+# --- B1b: mutation class (observed) -------------------------------------------
+
+NO_SNAPSHOT_TOOL = (
+    "declare observation.snapshot_tool to enable observed mutation-class checking"
+)
+READ_ONLY_TOOLS = ("search_records", "fetch_record", "get_guide", "enrich")
+
+
+def test_b1b_the_example_declares_its_snapshot_tool(manifest_points: list[Any]) -> None:
+    assert {p.attributes["snapshot_tool"] for p in manifest_points} == {
+        "search_records"
+    }
+
+
+def test_b1b_lookalike_read_is_caught_by_behaviour(
+    project: Path, manifest_points: list[Any]
+) -> None:
+    """THE CATCH. Annotated readOnlyHint=true, named like a read, mutates. The
+    agreement check passes it (pinned above); one sentinel call between two
+    snapshots does not."""
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, "lookalike_read"),
+        stdio_target(),
+        authenticated=True,
+    )
+    assert result.status == "critical", result.detail
+    detail = result.detail
+    assert "lookalike_read" in detail
+    assert "read" in detail  # the claimed class
+    assert "readOnlyHint" in detail  # the annotation that claimed it
+    assert "search_records" in detail  # what was observed through
+    assert "total" in detail  # what changed
+    evidence = result.evidence
+    assert evidence["claimed"] == "read"
+    assert evidence["claimed_by"] == "annotation readOnlyHint"
+    assert evidence["snapshot_tool"] == "search_records"
+    assert evidence["before"]["hash"] != evidence["after"]["hash"]
+    assert evidence["arguments"] == {"id": SENTINEL}
+    assert evidence["call_status"] == "error"  # a 404 on the sentinel: it ran
+
+
+@pytest.mark.parametrize("name", READ_ONLY_TOOLS)
+def test_b1b_a_genuinely_read_only_tool_passes(
+    name: str, project: Path, manifest_points: list[Any]
+) -> None:
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, name),
+        stdio_target(),
+        authenticated=True,
+    )
+    assert result.status == "pass", (name, result.detail)
+    assert "no observable change" in result.detail
+    assert result.evidence["before"]["hash"] == result.evidence["after"]["hash"]
+
+
+def test_b1b_without_a_snapshot_tool_is_not_verifiable_never_a_pass(
+    project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    monkeypatch.setattr(blast_radius, "session_calls", lambda *a, **k: calls.append(a))
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, "lookalike_read", snapshot_tool=None),
+        stdio_target(),
+        authenticated=True,
+    )
+    assert result.status == "not_verifiable"
+    assert result.detail == NO_SNAPSHOT_TOOL
+    assert calls == []
+
+
+@pytest.mark.parametrize("name", sorted(MUTATING_TOOLS))
+def test_b1b_is_never_run_against_a_write_or_destructive_tool(
+    name: str,
+    project: Path,
+    manifest_points: list[Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """There is nothing to catch — they already declare mutation — and proving
+    a mutation means causing one. Reached anyway, nothing is opened."""
+    calls: list[Any] = []
+    monkeypatch.setattr(blast_radius, "session_calls", lambda *a, **k: calls.append(a))
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, name),
+        stdio_target(),
+        authenticated=True,
+    )
+    assert result.status == "not_verifiable", result.detail
+    assert "mutates" in result.detail or "declare" in result.detail
+    assert calls == []
+
+
+def test_b1b_the_stricter_of_recorded_and_live_class_decides(
+    project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A manifest that says `read` for delete_record cannot talk the check into
+    calling it: the live listing says destructive."""
+    calls: list[Any] = []
+    monkeypatch.setattr(blast_radius, "session_calls", lambda *a, **k: calls.append(a))
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, "delete_record", mutation="read"),
+        stdio_target(),
+        authenticated=True,
+    )
+    assert result.status == "not_verifiable"
+    assert calls == []
+
+
+def test_b1b_a_snapshot_tool_that_mutates_is_refused(
+    project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    monkeypatch.setattr(blast_radius, "session_calls", lambda *a, **k: calls.append(a))
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, "fetch_record", snapshot_tool="create_record"),
+        stdio_target(),
+        authenticated=True,
+    )
+    assert result.status == "not_verifiable"
+    assert "create_record" in result.detail
+    assert calls == []
+
+
+def test_b1b_a_refused_session_is_not_verifiable(
+    project: Path, manifest_points: list[Any], reference: Any
+) -> None:
+    """The guarded mount, anonymously: the session is refused, nothing is
+    observed, and that is said — never a pass."""
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, "lookalike_read"),
+        http_target(reference.guarded_url),
+        authenticated=False,
+    )
+    assert result.status == "not_verifiable", result.detail
+    assert "refused" in result.detail
+
+
+def test_b1b_catches_the_lie_on_the_open_mount_too(
+    project: Path, manifest_points: list[Any], reference: Any
+) -> None:
+    result = run_engine_check(
+        "blast.mutation_class_observed",
+        point(manifest_points, "lookalike_read"),
+        http_target(reference.open_url),
+        authenticated=False,
+    )
+    assert result.status == "critical", result.detail
 
 
 # --- D1: inventory ------------------------------------------------------------
@@ -1080,7 +1278,7 @@ def test_a_credential_echoed_by_the_server_is_scrubbed(
     monkeypatch.chdir(write_project(tmp_path, manifest_points, declaration_text=text))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "fetch_record"),
+        point(manifest_points, "fetch_record", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -1146,12 +1344,19 @@ def test_no_check_calls_a_write_or_destructive_tool(
     destructive or unknown tool, and none may pass allow_mutating."""
     seen: list[dict[str, Any]] = []
     real = authority.call_tool
+    real_session = blast_radius.session_calls
 
     def spy(target: McpTarget, name: str, arguments: dict, **kwargs: Any):
         seen.append({"name": name, **kwargs})
         return real(target, name, arguments, **kwargs)
 
+    def spy_session(target: McpTarget, calls: list, **kwargs: Any):
+        for call in calls:
+            seen.append({"name": call.name, "authenticated": kwargs["authenticated"]})
+        return real_session(target, calls, **kwargs)
+
     monkeypatch.setattr(authority, "call_tool", spy)
+    monkeypatch.setattr(blast_radius, "session_calls", spy_session)
     classes = {p.target: p.attributes["mutation"] for p in manifest_points}
     for target in (
         stdio_target(),
@@ -1164,7 +1369,7 @@ def test_no_check_calls_a_write_or_destructive_tool(
                     trait, point(manifest_points, p.target), target, authenticated=False
                 )
 
-    assert seen, "A1 should have called the read tools"
+    assert seen, "A1 and B1b should have called the read tools"
     for call in seen:
         assert classes[call["name"]] in ("read", "informational"), call
         assert call.get("allow_mutating", False) is False, call
@@ -1175,8 +1380,11 @@ def test_only_authority_imports_call_tool_and_nothing_opts_into_mutation() -> No
     package = Path(checks.__file__).parent
     for source in package.glob("*.py"):
         text = source.read_text(encoding="utf-8")
-        assert "allow_mutating=True" not in text, source.name
+        assert "allow_mutating" not in text, source.name
         if source.name != "authority.py":
             assert "call_tool" not in text, source.name
+        if source.name != "blast_radius.py":
+            assert "session_calls" not in text, source.name
     assert not hasattr(change, "call_tool")
     assert not hasattr(blast_radius, "call_tool")
+    assert not hasattr(authority, "session_calls")

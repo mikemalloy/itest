@@ -204,8 +204,23 @@ class ToolServer(_Strict):
     exceptions: list[ToolException] = Field(default_factory=list)
 
 
+class StandardsEntry(_Strict):
+    """One published id as the ledger's rollup carries it (``tools.standards``)."""
+
+    id: str
+    title: str
+    framework: str
+    coverage: str
+    note: str | None = None
+    checks: int = 0
+    statuses: dict[str, int] = Field(default_factory=dict)
+
+
 class ToolLedger(_Strict):
     servers: list[ToolServer] = Field(default_factory=list)
+    #: The standards lens over the checks above. Emitted by verify; a ledger
+    #: written before it existed gets one derived the same way (see ``build``).
+    standards: list[StandardsEntry] = Field(default_factory=list)
 
     @property
     def declared(self) -> int:
@@ -551,6 +566,15 @@ def build(
     tool_tiles: list[Tile] = []
     if verify.get("tools"):
         ledger = ToolLedger.model_validate(verify["tools"])
+        if not ledger.standards:
+            # An older verify JSON: derive the rollup through verify's own
+            # function, from the checks the document does carry.
+            from itest.traits.standards import rollup_for_ledger
+
+            ledger.standards = [
+                StandardsEntry.model_validate(entry)
+                for entry in rollup_for_ledger(verify["tools"])
+            ]
         for family in (s for server in ledger.servers for s in server.families):
             tool_tiles.append(
                 Tile(

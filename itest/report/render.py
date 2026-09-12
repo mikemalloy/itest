@@ -381,7 +381,14 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
                     continue
                 fallback = (check.status.upper(), "none")
                 token, cls = CHECK_CELL.get(check.status, fallback)
-                entry = {"txt": token, "cls": cls}
+                # The cell's detail names the trait and every id it answers.
+                header = _trait_header(trait, check)
+                entry = {
+                    "txt": token,
+                    "cls": cls,
+                    "standards": header["standards"],
+                    "title": header["title"],
+                }
                 if check.state in STATE_TAG:
                     entry["state"] = STATE_TAG[check.state]
                 cells.append(entry)
@@ -489,9 +496,12 @@ def _trait_label(slug: str | None, code: str | None) -> str:
     return f"{slug} · {code}" if code else slug
 
 
-def _code_number(code: str | None) -> int:
+def _code_number(code: str | None) -> tuple[int, str]:
+    """``AUTH-1`` -> (1, ""); ``BLAST-1b`` -> (1, "b"): a variant sorts right
+    after the row it varies."""
     tail = (code or "").rpartition("-")[2]
-    return int(tail) if tail.isdigit() else 10**6
+    digits = tail.rstrip("abcdefghijklmnopqrstuvwxyz")
+    return (int(digits) if digits.isdigit() else 10**6, tail[len(digits) :])
 
 
 def _column_rank(slug: str, check, ledger) -> tuple:
@@ -505,7 +515,10 @@ def _column_rank(slug: str, check, ledger) -> tuple:
 
 def _trait_header(slug: str, check) -> dict:
     """One column head: the code for the narrow column, the slug beneath it,
-    and the standards the trait answers in the hover detail."""
+    the first published id beside the slug as the cross-reference (``std``),
+    and the full standards list in the hover detail. The slug is the identity;
+    the id is how a security reader finds the row in the framework they
+    already report against."""
     label = _trait_label(slug, check.code)
     standards = list(check.standards)
     mapped = ", ".join(standards) if standards else "no standards mapped yet"
@@ -514,8 +527,67 @@ def _trait_header(slug: str, check) -> dict:
         "code": check.code,
         "label": label,
         "standards": standards,
+        "std": standards[0] if standards else None,
         "title": f"{label} — {mapped}",
     }
+
+
+#: Status -> the class of its segment in the band's compact bar.
+_STANDARDS_BAR = {
+    "pass": "ok",
+    "fail": "bad",
+    "critical": "bad",
+    "changed": "warn",
+    "not_verifiable": "none",
+    "not_applicable": "none",
+    "held_out": "none",
+    "not_run": "none",
+}
+
+_COVERAGE_LABEL = {
+    "covered": "covered",
+    "partial": "partial",
+    "not_covered": "not covered",
+}
+
+
+def _standards_block(page: Page) -> dict:
+    """The Standards band: one row per OWASP Agentic entry, the status counts
+    as a compact bar, and covered / partial / not covered stated plainly. An
+    uncovered row is quiet — a scope statement, not a finding. The families
+    grid beside it is untouched: standards are a lens, not the structure."""
+    empty = "No agent tools declared, so there is nothing to see through a standard."
+    if page.tools is None:
+        return {"eyebrow": "", "rows": [], "empty": empty}
+    rows = []
+    for entry in page.tools.standards:
+        if entry.framework != "ASI":
+            continue
+        bar = [
+            {"l": status, "n": count, "cls": _STANDARDS_BAR.get(status, "none")}
+            for status, count in entry.statuses.items()
+            if count
+        ]
+        rows.append(
+            {
+                "id": entry.id,
+                "title": entry.title,
+                "coverage": entry.coverage,
+                "label": _COVERAGE_LABEL.get(entry.coverage, entry.coverage),
+                "quiet": entry.coverage == "not_covered",
+                "checks": entry.checks,
+                "bar": bar,
+                "note": entry.note or "",
+            }
+        )
+    covered = sum(1 for r in rows if r["coverage"] == "covered")
+    partial = sum(1 for r in rows if r["coverage"] == "partial")
+    eyebrow = (
+        f"OWASP Top 10 for Agentic Applications (ASI) · {covered} covered"
+        + (f", {partial} partial" if partial else "")
+        + f", {len(rows) - covered - partial} not covered"
+    )
+    return {"eyebrow": eyebrow, "rows": rows, "empty": "" if rows else empty}
 
 
 def _attention(ledger) -> list[str]:
@@ -733,6 +805,7 @@ def build_blocks(page: Page) -> dict[str, object]:
                 "since": f"since {page.since}" if page.since else "",
             },
             "toolBand": _tool_band(page),
+            "standards": _standards_block(page),
             "tools": tool_labels,
             "api": api_labels,
             "graph": graph_labels,

@@ -47,31 +47,62 @@ CANONICAL = {
     "D3": "change.description_drift",
 }
 
-#: slug -> (code, family, standards). Standards come from the recipes' own
-#: "Standards mapping" sections; a trait with no recipe yet has none, rather
-#: than an invented id.
+#: slug -> (code, family, standards). The published ids each trait answers,
+#: verified 2026-09-11 against the 2026 lists: OWASP Top 10 for Agentic
+#: Applications (ASI..), OWASP LLM Top 10 2026 (LLM.. — Excessive Agency is
+#: LLM03 in 2026), Semgrep MCP cheatsheet rows, CWE, and the OWASP Agent
+#: Control Standard's AgBOM. Every row carries at least one.
 TABLE = {
     "authority.anonymous": (
         "AUTH-1",
         "authority",
-        ["ASI03", "LLM02", "semgrep-server-4"],
+        ["ASI03", "LLM02", "semgrep-server-4", "CWE-306"],
     ),
-    "authority.tenant_isolation": ("AUTH-2", "authority", []),
-    "authority.backing_least_privilege": ("AUTH-3", "authority", []),
-    "authority.delegation": ("AUTH-4", "authority", []),
-    "blast.mutation_class": ("BLAST-1", "blast", ["ASI02", "LLM06"]),
-    "blast.destructive_gating": ("BLAST-2", "blast", []),
-    "blast.egress": ("BLAST-3", "blast", []),
-    "blast.audit": ("BLAST-4", "blast", []),
-    "containment.parameter_scope": ("CONTAIN-1", "containment", []),
-    "containment.expression_passthrough": ("CONTAIN-2", "containment", []),
-    "containment.output_hygiene": ("CONTAIN-3", "containment", []),
-    "change.inventory": ("CHANGE-1", "change", ["ASI04", "LLM03", "semgrep-client-14"]),
-    "change.schema_drift": ("CHANGE-2", "change", ["ASI04", "LLM03"]),
+    "authority.tenant_isolation": (
+        "AUTH-2",
+        "authority",
+        ["ASI03", "LLM02", "semgrep-server-18", "CWE-639"],
+    ),
+    "authority.backing_least_privilege": (
+        "AUTH-3",
+        "authority",
+        ["ASI03", "LLM03", "CWE-269"],
+    ),
+    "authority.delegation": (
+        "AUTH-4",
+        "authority",
+        ["ASI03", "semgrep-server-8", "CWE-441"],
+    ),
+    "blast.mutation_class": ("BLAST-1", "blast", ["ASI02", "LLM03", "ACS-AgBOM"]),
+    "blast.mutation_class_observed": ("BLAST-1b", "blast", ["ASI02", "LLM03"]),
+    "blast.destructive_gating": ("BLAST-2", "blast", ["ASI02", "LLM03"]),
+    "blast.egress": ("BLAST-3", "blast", ["ASI04", "LLM02", "semgrep-server-21"]),
+    "blast.audit": ("BLAST-4", "blast", ["ACS-AgBOM", "CWE-778"]),
+    "containment.parameter_scope": (
+        "CONTAIN-1",
+        "containment",
+        ["ASI02", "semgrep-server-19", "CWE-639"],
+    ),
+    "containment.expression_passthrough": (
+        "CONTAIN-2",
+        "containment",
+        ["ASI05", "semgrep-server-20", "semgrep-server-22", "CWE-77", "CWE-89"],
+    ),
+    "containment.output_hygiene": (
+        "CONTAIN-3",
+        "containment",
+        ["LLM02", "LLM10", "CWE-209"],
+    ),
+    "change.inventory": (
+        "CHANGE-1",
+        "change",
+        ["ASI04", "LLM04", "semgrep-client-1", "ACS-AgBOM"],
+    ),
+    "change.schema_drift": ("CHANGE-2", "change", ["ASI04", "LLM04", "ACS-AgBOM"]),
     "change.description_drift": (
         "CHANGE-3",
         "change",
-        ["ASI04", "LLM01", "semgrep-client-12"],
+        ["ASI04", "ASI01", "LLM01", "semgrep-client-2"],
     ),
 }
 
@@ -105,7 +136,8 @@ def test_an_old_id_migrates_and_a_new_one_is_left_alone() -> None:
 def test_the_shipped_table_is_slugs_codes_and_standards() -> None:
     table = load_traits()
     assert table.ids == list(TABLE)
-    assert set(CANONICAL.values()) == set(table.ids)
+    # Every old id maps to a row; a row added after the rename has no old id.
+    assert set(CANONICAL.values()) <= set(table.ids)
     assert table.families == {
         "authority": "Authority",
         "blast": "Blast radius",
@@ -147,20 +179,47 @@ def _table(tmp_path: Path, **changes: object) -> Path:
     return path
 
 
-@pytest.mark.parametrize("typo", ["ASl03", "LMM02", "semgrep4", "OWASP-A01", "cwe-79"])
-def test_a_standards_typo_is_refused(tmp_path: Path, typo: str) -> None:
+@pytest.mark.parametrize(
+    "typo",
+    [
+        "ASl03",
+        "LMM02",
+        "semgrep4",
+        "semgrep-foo-1",  # a tab the cheatsheet does not have
+        "semgrep-server-",  # no row
+        "OWASP-A01",
+        "cwe-79",
+        "CWE-",
+        "ACS-",
+    ],
+)
+def test_a_standards_typo_is_refused_naming_the_value(
+    tmp_path: Path, typo: str
+) -> None:
     with pytest.raises(TraitTableError) as excinfo:
         load_traits(_table(tmp_path, standards=["ASI03", typo]))
     message = str(excinfo.value)
-    assert typo in message and "authority.anonymous" in message
-    for prefix in ("ASI", "LLM", "semgrep-", "CWE-", "ACS-"):
+    assert repr(typo) in message and "authority.anonymous" in message
+    for prefix in ("ASI", "LLM", "semgrep-server-", "semgrep-client-", "CWE-", "ACS-"):
         assert prefix in message
 
 
 def test_every_known_standards_prefix_and_an_empty_list_load(tmp_path: Path) -> None:
-    ok = ["ASI03", "LLM02", "semgrep-server-4", "CWE-862", "ACS-AgBOM-mutation"]
+    ok = [
+        "ASI03",
+        "LLM02",
+        "semgrep-server-4",
+        "semgrep-client-1",
+        "CWE-862",
+        "ACS-AgBOM",
+    ]
     assert load_traits(_table(tmp_path, standards=ok)).traits[0].standards == ok
     assert load_traits(_table(tmp_path, standards=[])).traits[0].standards == []
+
+
+def test_every_shipped_row_carries_at_least_one_standard() -> None:
+    for trait in load_traits().traits:
+        assert trait.standards, trait.id
 
 
 def test_an_id_outside_its_family_is_refused(tmp_path: Path) -> None:
@@ -298,7 +357,7 @@ def workdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_a_legacy_manifest_is_rewritten_by_the_next_sync(workdir: Path) -> None:
     manifest_file = workdir / ".itest" / "manifest.yaml"
     legacy = _to_legacy(manifest_file.read_text(encoding="utf-8"))
-    assert "trait: A1\n" in legacy and "[get_guide-A1]" in legacy
+    assert "trait: D1\n" in legacy and "[get_guide-D1]" in legacy
     manifest_file.write_text(legacy, encoding="utf-8")
 
     result = _sync()
@@ -312,7 +371,7 @@ def test_a_legacy_manifest_is_rewritten_by_the_next_sync(workdir: Path) -> None:
     manifest = load_manifest(manifest_file)
     names = [t.test_name for t in manifest.tests]
     assert len(names) == len(set(names))
-    assert "test_engine[get_guide-authority.anonymous]" in names
+    assert "test_engine[get_guide-change.inventory]" in names
 
 
 # --- verify's ledger and the page --------------------------------------------------
@@ -381,13 +440,27 @@ def test_the_tool_table_headers_carry_slug_code_and_standards(
     anonymous = by_slug["authority.anonymous"]
     assert anonymous["label"] == "authority.anonymous · AUTH-1"
     assert anonymous["code"] == "AUTH-1"
-    assert anonymous["standards"] == ["ASI03", "LLM02", "semgrep-server-4"]
+    assert anonymous["standards"] == ["ASI03", "LLM02", "semgrep-server-4", "CWE-306"]
+    # The slug is the identity; the first id sits beside it as the
+    # cross-reference, and the full list is in the detail.
+    assert anonymous["std"] == "ASI03"
+    assert anonymous["title"] == (
+        "authority.anonymous · AUTH-1 — ASI03, LLM02, semgrep-server-4, CWE-306"
+    )
     # Family order, then code: authority before blast before change.
     slugs = [h["slug"] for h in blocks["TOOLS"][0]["headers"]]
     assert slugs.index("authority.anonymous") < slugs.index("blast.mutation_class")
     assert slugs.index("blast.mutation_class") < slugs.index("change.schema_drift")
     html = report_render.render(report_model.build(verify, manifest))
-    assert "ASI03, LLM02, semgrep-server-4" in html  # the hover detail
+    assert "ASI03, LLM02, semgrep-server-4, CWE-306" in html  # the hover detail
+    # Every cell carries its trait's full list in its own detail.
+    cells = [c for g in blocks["TOOLS"] for r in g["rows"] for c in r["cells"] if c]
+    assert cells
+    for cell in cells:
+        assert cell["standards"], cell
+        assert " — " in cell["title"] and cell["standards"][0] in cell["title"]
+    first = blocks["TOOLS"][0]["rows"][0]["cells"][0]
+    assert first["standards"] == ["ASI03", "LLM02", "semgrep-server-4", "CWE-306"]
     titles = [
         e["title"]
         for e in blocks["PAGE"]["tools"]["exceptions"]
@@ -413,6 +486,7 @@ def test_a_binding_generated_with_an_old_id_still_dispatches() -> None:
     assert set(checks.ENGINE_CHECKS) == {
         "authority.anonymous",
         "blast.mutation_class",
+        "blast.mutation_class_observed",
         "change.inventory",
         "change.schema_drift",
         "change.description_drift",
