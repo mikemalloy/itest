@@ -315,9 +315,13 @@ def check_blast__mutation_class_observed(
 
     The agreement check compares statements, and a tool whose annotation and
     name agree and are both false passes it. This check ignores the statements
-    and watches: snapshot observable state, call the tool once with sentinel
-    arguments, snapshot again, compare. Three calls in ONE session, so an
-    in-memory server keeps its state between them.
+    and watches. First a **baseline**: two snapshots, in one session, before
+    any call — if they differ the snapshot tool is unstable (timestamps,
+    request ids, unordered results) and nothing can be pinned on the target,
+    which is then not called at all. Only on a stable baseline: snapshot
+    observable state, call the tool once with sentinel arguments, snapshot
+    again, compare — three calls in ONE session, so an in-memory server keeps
+    its state between them.
 
     What "observable state" is, is a declared fact, never a guess:
     ``observation.snapshot_tool`` names a read tool whose output is a stable,
@@ -337,8 +341,10 @@ def check_blast__mutation_class_observed(
       tool that mutates only under other conditions, or in state the snapshot
       tool does not show, is not caught, and the detail says so.
     - ``not_verifiable`` — no ``observation.snapshot_tool`` declared (never a
-      pass); the snapshot tool is not a read tool, is not listed, or answered
-      with an error; the tool under test is not listed, has no sentinel form,
+      pass); the snapshot tool is unstable (two baseline snapshots differed —
+      never ``critical``, and the detail suggests a stable projection), is
+      not a read tool, is not listed, or answered with an error; the tool
+      under test is not listed, has no sentinel form,
       or the session was refused or failed; or the tool's class (the stricter
       of the manifest's and the live listing's) is write, destructive or
       unknown — this check NEVER calls a mutating tool, and nothing is opened.
@@ -431,6 +437,35 @@ def check_blast__mutation_class_observed(
         snapshot_arguments = sentinel_arguments(snapshot_info.input_schema, sentinel)
     except NoSentinel as exc:
         return not_verifiable(str(exc), evidence)
+
+    # The baseline: two snapshots before any call. A difference here is the
+    # snapshot tool's, not the target's, and the target is then never called.
+    baseline = session_calls(
+        target,
+        [
+            SessionCall(snapshot_tool, snapshot_arguments, snapshot_class),
+            SessionCall(snapshot_tool, snapshot_arguments, snapshot_class),
+        ],
+        authenticated=authenticated,
+        base_dir=Path.cwd(),
+    )
+    if any(shot.status != "ok" for shot in baseline):
+        failed = next(shot for shot in baseline if shot.status != "ok")
+        return not_verifiable(
+            f"could not snapshot through {snapshot_tool!r}: {failed.detail}",
+            evidence,
+        )
+    hashes = [_snapshot(shot)[0]["hash"] for shot in baseline]
+    evidence["baseline"] = {"stable": hashes[0] == hashes[1], "hashes": hashes}
+    if hashes[0] != hashes[1]:
+        return not_verifiable(
+            f"observation.snapshot_tool {snapshot_tool!r} is unstable: two "
+            f"snapshots before any call differed ({hashes[0]} then {hashes[1]}), "
+            f"so a change after calling {tool!r} could not be attributed to it, "
+            "and it was not called. Declare a stable projection — no "
+            "timestamps, request ids or unordered results.",
+            evidence,
+        )
 
     evidence.update(called=True, arguments=arguments)
     before, call, after = session_calls(

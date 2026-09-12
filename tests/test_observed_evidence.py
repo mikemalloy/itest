@@ -241,3 +241,64 @@ def test_nothing_sensitive_reaches_verify_json_or_the_page(
     report = runner.invoke(app, ["report", "--from", str(source), "--out", str(page)])
     assert report.exit_code == 0, report.output
     _assert_clean(page.read_text(encoding="utf-8"))
+
+
+# --- an unstable snapshot tool is never attributed to the target -------------
+
+
+def test_an_unstable_snapshot_tool_is_not_verifiable_never_critical(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two baseline snapshots before any call. If they differ, the snapshot
+    tool is unstable — timestamps, request ids, unordered results — and the
+    difference cannot be pinned on the target, which is not called at all."""
+    from itest.checks import blast_radius
+
+    sequences: list[list[str]] = []
+    real = blast_radius.session_calls
+
+    def spy(target, calls, **kwargs):
+        sequences.append([c.name for c in calls])
+        return real(target, calls, **kwargs)
+
+    monkeypatch.setattr(blast_radius, "session_calls", spy)
+    result = run_engine_check(
+        TRAIT,
+        _point("peek_customer", snapshot_tool="snapshot_clock"),
+        _target(project),
+        authenticated=False,
+    )
+    assert result.status == "not_verifiable", result.detail
+    assert "'snapshot_clock' is unstable" in result.detail
+    assert "before any call" in result.detail
+    assert "stable projection" in result.detail
+    assert result.evidence["called"] is False
+    assert result.evidence["baseline"]["stable"] is False
+    first, second = result.evidence["baseline"]["hashes"]
+    assert first != second
+    assert sequences == [["snapshot_clock", "snapshot_clock"]]
+    assert not any("peek_customer" in seq for seq in sequences)
+
+
+def test_a_stable_baseline_is_taken_before_the_target_is_called(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from itest.checks import blast_radius
+
+    sequences: list[list[str]] = []
+    real = blast_radius.session_calls
+
+    def spy(target, calls, **kwargs):
+        sequences.append([c.name for c in calls])
+        return real(target, calls, **kwargs)
+
+    monkeypatch.setattr(blast_radius, "session_calls", spy)
+    result = run_engine_check(
+        TRAIT, _point("peek_customer"), _target(project), authenticated=False
+    )
+    assert result.status == "critical", result.detail
+    assert result.evidence["baseline"]["stable"] is True
+    assert sequences == [
+        ["snapshot_customers", "snapshot_customers"],
+        ["snapshot_customers", "peek_customer", "snapshot_customers"],
+    ]

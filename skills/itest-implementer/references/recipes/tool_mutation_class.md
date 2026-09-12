@@ -125,12 +125,20 @@ of a server whose declaration names `observation.snapshot_tool`.
 
 **Active tier. It calls the tool.** For a tool whose resolved class is `read`
 or `informational` — the stricter of what the manifest recorded and what the
-live listing says now — it takes three calls in **one session** against the
-same state:
+live listing says now — it first takes a **baseline**: two snapshots through
+the declared `observation.snapshot_tool`, in one session, before any call. If
+the two differ, the snapshot tool is unstable — timestamps, request ids,
+unordered results — and nothing that moves later could be pinned on the
+target, so the target is **not called** and the result is `not_verifiable`,
+naming the snapshot tool and suggesting a stable projection. Never
+`critical`.
 
-1. a snapshot: the declared `observation.snapshot_tool`, called with sentinel
-   arguments, its result normalised (the structured content the server sent,
-   or its text) and hashed;
+Only on a stable baseline does it take three calls in **one session** against
+the same state:
+
+1. a snapshot: the snapshot tool, called with sentinel arguments, its result
+   normalised (the structured content the server sent, or its text) and
+   hashed;
 2. the tool under test, once, with sentinel arguments — required parameters
    only, `sentinels.nonexistent_id` for strings, `0` and `false` for the rest;
 3. the snapshot again.
@@ -159,7 +167,7 @@ reports the store's size, which is why the reference declaration names it).
 |---|---|
 | `critical` | The snapshots differ. The detail names the tool, its claimed class, what claimed it (`annotation readOnlyHint`, or `name get_*`), the snapshot tool, the sizes, how many paths changed and which (bounded), and both hashes — never a value. An agent has been told this tool is safe to call freely. |
 | `pass` | No observable change through the snapshot tool after one sentinel call. |
-| `not_verifiable` | No `observation.snapshot_tool` declared (never a pass); the snapshot tool is not listed, is not a read tool, or answered with an error; the tool is not listed or has no sentinel form; the session was refused or failed; or the tool's class is write, destructive or unknown — the check never calls those, and nothing is opened. |
+| `not_verifiable` | No `observation.snapshot_tool` declared (never a pass); the snapshot tool is **unstable** (two baseline snapshots differed, so the target was not called — declare a stable projection), is not listed, is not a read tool, or answered with an error; the tool is not listed or has no sentinel form; the session was refused or failed; or the tool's class is write, destructive or unknown — the check never calls those, and nothing is opened. |
 
 ### Where it runs
 
@@ -201,6 +209,7 @@ choose a projection that does not.
 | `snapshot_tool` | The declared read tool state was observed through. |
 | `claimed`, `claimed_by` | The class the tool claims, and what claimed it. |
 | `arguments`, `called`, `call_status` | What the tool was called with, whether it was, and how it answered (`ok`, or `error` for a tool error — it ran either way). |
+| `baseline` | `{stable, hashes}`: the two snapshots taken before any call, and whether they agreed. |
 | `before`, `after` | `{hash, size}` of each snapshot. Never the view. |
 | `changed_paths`, `changed_paths_total`, `changed_paths_truncated` | The changed field names or paths (at most ten), how many there were, and whether the list was cut. |
 
