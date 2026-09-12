@@ -897,12 +897,14 @@ def build_tool_ledger(
         )
     # The standards lens: one entry per published id any check cites, plus
     # every OWASP Agentic entry nothing cites, as not covered. Derived here,
-    # from the rows above, so it can never drift from them.
-    from itest.traits.standards import standards_rollup
+    # from the rows above, so it can never drift from them — and under the
+    # same state filter as the families above: a retired or orphaned check is
+    # not this run's evidence, so a standard only it cites is not covered.
+    from itest.traits.standards import counted_checks, standards_rollup
 
-    cited = [
+    cited = counted_checks(
         c for server in servers for tool in server["tools"] for c in tool["checks"]
-    ]
+    )
     return {"servers": servers, "standards": standards_rollup(cited)}
 
 

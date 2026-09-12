@@ -313,7 +313,9 @@ are a **second lens** over the same checks:
   `statuses` (pass / fail / critical / changed / not_verifiable /
   not_applicable / held_out / not_run). It is derived at emit time from the
   checks themselves, never from a hand-maintained second list, so the two
-  cannot drift.
+  cannot drift — and under the same state filter as the families rollup: a
+  retired (`not_applicable`) or orphaned check is not this run's evidence, so
+  a standard cited only by one is not covered.
 - **What is not covered, named.** `itest/traits/standards.yaml` ships the full
   OWASP Agentic list (ASI01–ASI10) and the LLM list (LLM01–LLM10) with their
   titles. Every ASI entry appears in the rollup: cited ones carry their

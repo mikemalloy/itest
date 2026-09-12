@@ -58,6 +58,18 @@ Coverage = Literal["covered", "partial", "not_covered"]
 #: What an uncited id whose catalogue claim is covered or partial says.
 UNCITED_NOTE = "no check in this run cites it"
 
+#: Lifecycle states that do not count as this run's evidence — the same filter
+#: the families rollup applies. A retired or orphaned check cites nothing:
+#: coverage is a statement about this run, and a standard cited only by a
+#: check that no longer applies must not read "covered".
+UNCOUNTED_STATES = frozenset({"not_applicable", "orphan"})
+
+
+def counted_checks(checks: Iterable[dict]) -> list[dict]:
+    """The checks a rollup may cite: every one whose state is not retired or
+    orphaned."""
+    return [c for c in checks if c.get("state") not in UNCOUNTED_STATES]
+
 
 class StandardsCatalogError(Exception):
     """A catalogue that cannot be read."""
@@ -231,7 +243,7 @@ def rollup_for_ledger(ledger: dict | None) -> list[dict]:
         for tool in server.get("tools") or []
         for check in tool.get("checks") or []
     ]
-    return standards_rollup(checks)
+    return standards_rollup(counted_checks(checks))
 
 
 # --- rendering ------------------------------------------------------------------

@@ -378,3 +378,60 @@ def test_itest_standards_refuses_a_missing_or_invalid_document(
     (tmp_path / "bad.json").write_text("{", encoding="utf-8")
     result = runner.invoke(app, ["standards", "--from", "bad.json"])
     assert result.exit_code == 2
+
+
+# --- coverage is a statement about this run ------------------------------------
+
+
+def _retire_every_audit_check(workdir: Path) -> None:
+    """Retire blast.audit on the three write tools. CWE-778 is cited by that
+    trait alone, so nothing live cites it afterwards."""
+    from itest.core.manifest import load_manifest, save_manifest
+
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_file)
+    for entry in manifest.tests:
+        if entry.trait == "blast.audit":
+            entry.retired = True
+    for point in manifest.points:
+        if point.traits_planned and "blast.audit" in point.traits_planned:
+            point.traits_planned = [
+                t for t in point.traits_planned if t != "blast.audit"
+            ]
+    save_manifest(manifest, manifest_file)
+
+
+def test_a_standard_cited_only_by_retired_checks_is_not_covered(workdir: Path) -> None:
+    _retire_every_audit_check(workdir)
+    payload = _verify_json()
+    ledger = payload["tools"]
+    checks = [c for s in ledger["servers"] for t in s["tools"] for c in t["checks"]]
+    retired = [c for c in checks if c["state"] == "not_applicable"]
+    assert {c["trait"] for c in retired} == {"blast.audit"} and len(retired) == 3
+    by_id = _by_id(ledger["standards"])
+    assert "CWE-778" not in by_id  # nothing live cites it: not a covered row
+    # ACS-AgBOM is still cited by live checks, and the retired ones are not in it.
+    live = [c for c in checks if c["state"] not in ("not_applicable", "orphan")]
+    assert ledger["standards"] == standards.standards_rollup(live)
+    assert by_id["ACS-AgBOM"]["statuses"]["not_applicable"] == 0
+    assert all(e["statuses"]["not_applicable"] == 0 for e in ledger["standards"])
+
+
+def test_an_old_ledger_is_derived_with_the_same_state_filter() -> None:
+    ledger = {
+        "servers": [
+            {
+                "tools": [
+                    {
+                        "checks": [
+                            _check("blast.audit", "n/a", state="not_applicable"),
+                            _check("authority.anonymous", "pass"),
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    rollup = _by_id(standards.rollup_for_ledger(ledger))
+    assert "CWE-778" not in rollup
+    assert rollup["ASI03"]["checks"] == 1
