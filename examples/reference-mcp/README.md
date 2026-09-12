@@ -93,13 +93,14 @@ from. Nothing generated here is meant to be committed: `.itest/manifest.yaml`,
 `.itest/plan.json` and `itest_tests/` are what a real project would keep, and
 here they are output from trying it out.
 
-What to expect, and why: over stdio this server has no guard at all, so `authority.anonymous`
-(refuses anonymous) **fails** on its five read tools and is `not_verifiable` on
-the three mutating ones — the page reads BLOCKED, which is the truth about an
-unauthenticated stdio server. The two deliberate defects are not caught by
-this run: the open mount exists only over HTTP, and a declaration cannot opt
-into a loopback URL; `lookalike_read` passes the readonly mutation-class check
-by design and waits on the active-tier "mutation class observed" check.
+What to expect, and why: over stdio there is **no `authority.anonymous` cell
+at all**. The server is a subprocess, so whoever can launch it is authorised —
+the process boundary is the authentication boundary, and there is no anonymous
+caller to refuse. The trait's rule (`transport.kind == http or
+auth.enforced_over_stdio`) keeps it off a stdio server that does not claim a
+credential check of its own; `itest traits --for reference-mcp/get_guide`
+prints `does not apply` with that rule beside it. The check comes back on the
+HTTP mounts (below), where an anonymous caller is a real thing.
 
 ## Why a reference server has to exist
 

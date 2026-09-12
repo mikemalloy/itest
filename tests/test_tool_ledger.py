@@ -132,24 +132,16 @@ def test_verify_emits_the_tool_ledger_for_a_declared_server(
 
     checks = _checks(ledger)
     # An engine trait's row is its engine case; a generated trait's, its binding.
-    a1 = checks[("delete_record", "authority.anonymous")]
-    assert (
-        a1["test"] == f"{ENGINE_FILE}::test_engine[delete_record-authority.anonymous]"
-    )
+    d1 = checks[("delete_record", "change.inventory")]
+    assert d1["test"] == f"{ENGINE_FILE}::test_engine[delete_record-change.inventory]"
     b2 = checks[("delete_record", "blast.destructive_gating")]
     assert b2["test"] == f"{ACTIVE_FILE}::test_delete_record__blast__destructive_gating"
+    # Over stdio the process boundary is the authentication boundary, so no
+    # tool carries an authority.anonymous cell — not a failing one, not a
+    # not_verifiable one. The rule is the table's, and the ledger reflects it.
+    assert not any(trait == "authority.anonymous" for _, trait in checks)
     # The engine checks ran for real, against reference-mcp over stdio, with no
     # credential exported. Every status is the library's own CheckResult.
-    for tool in READ_TOOLS:
-        check = checks[(tool, "authority.anonymous")]
-        assert check["status"] == "fail", (tool, check)
-        assert "anonymous call" in check["detail"]
-    for tool in MUTATING_TOOLS:
-        check = checks[(tool, "authority.anonymous")]
-        assert check["status"] == "not_verifiable", (tool, check)
-        assert check["detail"].startswith(
-            "anonymous session admitted; this tool mutates"
-        )
     for (tool, trait), check in checks.items():
         if trait in LISTING_TRAITS:
             # No credential resolves, so the run is anonymous; the stdio server
@@ -187,10 +179,8 @@ def test_with_the_credential_exported_the_listing_checks_pass(
     assert (
         checks[("lookalike_read", "blast.mutation_class")]["status"] == "pass"
     )  # the pinned limit
-    # A1 is unchanged by the credential: it always probes anonymously.
-    assert {checks[(t, "authority.anonymous")]["status"] for t in READ_TOOLS} == {
-        "fail"
-    }
+    # The credential does not conjure an anonymous check over stdio either.
+    assert not any(trait == "authority.anonymous" for _, trait in checks)
     assert token not in json.dumps(payload)
 
 
@@ -206,9 +196,9 @@ def test_the_emitted_ledger_validates_through_the_model_and_renders(
     html = report_render.render(page)
     blocks = report_render.extract_blocks(html)
     assert blocks["TOOLS"]  # the grouped tool table is drawn from real data
-    # Real A1 failures on the read tools block the release; nothing verified
-    # could never have been VERIFIED either way.
-    assert page.verdict.word == "BLOCKED"
+    # Nothing fails over stdio, but nothing is verified either: the generated
+    # bindings wait on their fixtures, so the page is AT RISK, never green.
+    assert page.verdict.word == "AT RISK"
 
 
 def test_a_declaration_free_verify_emits_no_tools_key(
@@ -234,7 +224,7 @@ def _fake_checks(workdir: Path) -> None:
         + "\n\nimport itest.checks as _checks\n\n\n"
         "def _engine(trait_id, point, target, *, authenticated):\n"
         '    if (trait_id, point["target"]) == '
-        '("authority.anonymous", "delete_record"):\n'
+        '("blast.mutation_class", "delete_record"):\n'
         '        return _checks.CheckResult("critical", "anonymous call accepted", '
         "None)\n"
         '    if (trait_id, point["target"]) == '
@@ -250,9 +240,9 @@ def test_a_recorded_check_result_is_the_status(workdir: Path) -> None:
     _fake_checks(workdir)
     payload = _verify()
     checks = _checks(payload["tools"])
-    assert checks[("delete_record", "authority.anonymous")]["status"] == "critical"
+    assert checks[("delete_record", "blast.mutation_class")]["status"] == "critical"
     assert (
-        checks[("delete_record", "authority.anonymous")]["detail"]
+        checks[("delete_record", "blast.mutation_class")]["detail"]
         == "anonymous call accepted"
     )
     assert checks[("update_record", "change.description_drift")]["status"] == "changed"
@@ -284,7 +274,7 @@ def test_a_hand_edited_file_marks_its_checks_hand_edited(workdir: Path) -> None:
         checks[("delete_record", "blast.destructive_gating")]["state"] == "hand_edited"
     )
     assert (
-        checks[("delete_record", "authority.anonymous")]["state"] == "current"
+        checks[("delete_record", "change.inventory")]["state"] == "current"
     )  # engine module
 
 
@@ -535,7 +525,7 @@ def test_an_owned_binding_whose_schema_moved_is_stale_without_a_sync(
         assert checks[key]["state"] == "stale", key
     assert checks[("create_record", "blast.audit")]["state"] == "current"
     assert (
-        checks[("delete_record", "authority.anonymous")]["state"] == "current"
+        checks[("delete_record", "change.inventory")]["state"] == "current"
     )  # engine module
     (server,) = payload["tools"]["servers"]
     stale = [e for e in server["exceptions"] if e["kind"] == "stale"]

@@ -113,6 +113,37 @@ The recipes explain each result for a reviewer:
 [`tool_mutation_class.md`](../skills/itest-implementer/references/recipes/tool_mutation_class.md),
 [`tool_provenance.md`](../skills/itest-implementer/references/recipes/tool_provenance.md).
 
+### `authority.anonymous` applies only where "anonymous" is meaningful
+
+Over **stdio** there is no anonymous caller. The server is a subprocess, and
+whoever can spawn it is, by definition, authorised: the process boundary is the
+authentication boundary. A stdio server that admits a `tools/call` from the
+process that launched it has not failed anything — it has done what stdio is —
+and a check reporting "anonymous call succeeded on a read tool" there would be
+ITest crying wolf. A security team's first run on its own stdio servers would
+be a screen of that noise, which is the failure mode that gets a tool switched
+off. So the trait's rule is
+
+```
+applies_when: transport.kind == http or auth.enforced_over_stdio
+```
+
+and a stdio server whose declaration does not claim its own credential check
+gets **no** `authority.anonymous` check at all — not a pass, not a fail, not a
+`not_verifiable`. It does not apply, and `itest traits --for <server>/<tool>`
+prints `does not apply` with that rule, so a reader does not conclude the
+check was forgotten. A stdio server that *does* check a credential of its own
+(`auth.enforced_over_stdio: true` — a fact only its owner knows) gets the
+check on every tool, because then an unauthenticated subprocess launch is a
+meaningful thing to refuse. A network transport always gets it.
+
+The check defends itself too. If it is reached against a stdio target whose
+point does not carry that declared fact — a manifest from before the rule
+moved, a hand-edited table — it returns `not_verifiable` with "stdio
+transport: the process boundary is the authentication boundary; declare
+auth.enforced_over_stdio if this server checks credentials itself", before a
+subprocess is spawned. It never fails.
+
 ### `authority.anonymous` judges only what it observed
 
 `authority.anonymous` starts at the **front door**: one anonymous `initialize` + `tools/list` per

@@ -139,6 +139,13 @@ class Auth(Strict):
     #: presence is what makes a tenant-isolation check possible at all: with one
     #: identity there is nothing to cross.
     second_tenant_env: str | None = None
+    #: Whether a ``stdio`` server checks a credential of its own rather than
+    #: trusting whoever spawned it. Over stdio the process boundary *is* the
+    #: authentication boundary — there is no anonymous caller — so the
+    #: anonymous-refusal check applies to a stdio server only when its owner
+    #: states this. A fact only the server's owner knows; ``false`` withholds
+    #: the check, it never loosens anything.
+    enforced_over_stdio: bool = False
 
     @field_validator("credential_env")
     @classmethod

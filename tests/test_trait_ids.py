@@ -298,7 +298,7 @@ def workdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_a_legacy_manifest_is_rewritten_by_the_next_sync(workdir: Path) -> None:
     manifest_file = workdir / ".itest" / "manifest.yaml"
     legacy = _to_legacy(manifest_file.read_text(encoding="utf-8"))
-    assert "trait: A1\n" in legacy and "[get_guide-A1]" in legacy
+    assert "trait: D1\n" in legacy and "[get_guide-D1]" in legacy
     manifest_file.write_text(legacy, encoding="utf-8")
 
     result = _sync()
@@ -312,7 +312,7 @@ def test_a_legacy_manifest_is_rewritten_by_the_next_sync(workdir: Path) -> None:
     manifest = load_manifest(manifest_file)
     names = [t.test_name for t in manifest.tests]
     assert len(names) == len(set(names))
-    assert "test_engine[get_guide-authority.anonymous]" in names
+    assert "test_engine[get_guide-change.inventory]" in names
 
 
 # --- verify's ledger and the page --------------------------------------------------

@@ -1,7 +1,7 @@
-Trait table d6ca53720c12: 14 traits in 4 families (9 engine, 5 generated).
+Trait table 6460a7f4488e: 14 traits in 4 families (9 engine, 5 generated).
 
   SLUG                                CODE       FAMILY        KIND       TIER      APPLIES WHEN                                                  STANDARDS                        RECIPE
-  authority.anonymous                 AUTH-1     Authority     engine     readonly  always                                                        ASI03, LLM02, semgrep-server-4   tool_authn.md
+  authority.anonymous                 AUTH-1     Authority     engine     readonly  transport.kind == http or auth.enforced_over_stdio            ASI03, LLM02, semgrep-server-4   tool_authn.md
   authority.tenant_isolation          AUTH-2     Authority     generated  active    auth.second_tenant_env present and mutation != informational  —                                tool_isolation.md
   authority.backing_least_privilege   AUTH-3     Authority     generated  active    identity.runs_as present                                      —                                tool_identity.md
   authority.delegation                AUTH-4     Authority     generated  active    identity.runs_as == passthrough                               —                                tool_identity.md

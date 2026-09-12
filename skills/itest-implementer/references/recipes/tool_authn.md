@@ -25,6 +25,15 @@ stdio the server is launched with the credential variable *removed* from its
 environment, so an ambient token in your shell cannot make an anonymous probe
 look authenticated.
 
+**Where it applies.** Only where "anonymous" means something: a network
+transport, or a stdio server whose declaration states
+`auth.enforced_over_stdio: true`. Over plain stdio the process boundary is the
+authentication boundary — whoever can spawn the subprocess is authorised — so
+there is no anonymous caller, the trait does not apply, and no cell is
+produced. Reached against such a target anyway, the check is `not_verifiable`
+("stdio transport: the process boundary is the authentication boundary; …")
+and never `fail`.
+
 **Step 1 — the front door, once per server.** An anonymous `initialize` +
 `tools/list`. If the server refuses the anonymous session, **every tool on it
 passes**: "server refuses anonymous sessions; per-tool call not attempted". This
@@ -136,7 +145,10 @@ it applies to a tool:
 itest traits --for reference-mcp/delete_record
 ```
 
-(`authority.anonymous`'s `applies_when` is `always`.) `itest traits` reads the tool's attributes
+(`authority.anonymous`'s `applies_when` is `transport.kind == http or
+auth.enforced_over_stdio`: over stdio the process boundary is the
+authentication boundary, so the check applies there only when the declaration
+states the server checks a credential of its own.) `itest traits` reads the tool's attributes
 from the manifest, so run it after `itest sync`; the rule itself is the `authority.anonymous` row
 of `itest/traits/traits.yaml`. If a stub for `authority.anonymous` ever appears in a test file, it
 predates the engine check; do not implement it by hand.

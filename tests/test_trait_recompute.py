@@ -79,7 +79,6 @@ def _plan_json(*extra: str) -> dict:
 #: an audit sink (B4 on writes), and only `enrich` declares egress (B3).
 EXPECTED_TRAITS = {
     "get_guide": [
-        "authority.anonymous",
         "authority.backing_least_privilege",
         "blast.mutation_class",
         "change.inventory",
@@ -87,7 +86,6 @@ EXPECTED_TRAITS = {
         "change.description_drift",
     ],
     "search_records": [
-        "authority.anonymous",
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
@@ -99,7 +97,6 @@ EXPECTED_TRAITS = {
         "change.description_drift",
     ],
     "fetch_record": [
-        "authority.anonymous",
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
@@ -111,7 +108,6 @@ EXPECTED_TRAITS = {
         "change.description_drift",
     ],
     "create_record": [
-        "authority.anonymous",
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
@@ -124,7 +120,6 @@ EXPECTED_TRAITS = {
         "change.description_drift",
     ],
     "update_record": [
-        "authority.anonymous",
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
@@ -137,7 +132,6 @@ EXPECTED_TRAITS = {
         "change.description_drift",
     ],
     "delete_record": [
-        "authority.anonymous",
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
@@ -151,7 +145,6 @@ EXPECTED_TRAITS = {
         "change.description_drift",
     ],
     "lookalike_read": [
-        "authority.anonymous",
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
@@ -163,7 +156,6 @@ EXPECTED_TRAITS = {
         "change.description_drift",
     ],
     "enrich": [
-        "authority.anonymous",
         "authority.tenant_isolation",
         "authority.backing_least_privilege",
         "blast.mutation_class",
@@ -362,9 +354,7 @@ def test_a_trait_that_stops_applying_retires_its_stub_in_place(
         result = runner.invoke(
             app, ["verify", "--environment", "staging", "--output", "json"]
         )
-        # 1, not 2: A1's real findings on reference-mcp's stdio read tools fail;
-        # nothing errors.
-        assert result.exit_code == 1, result.output
+        assert result.exit_code == 0, result.output  # nothing errors
         report = json.loads(result.output)
         assert report["errored"] == 0
         outcomes = {t["canonical"]: t["outcome"] for t in report["tests"]}
@@ -501,15 +491,20 @@ def test_a_p30_manifest_loads_and_the_first_sync_fills_it(workdir: Path) -> None
 
     payload = _plan_json()
     changes = {(c["tool"], c["trait"], c["change"]) for c in payload["trait_changes"]}
-    # The table grew A3 and C3 since P30; nothing was retired.
-    assert changes == {
-        (tool, "authority.backing_least_privilege", "gained")
-        for tool in EXPECTED_TRAITS
-    } | {
-        (tool, "containment.output_hygiene", "gained")
-        for tool in EXPECTED_TRAITS
-        if tool != "get_guide"
-    }
+    # The table grew A3 and C3 since P30, and A1 left every stdio tool: over
+    # stdio there is no anonymous caller, so that check is retired in place.
+    assert changes == (
+        {
+            (tool, "authority.backing_least_privilege", "gained")
+            for tool in EXPECTED_TRAITS
+        }
+        | {
+            (tool, "containment.output_hygiene", "gained")
+            for tool in EXPECTED_TRAITS
+            if tool != "get_guide"
+        }
+        | {(tool, "authority.anonymous", "retired") for tool in EXPECTED_TRAITS}
+    )
     assert payload["new_points"] == [] and payload["changed_points"] == []
 
     result = _sync()
@@ -562,7 +557,7 @@ def test_a_p30_per_tool_engine_stub_is_retired_and_never_run(workdir: Path) -> N
     assert stub.retired is True
     assert stub.status != "orphaned"
     assert stub_file.read_text(encoding="utf-8") == before  # nothing deleted
-    engine = by_name["test_engine[get_guide-authority.anonymous]"]
+    engine = by_name["test_engine[get_guide-change.inventory]"]
     assert engine.path == ENGINE_FILE
     assert engine.retired is False
 
@@ -582,8 +577,8 @@ def test_a_p30_per_tool_engine_stub_is_retired_and_never_run(workdir: Path) -> N
         for tool in server["tools"]
         for check in tool["checks"]
     }
-    assert checks[("get_guide", "authority.anonymous")]["test"] == (
-        f"{ENGINE_FILE}::test_engine[get_guide-authority.anonymous]"
+    assert checks[("get_guide", "change.inventory")]["test"] == (
+        f"{ENGINE_FILE}::test_engine[get_guide-change.inventory]"
     )
 
     again = _sync()

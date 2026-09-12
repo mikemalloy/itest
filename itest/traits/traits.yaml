@@ -28,13 +28,16 @@
 #   <field> != <value>            and bare words are literals)
 #   <field> in [<a>, <b>]         membership
 #   <A> and <B> and ...           every clause must hold
+#   <A> or <B>                    either side holds; `and` binds tighter, so
+#                                 `a and b or c` is `(a and b) or c`
 #
 # The fields are the tool's attributes as plan recorded them: `mutation`,
-# `egress`, `approval`, `active`, `has_free_form_input`, plus three facts its
-# server declared — `auth.second_tenant_env`, `audit.sink` and
-# `identity.runs_as`. An unknown field, an unreadable clause, an unknown
-# family, kind or tier all refuse the table at load: a typo here must not
-# quietly delete a check.
+# `egress`, `approval`, `active`, `has_free_form_input`, plus facts its
+# server declared — `auth.second_tenant_env`, `audit.sink`,
+# `identity.runs_as`, `transport.kind` (stdio | http) and
+# `auth.enforced_over_stdio`. An unknown field, an unreadable clause, an
+# unknown family, kind or tier all refuse the table at load: a typo here must
+# not quietly delete a check.
 #
 # `tier` is what the check is registered as, and it is what the environment
 # policy gates on: an `active` trait's checks go in their own file so a
@@ -63,7 +66,12 @@ traits:
     code: AUTH-1
     family: authority
     name: refuses anonymous
-    applies_when: always
+    # "Anonymous" means something only where a caller can arrive without a
+    # credential: a network transport, or a stdio server whose owner says it
+    # checks one itself. Over plain stdio the process boundary is the
+    # authentication boundary, and the check does not apply — not a pass, not
+    # a fail, not a not_verifiable. `itest traits --for` prints this rule.
+    applies_when: transport.kind == http or auth.enforced_over_stdio
     tier: readonly
     kind: engine
     recipe: tool_authn.md

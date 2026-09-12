@@ -17,8 +17,10 @@ that ship:
 ``<field> == <value>``       equality
 ``<field> != <value>``       inequality
 ``<field> in [<a>, <b>]``    membership
-``<A> and <B>``              conjunction (no ``or``, and no precedence to get
-                             wrong)
+``<A> and <B>``              conjunction
+``<A> or <B>``               disjunction; ``and`` binds tighter, so
+                             ``a and b or c`` is ``(a and b) or c``. No
+                             parentheses and no ``not``.
 ===========================  ==============================================
 
 Two refusals are on purpose. An **unknown field** is an error rather than a
@@ -78,6 +80,8 @@ KNOWN_ATTRIBUTES = (
     "auth.second_tenant_env",
     "audit.sink",
     "identity.runs_as",
+    "transport.kind",
+    "auth.enforced_over_stdio",
 )
 
 #: A trait id: ``<family>.<slug>``, lower case. The family half must be the
@@ -302,15 +306,15 @@ def _literal(text: str) -> Any:
     """Parse a bare literal: ``none``, ``true``/``false``, an integer, or a word.
 
     A literal is one token. Refusing a value with whitespace in it is what stops
-    ``a == b or c == d`` from parsing as "a equals the string 'b or c == d'" and
-    evaluating, silently, to False — the only connective is ``and``.
+    ``a == b c`` from parsing as "a equals the string 'b c'" and evaluating,
+    silently, to False.
     """
     token = text.strip().strip("'\"")
     if any(char.isspace() for char in token):
         raise TraitTableError(
             f"applies_when literal {token!r} is not a single value. The only "
-            "connective is 'and'; there is no 'or', and a literal may not "
-            "contain a space."
+            "connectives are 'and' and 'or', and a literal may not contain a "
+            "space."
         )
     lowered = token.lower()
     if lowered in ("none", "null"):
@@ -373,31 +377,47 @@ def _parse_clause(clause: str, expression: str) -> _Clause:
         f"applies_when {expression!r} has a clause this build cannot read: "
         f"{text!r}. The grammar is: always | <field> | <field> present | "
         "<field> == <value> | <field> != <value> | <field> in [a, b], joined "
-        "by 'and'."
+        "by 'and', with 'or' between groups ('and' binds tighter)."
     )
 
 
-def parse(expression: str) -> list[_Clause]:
+#: A parsed expression: a disjunction of conjunctions. ``a and b or c`` is
+#: ``[[a, b], [c]]`` — ``and`` binds tighter, and there are no parentheses.
+Disjunction = list[list[_Clause]]
+
+_OR = re.compile(r"\s+or\s+")
+_AND = re.compile(r"\s+and\s+")
+
+
+def parse(expression: str) -> Disjunction:
     """Parse ``expression`` into its clauses, or raise :class:`TraitTableError`.
 
     Parsing needs no context, which is what lets the loader refuse an
-    unreadable row before any tool is evaluated against it.
+    unreadable row before any tool is evaluated against it. The result is a
+    list of ``and``-groups joined by ``or``: the expression holds when any
+    group holds, and a group holds when every clause in it does.
     """
     text = (expression or "").strip()
     if not text:
         raise TraitTableError("an empty applies_when matches nothing; write 'always'.")
-    clauses = re.split(r"\s+and\s+", text)
-    if any(clause.count("[") != clause.count("]") for clause in clauses):
-        raise TraitTableError(
-            f"applies_when {expression!r} splits a bracketed list across an "
-            "'and'. A list literal may not contain the word 'and'."
-        )
-    return [_parse_clause(clause, text) for clause in clauses]
+    groups = _OR.split(text)
+    parsed: Disjunction = []
+    for group in groups:
+        clauses = _AND.split(group)
+        if any(clause.count("[") != clause.count("]") for clause in clauses):
+            raise TraitTableError(
+                f"applies_when {expression!r} splits a bracketed list across an "
+                "'and' or an 'or'. A list literal may not contain either word."
+            )
+        parsed.append([_parse_clause(clause, text) for clause in clauses])
+    return parsed
 
 
 def referenced_attributes(expression: str) -> list[str]:
     """Every attribute ``expression`` names, in order."""
-    return [clause.field for clause in parse(expression) if clause.field]
+    return [
+        clause.field for group in parse(expression) for clause in group if clause.field
+    ]
 
 
 def _render_literal(value: Any) -> str:
@@ -408,22 +428,25 @@ def _render_literal(value: Any) -> str:
     return str(value)
 
 
+def _render_clause(clause: _Clause) -> str:
+    if clause.op == "always":
+        return "always"
+    if clause.op == "truthy":
+        return str(clause.field)
+    if clause.op == "present":
+        return f"{clause.field} present"
+    if clause.op == "in":
+        items = ", ".join(_render_literal(v) for v in clause.value)
+        return f"{clause.field} in [{items}]"
+    return f"{clause.field} {clause.op} {_render_literal(clause.value)}"
+
+
 def canonical_expression(expression: str) -> str:
     """``expression`` re-rendered from its parse: one spelling per meaning."""
-    parts = []
-    for clause in parse(expression):
-        if clause.op == "always":
-            parts.append("always")
-        elif clause.op == "truthy":
-            parts.append(clause.field)
-        elif clause.op == "present":
-            parts.append(f"{clause.field} present")
-        elif clause.op == "in":
-            items = ", ".join(_render_literal(v) for v in clause.value)
-            parts.append(f"{clause.field} in [{items}]")
-        else:
-            parts.append(f"{clause.field} {clause.op} {_render_literal(clause.value)}")
-    return " and ".join(parts)
+    return " or ".join(
+        " and ".join(_render_clause(clause) for clause in group)
+        for group in parse(expression)
+    )
 
 
 def _holds(clause: _Clause, context: dict[str, Any], expression: str) -> bool:
@@ -440,9 +463,19 @@ def _holds(clause: _Clause, context: dict[str, Any], expression: str) -> bool:
 
 
 def evaluate(expression: str, context: dict[str, Any]) -> bool:
-    """True when every ``and``-joined clause of ``expression`` holds."""
+    """True when any ``or``-joined group of ``expression`` holds, a group
+    holding when every ``and``-joined clause in it does.
+
+    Every clause is evaluated — no short circuit — so an unknown attribute
+    anywhere in the expression is an error, not a clause that happened never
+    to be reached.
+    """
     text = (expression or "").strip()
-    return all(_holds(clause, context, text) for clause in parse(expression))
+    outcomes = [
+        [_holds(clause, context, text) for clause in group]
+        for group in parse(expression)
+    ]
+    return any(all(group) for group in outcomes)
 
 
 def applicable(table: TraitTable, context: dict[str, Any]) -> list[Trait]:
@@ -476,6 +509,10 @@ def trait_context(point: IntegrationPoint) -> dict[str, Any]:
         "auth.second_tenant_env": attributes.get("second_tenant_env"),
         "audit.sink": attributes.get("audit_sink"),
         "identity.runs_as": attributes.get("runs_as"),
+        # stdio | http, from the declaration's transport block.
+        "transport.kind": attributes.get("transport_kind"),
+        # A stdio server that checks a credential of its own; default false.
+        "auth.enforced_over_stdio": bool(attributes.get("enforced_over_stdio")),
     }
 
 

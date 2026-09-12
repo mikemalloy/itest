@@ -243,7 +243,14 @@ none passes `allow_mutating`, so `authority.anonymous` proves the
 front door (an anonymous session refused passes every tool on the server) and
 calls only read tools behind an open one; a write or destructive tool there is
 `not_verifiable`, never `critical`, because a listing is not a call and
-`critical` means a demonstrated admission. The class used is the stricter of the
+`critical` means a demonstrated admission. **`authority.anonymous` applies only
+where "anonymous" is meaningful**: over stdio the process boundary is the
+authentication boundary — whoever can spawn the subprocess is authorised — so
+the table's rule is `transport.kind == http or auth.enforced_over_stdio`, a
+plain stdio server gets no anonymous cell at all (not a pass, not a fail, not
+a `not_verifiable`), `itest traits --for` prints the deciding rule, and the
+check itself answers `not_verifiable` rather than `fail` if it is ever reached
+against such a target. The class used is the stricter of the
 recorded and the live one. With no credential resolving — a stdio server like
 reference-mcp is the normal case — the listing checks (`blast.mutation_class`, `change.inventory`, `change.schema_drift` and `change.description_drift`) run on the
 anonymous listing when the server admits one, labelled `listing: anonymous`, and
@@ -523,6 +530,12 @@ Shipped:
   traits` shows slug, code and standards; the readiness page heads each column
   with code and slug and shows the standards on hover.
 
+- `applies_when` gains `or` (lower precedence than `and`; no parentheses, no
+  `not`), the table can address `transport.kind` and
+  `auth.enforced_over_stdio`, and `authority.anonymous` applies only to a
+  network transport or a stdio server that declares its own credential check.
+  A stdio dry run of `examples/reference-mcp` therefore reports no anonymous
+  cells: the process boundary is the authentication boundary.
 - `itest report --environment`: the report's own verify runs in the
   environment given, with verify's resolution and refusals. `--out` is the
   file-path flag on report and redact; `report --output` is a deprecated alias

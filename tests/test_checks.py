@@ -356,7 +356,12 @@ def test_a1_every_mutating_tool_on_an_open_server_is_deferred(
 def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
     project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A server can admit anonymous sessions and still refuse the call."""
+    """A server can admit anonymous sessions and still refuse the call.
+
+    (Every stdio A1 test below states ``enforced_over_stdio=True`` on its
+    point: over stdio the check runs only for a server whose owner declares it
+    checks a credential of its own; otherwise it is not_verifiable at once.)
+    """
 
     def refused(*args: Any, **kwargs: Any) -> CallResult:
         return CallResult(
@@ -368,7 +373,7 @@ def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
     monkeypatch.setattr(authority, "call_tool", refused)
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -377,23 +382,52 @@ def test_a1_a_read_call_refused_inside_an_admitted_session_passes(
     assert result.evidence["anonymous_listing"] == "admitted"
 
 
-def test_a1_over_stdio_without_the_credential(
+STDIO_BOUNDARY = (
+    "stdio transport: the process boundary is the authentication boundary; "
+    "declare auth.enforced_over_stdio if this server checks credentials itself"
+)
+
+
+def test_a1_over_stdio_without_declared_enforcement_is_not_verifiable(
+    project: Path, manifest_points: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Whoever can spawn the subprocess is authorised: there is no anonymous
+    caller to refuse. The table keeps the check off such a server; if it is
+    reached anyway, it says so and never fails — and touches nothing."""
+    calls: list[Any] = []
+    monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(authority, "live_listing", lambda *a, **k: calls.append(a))
+    for name in ("search_records", "delete_record"):
+        result = run_engine_check(
+            "authority.anonymous",
+            point(manifest_points, name),
+            stdio_target(),
+            authenticated=True,
+        )
+        assert result.status == "not_verifiable", (name, result.detail)
+        assert result.detail == STDIO_BOUNDARY
+        assert result.evidence["called"] is False
+    assert calls == []
+
+
+def test_a1_over_stdio_with_declared_enforcement_but_no_credential_check(
     project: Path, manifest_points: list[Any]
 ) -> None:
-    """stdio has no transport guard: the reference server admits a subprocess
-    launched without its credential. A read answered is a fail; a destructive
-    tool is deferred to the active tier and is not called."""
+    """A stdio server whose owner declares it checks credentials itself — and
+    which does not: the reference server admits a subprocess launched without
+    its token. A read answered is a fail; a destructive tool is deferred to
+    the active tier and is not called."""
     target = stdio_target()
     read = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "search_records"),
+        point(manifest_points, "search_records", enforced_over_stdio=True),
         target,
         authenticated=True,
     )
     assert read.status == "fail"
     destructive = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "delete_record"),
+        point(manifest_points, "delete_record", enforced_over_stdio=True),
         target,
         authenticated=True,
     )
@@ -457,7 +491,7 @@ def test_a1_an_auth_shaped_tool_error_is_a_refusal_inside_the_tool(
     monkeypatch.setattr(authority, "call_tool", _tool_error(message))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -485,7 +519,7 @@ def test_a1_any_other_tool_error_means_the_tool_logic_was_reached(
     monkeypatch.setattr(authority, "call_tool", _tool_error(message))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -528,7 +562,7 @@ def test_a1_a_transport_error_on_the_call_is_not_verifiable(
     monkeypatch.setattr(authority, "call_tool", timed_out)
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide"),
+        point(manifest_points, "get_guide", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -543,7 +577,7 @@ def test_a1_an_unreachable_server_is_not_verifiable(
     for name in ("get_guide", "delete_record"):
         result = run_engine_check(
             "authority.anonymous",
-            point(manifest_points, name),
+            point(manifest_points, name, enforced_over_stdio=True),
             dead,
             authenticated=False,
         )
@@ -558,7 +592,7 @@ def test_a1_without_a_declaration_there_is_no_sentinel(
     monkeypatch.chdir(tmp_path)
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "fetch_record"),
+        point(manifest_points, "fetch_record", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )
@@ -573,7 +607,9 @@ def test_a1_an_unknown_class_is_never_called(
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "get_guide", mutation="unknown"),
+        point(
+            manifest_points, "get_guide", mutation="unknown", enforced_over_stdio=True
+        ),
         stdio_target(),
         authenticated=True,
     )
@@ -586,7 +622,7 @@ def test_a1_a_tool_hidden_from_the_anonymous_listing_is_not_called(
 ) -> None:
     calls: list[Any] = []
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
-    hidden = point(manifest_points, "get_guide")
+    hidden = point(manifest_points, "get_guide", enforced_over_stdio=True)
     hidden["target"] = "hidden_reader"
     result = run_engine_check(
         "authority.anonymous", hidden, stdio_target(), authenticated=True
@@ -605,7 +641,9 @@ def test_a1_the_stricter_of_recorded_and_live_class_decides(
     monkeypatch.setattr(authority, "call_tool", lambda *a, **k: calls.append(a))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "delete_record", mutation="read"),
+        point(
+            manifest_points, "delete_record", mutation="read", enforced_over_stdio=True
+        ),
         stdio_target(),
         authenticated=True,
     )
@@ -1080,7 +1118,7 @@ def test_a_credential_echoed_by_the_server_is_scrubbed(
     monkeypatch.chdir(write_project(tmp_path, manifest_points, declaration_text=text))
     result = run_engine_check(
         "authority.anonymous",
-        point(manifest_points, "fetch_record"),
+        point(manifest_points, "fetch_record", enforced_over_stdio=True),
         stdio_target(),
         authenticated=True,
     )

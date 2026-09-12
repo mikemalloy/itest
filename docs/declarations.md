@@ -52,6 +52,7 @@ auth:
   scheme: bearer                                 # none | bearer
   credential_env: REFERENCE_MCP_TOKEN            # a NAME, never a token
   second_tenant_env: REFERENCE_MCP_TOKEN_TENANT_B
+  enforced_over_stdio: false                     # default; see below
 
 tenancy:
   scoped_by: credential                          # credential | parameter | both
@@ -159,6 +160,26 @@ and the plan says what moved (`mutation: read → destructive (annotation)`).
 Under `detect` the flip is drift, and the checks the new class brings or drops
 show up as trait changes. With a declared class, a disagreement still refuses
 the plan exactly as above.
+
+### Over stdio, the process boundary is the authentication boundary
+
+A `stdio` server is a subprocess: whoever can launch it is authorised, and
+there is no anonymous caller for it to refuse. So the anonymous-refusal check
+(`authority.anonymous`) does not apply to a stdio server — unless its owner
+states that the server checks a credential of its own rather than trusting the
+spawn:
+
+```yaml
+auth:
+  enforced_over_stdio: true
+```
+
+That is a fact only the server's owner knows: nothing in a tool listing says
+whether the process read a token before answering. It defaults to `false`, and
+`false` withholds the check rather than producing a passing one. With `true`,
+every tool on the server gets the check, and a subprocess launched without the
+credential that still answers is a real finding. Over `http` the check always
+applies. [docs/checks.md](checks.md) has the reasoning.
 
 ### Absence grants nothing
 

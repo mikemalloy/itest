@@ -140,12 +140,36 @@ always                        every tool
 <field> == <value>            equality (none, true, false, integers and bare words are literals)
 <field> != <value>            inequality
 <field> in [<a>, <b>]         membership
-<A> and <B> and ...           every clause holds (there is no `or`)
+<A> and <B> and ...           every clause holds
+<A> or <B>                    either side holds
 ```
 
+`and` binds tighter than `or`, so `a and b or c` reads as `(a and b) or c`.
+There are no parentheses and no `not`: the grammar is deliberately the
+smallest that expresses the rows that ship, and a rule that needs more is a
+rule worth arguing about in a review. Every clause is evaluated — nothing
+short-circuits — so an unknown attribute anywhere in an expression is an
+error, never a clause that happened not to be reached.
+
 Fields: `mutation`, `egress`, `approval`, `active`, `has_free_form_input`,
-`auth.second_tenant_env`, `audit.sink`, `identity.runs_as`. Each one comes from
-the tool's point in the manifest; the last three are facts about the server.
+`auth.second_tenant_env`, `audit.sink`, `identity.runs_as`, `transport.kind`
+(`stdio` | `http`) and `auth.enforced_over_stdio` (a boolean, default false).
+Each one comes from the tool's point in the manifest; the last five are facts
+about the server, copied onto each of its points at plan time.
+
+The one row that uses `or` is `authority.anonymous`:
+
+```
+applies_when: transport.kind == http or auth.enforced_over_stdio
+```
+
+Over stdio the process boundary *is* the authentication boundary — whoever can
+spawn the subprocess is authorised — so there is no anonymous caller to refuse
+unless the server checks a credential of its own. A plain stdio server gets
+**no** anonymous check: not a passing one, not a failing one, not a
+`not_verifiable` one. `itest traits --for <server>/<tool>` prints
+`does not apply` with that rule beside it, so the absence is explained rather
+than looking forgotten. [docs/checks.md](checks.md) says why in full.
 
 A per-tool `traits:` list in the declaration replaces the table for that tool.
 `[none-of-these]` withholds every check, and it requires `notes`. `active: false`

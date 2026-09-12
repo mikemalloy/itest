@@ -1,8 +1,8 @@
 reference-mcp/delete_record: destructive (detected) [approval confirm_param]
   id=49dc4907b3ff  declared in .itest/tools/reference-mcp.yaml
-  12 of 14 traits apply (table d6ca53720c12), decided from the manifest's recorded attributes.
+  11 of 14 traits apply (table 6460a7f4488e), decided from the manifest's recorded attributes.
 
-  APPLIES          authority.anonymous                 AUTH-1     refuses anonymous            engine     readonly  rule: always                                                        ASI03, LLM02, semgrep-server-4
+  does not apply   authority.anonymous                 AUTH-1     refuses anonymous            engine     readonly  rule: transport.kind == http or auth.enforced_over_stdio            ASI03, LLM02, semgrep-server-4
   APPLIES          authority.tenant_isolation          AUTH-2     tenant isolation             generated  active    rule: auth.second_tenant_env present and mutation != informational  —
   APPLIES          authority.backing_least_privilege   AUTH-3     acts as declared identity    generated  active    rule: identity.runs_as present                                      —
   does not apply   authority.delegation                AUTH-4     caller identity passthrough  generated  active    rule: identity.runs_as == passthrough                               —

@@ -38,6 +38,8 @@ CONTEXT = {
     "auth.second_tenant_env": "TENANT_B",
     "audit.sink": "stderr-json",
     "identity.runs_as": "service",
+    "transport.kind": "stdio",
+    "auth.enforced_over_stdio": False,
 }
 
 
@@ -136,9 +138,10 @@ def test_every_shipped_expression_evaluates() -> None:
 
 
 def test_an_informational_tool_gets_only_the_always_traits() -> None:
+    """Over stdio, with no declared credential check of its own, the anonymous
+    trait is not among them: there is no anonymous caller."""
     context = dict(CONTEXT, mutation="informational", has_free_form_input=False)
     assert [t.id for t in applicable(load_traits(), context)] == [
-        "authority.anonymous",
         "authority.backing_least_privilege",
         "blast.mutation_class",
         "change.inventory",
@@ -199,11 +202,50 @@ def test_an_empty_expression_is_an_error() -> None:
         evaluate("   ", CONTEXT)
 
 
-def test_there_is_no_or_and_it_says_so() -> None:
-    """Only conjunction ships. An `or` is read as part of a clause and refused,
-    rather than silently meaning something else."""
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("mutation == write or mutation == read", True),
+        ("mutation == read or mutation == destructive", False),
+        ("mutation == read or egress present or active", True),
+        # `and` binds tighter than `or`: (a and b) or c.
+        ("mutation == read and active or audit.sink present", True),
+        ("mutation == write and egress present or mutation == read", False),
+        ("egress present or mutation == write and active", True),
+        ("egress present or mutation == write and egress present", False),
+    ],
+)
+def test_or_is_a_disjunction_with_lower_precedence_than_and(
+    expression: str, expected: bool
+) -> None:
+    assert evaluate(expression, CONTEXT) is expected
+
+
+def test_or_renders_canonically_and_names_every_attribute() -> None:
+    from itest.core.declarations.traits import (
+        canonical_expression,
+        referenced_attributes,
+    )
+
+    text = "mutation==read  and   active or  audit.sink present"
+    assert canonical_expression(text) == (
+        "mutation == read and active or audit.sink present"
+    )
+    assert referenced_attributes(text) == ["mutation", "active", "audit.sink"]
+
+
+def test_an_unknown_attribute_in_any_disjunct_is_an_error() -> None:
+    """A typo on the far side of an `or` must not read as a false clause."""
+    with pytest.raises(TraitTableError) as excinfo:
+        evaluate("mutation == read or mutatoin == write", CONTEXT)
+    assert "mutatoin" in str(excinfo.value)
+
+
+def test_a_dangling_or_is_an_error() -> None:
     with pytest.raises(TraitTableError):
-        evaluate("mutation == write or mutation == read", CONTEXT)
+        evaluate("mutation == read or", CONTEXT)
+    with pytest.raises(TraitTableError):
+        evaluate("or mutation == read", CONTEXT)
 
 
 # --- loading a table ----------------------------------------------------------
@@ -482,3 +524,26 @@ def test_agreement_is_recorded_as_confirmed() -> None:
         "read",
         "confirmed",
     )
+
+
+def test_the_transport_and_stdio_enforcement_are_attributes() -> None:
+    """Two facts the authority.anonymous rule turns on: how the server is
+    reached, and whether a stdio server checks a credential of its own."""
+    from itest.core.declarations.traits import trait_context
+    from itest.core.manifest import IntegrationPoint
+
+    point = IntegrationPoint(
+        id="x",
+        type="mcp_tool",
+        source="s",
+        target="t",
+        attributes={"transport_kind": "stdio", "enforced_over_stdio": True},
+        hcl_address="h",
+        first_seen="2026-01-01T00:00:00Z",
+        last_seen="2026-01-01T00:00:00Z",
+    )
+    context = trait_context(point)
+    assert context["transport.kind"] == "stdio"
+    assert context["auth.enforced_over_stdio"] is True
+    assert "transport.kind" in KNOWN_ATTRIBUTES
+    assert "auth.enforced_over_stdio" in KNOWN_ATTRIBUTES
