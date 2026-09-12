@@ -108,6 +108,12 @@ class Transport(Strict):
     #: ``kind: http``. Present alongside a stdio command when the same server
     #: can also be probed over HTTP.
     url_env: str | None = None
+    #: Let an ``http`` url on a loopback, link-local, RFC1918 or unique-local
+    #: host be probed. The private-host guard is the SSRF rule and stays on by
+    #: default; this exists for a local reference or test server and nothing
+    #: else — a real deployment never needs it, and a declaration that sets it
+    #: is named in every plan so it is never silent.
+    allow_private_hosts: bool = False
 
     @field_validator("url_env")
     @classmethod

@@ -122,6 +122,11 @@ class Changeset(BaseModel):
     orphaned_tool_overrides: list[OrphanedOverride] = Field(default_factory=list)
     #: Declared servers that could not be asked, by server name.
     unreachable_servers: dict[str, str] = Field(default_factory=dict)
+    #: Declared servers whose transport opted into a private host
+    #: (``transport.allow_private_hosts: true``). Named in every plan so the
+    #: loosened guard is never silent; expected only for a local reference or
+    #: test server.
+    private_hosts_allowed: list[str] = Field(default_factory=list)
     #: The manifest's points for an unreachable server, carried forward exactly
     #: as last recorded. No evidence is not evidence of absence: a server ITest
     #: could not ask has not lost its tools, so neither its points nor the tests
@@ -522,10 +527,12 @@ def plan_traits(changeset: Changeset, manifest: Manifest | None) -> None:
 
 def plan_declarations(
     base_dir: Path,
-) -> tuple[list[IntegrationPoint], list[OrphanedOverride], dict[str, str]]:
+) -> tuple[list[IntegrationPoint], list[OrphanedOverride], dict[str, str], list[str]]:
     """Ask every declared server for its tools and build its points.
 
-    Returns ``(points, orphaned_overrides, unreachable)``. Raises on a problem
+    Returns ``(points, orphaned_overrides, unreachable, private_hosts_allowed)``
+    — the last being the servers whose declaration opted into a private host,
+    named so the plan can say so. Raises on a problem
     with a declaration itself — a mutation-class conflict, a trait the table
     cannot place, a malformed file — because those are statements ITest cannot
     act on. A server it merely cannot *reach* is reported, not raised.
@@ -545,14 +552,17 @@ def plan_declarations(
 
     declarations = load_declarations(base_dir)
     if not declarations:
-        return [], [], {}
+        return [], [], {}, []
 
     table = load_traits()
     points: list[IntegrationPoint] = []
     orphaned: list[OrphanedOverride] = []
     unreachable: dict[str, str] = {}
+    private_hosts: list[str] = []
 
     for declaration in declarations:
+        if declaration.transport.allow_private_hosts:
+            private_hosts.append(declaration.server)
         target = declared_tools.build_target(declaration, base_dir)
         if target is None:
             # An http server whose url variable is unset. The NAME is safe to
@@ -573,7 +583,7 @@ def plan_declarations(
             )
             for name in declared_tools.orphaned_overrides(declaration, live)
         )
-    return points, orphaned, unreachable
+    return points, orphaned, unreachable, private_hosts
 
 
 def run_plan(tf_json: Path | None, base_dir: Path) -> Changeset:
@@ -585,7 +595,9 @@ def run_plan(tf_json: Path | None, base_dir: Path) -> Changeset:
     """
     plan_json = load_plan_json(tf_json, base_dir)
     points, unanalyzed = detect_all(plan_json)
-    declared, orphaned_overrides, unreachable = plan_declarations(base_dir)
+    declared, orphaned_overrides, unreachable, private_hosts = plan_declarations(
+        base_dir
+    )
     points = points + declared
 
     mpath = manifest_path(base_dir)
@@ -616,6 +628,7 @@ def run_plan(tf_json: Path | None, base_dir: Path) -> Changeset:
     )
     changeset.orphaned_tool_overrides = orphaned_overrides
     changeset.unreachable_servers = unreachable
+    changeset.private_hosts_allowed = private_hosts
     plan_traits(changeset, manifest)
 
     itest_dir = base_dir / ITEST_DIR
@@ -727,6 +740,22 @@ def render_changeset(changeset: Changeset) -> str:
         for override in changeset.orphaned_tool_overrides:
             out.append(f"  ~ {override.server}/{override.tool}")
             out.append(f"      declared in {override.declaration}, not in tools/list")
+        out.append("")
+
+    # Append-only: a declaration that loosened the private-host guard. Named
+    # every time, so a reviewer sees it in the plan as well as in the file.
+    if changeset.private_hosts_allowed:
+        out.append(
+            "Private hosts allowed by declaration "
+            f"({len(changeset.private_hosts_allowed)}):"
+        )
+        for server in changeset.private_hosts_allowed:
+            out.append(f"  ! {server}")
+            out.append(
+                "      private hosts allowed by declaration "
+                "(transport.allow_private_hosts: true): a loopback or private "
+                "url is probed. Expected only for a local reference or test server."
+            )
         out.append("")
 
     # Append-only: a declared server that could not be asked. A line, never a

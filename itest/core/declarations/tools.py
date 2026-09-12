@@ -117,7 +117,14 @@ def build_target(
     url = resolve_url(declaration, base_dir)
     if not url:
         return None
-    return McpTarget(kind="http", url=url, credential_env=credential_env)
+    return McpTarget(
+        kind="http",
+        url=url,
+        credential_env=credential_env,
+        # The declaration's opt-in, for a local reference or test server. The
+        # plan names every server that sets it.
+        allow_private_hosts=transport.allow_private_hosts,
+    )
 
 
 def annotations_hash(annotations: dict[str, Any] | None) -> str:

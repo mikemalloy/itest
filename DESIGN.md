@@ -550,6 +550,14 @@ Shipped:
   reason from the shipped `itest/traits/standards.yaml`. A "Standards" band on
   the readiness page beside the untouched families grid, and `itest standards
   [--from verify.json] [--json]`, reading only the ledger and the catalogue.
+- `transport.allow_private_hosts` (`docs/declarations.md`): a declaration's
+  opt-in to the private-host guard for a local reference or test server,
+  plumbed to `McpTarget` and named in every plan ("Private hosts allowed by
+  declaration"). `examples/reference-mcp` ships a second, deliberately
+  defective declaration for the server's unguarded HTTP mount
+  (`reference-mcp-open.yaml`, url by name, no auth scheme) and its README
+  documents the two-terminal demo; a stdio-only run passes
+  `--allow-unreachable` for the mount whose url is unset.
 - `itest report --environment`: the report's own verify runs in the
   environment given, with verify's resolution and refusals. `--out` is the
   file-path flag on report and redact; `report --output` is a deprecated alias

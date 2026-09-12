@@ -47,6 +47,7 @@ transport:
   kind: stdio                                    # stdio | http
   command: [python, server.py]                   # launched in the project directory
   url_env: REFERENCE_MCP_URL                     # a NAME, never a URL
+  allow_private_hosts: false                     # default; see below
 
 auth:
   scheme: bearer                                 # none | bearer
@@ -160,6 +161,21 @@ and the plan says what moved (`mutation: read → destructive (annotation)`).
 Under `detect` the flip is drift, and the checks the new class brings or drops
 show up as trait changes. With a declared class, a disagreement still refuses
 the plan exactly as above.
+
+### A private host is refused unless the declaration says otherwise
+
+An `http` url is checked against the private-host guard before any connection:
+loopback, link-local (the metadata endpoint included), RFC1918 and IPv6
+unique-local are refused, literal or resolved. That is the SSRF rule, and it
+stays on. `transport.allow_private_hosts: true` is the one opt-in, and it
+exists for a local reference or test server — the reference server's HTTP
+mounts on a loopback port, say. A real deployment never needs it. A
+declaration that sets it should be visible in review, and it is never silent
+in the plan either: every plan lists such a server under "Private hosts
+allowed by declaration". It loosens the host rule only; a scheme other than
+http/https is refused either way.
+[`examples/reference-mcp/.itest/tools/reference-mcp-open.yaml`](../examples/reference-mcp/.itest/tools/reference-mcp-open.yaml)
+is the deliberately defective example that uses it.
 
 ### Over stdio, the process boundary is the authentication boundary
 

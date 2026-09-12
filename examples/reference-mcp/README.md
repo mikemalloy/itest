@@ -71,36 +71,86 @@ The bearer token comes from `REFERENCE_MCP_TOKEN`, defaulting to
 `reference-token` when unset. That constant is an example's convenience, not a
 product default — this server exists to be probed on loopback.
 
-## Running ITest against it
+## Running ITest against it: the two-terminal demo
 
-The directory is an ITest project as shipped: a declaration
-(`.itest/tools/reference-mcp.yaml`) and the environment policy it needs
-(`.itest/environments.yaml`). There is no Terraform here, and none is needed —
-a declarations-only project plans its tools without it. From this directory,
-with ITest installed (`pip install -e '.[examples]'` at the repo root):
+The directory is an ITest project as shipped: **two** declarations and the
+environment policy they need (`.itest/environments.yaml`). There is no
+Terraform here, and none is needed — a declarations-only project plans its
+tools without it.
+
+- `.itest/tools/reference-mcp.yaml` — the server over **stdio**, launched as a
+  subprocess. Whoever can launch it is authorised, so this declaration gets no
+  `authority.anonymous` check.
+- `.itest/tools/reference-mcp-open.yaml` — the server's **unguarded HTTP
+  mount**, declared with no auth scheme and `transport.allow_private_hosts:
+  true` so the loopback url is accepted. A deliberately defective example, not
+  a template: this is where an anonymous caller is a real thing, and where the
+  anonymous-refusal check has something to catch.
+
+With ITest installed (`pip install -e '.[examples]'` at the repo root), in
+**terminal one**, from this directory:
 
 ```sh
-export REFERENCE_MCP_TOKEN=dry-run-token   # a name the declaration reads; any value
-itest plan                                  # eight tools, no --tf-json
+python server.py --http --port 8000
+#   POST http://127.0.0.1:8000/mcp       -> 401 without the bearer token
+#   POST http://127.0.0.1:8000/open/mcp  -> served to anyone (the hole)
+```
+
+In **terminal two**, also from this directory:
+
+```sh
+export REFERENCE_MCP_TOKEN=dry-run-token                   # names, never values
+export REFERENCE_MCP_OPEN_URL=http://127.0.0.1:8000/open/mcp
+itest plan                                  # eight tools on each server, no --tf-json
 itest sync                                  # engine modules, bindings, your conftest.py
 itest verify --environment staging          # staging permits the active tier
 itest report --html --environment staging --out readiness.html
+itest verify --environment staging --output json | itest standards   # the OWASP lens
 ```
 
-The declaration's `[python, server.py]` launches `server.py` from this
+The plan names the open mount under "Private hosts allowed by declaration",
+every time: the private-host guard is the SSRF rule, and a declaration that
+loosens it must never be silent.
+
+**Stdio only.** Without terminal one, `REFERENCE_MCP_OPEN_URL` is unset, so
+plan reports `reference-mcp-open` as unreachable and `itest sync` refuses to
+write until you accept the gap:
+
+```sh
+export REFERENCE_MCP_TOKEN=dry-run-token
+itest sync --allow-unreachable              # the stdio server alone: eight tools
+itest verify --environment staging
+```
+
+The stdio declaration's `[python, server.py]` launches `server.py` from this
 directory under the interpreter ITest runs in, whatever directory you start
 from. Nothing generated here is meant to be committed: `.itest/manifest.yaml`,
 `.itest/plan.json` and `itest_tests/` are what a real project would keep, and
 here they are output from trying it out.
 
-What to expect, and why: over stdio there is **no `authority.anonymous` cell
-at all**. The server is a subprocess, so whoever can launch it is authorised —
-the process boundary is the authentication boundary, and there is no anonymous
-caller to refuse. The trait's rule (`transport.kind == http or
-auth.enforced_over_stdio`) keeps it off a stdio server that does not claim a
-credential check of its own; `itest traits --for reference-mcp/get_guide`
-prints `does not apply` with that rule beside it. The check comes back on the
-HTTP mounts (below), where an anonymous caller is a real thing.
+### What each mount is expected to produce
+
+**`reference-mcp` (stdio).** No `authority.anonymous` cell at all. The server
+is a subprocess, so whoever can launch it is authorised — the process boundary
+is the authentication boundary, and there is no anonymous caller to refuse.
+The trait's rule (`transport.kind == http or auth.enforced_over_stdio`) keeps
+it off a stdio server that does not claim a credential check of its own;
+`itest traits --for reference-mcp/get_guide` prints `does not apply` with that
+rule beside it. The listing checks (`blast.mutation_class`, the three `change`
+checks) pass on every tool; the generated bindings wait on the fixtures in
+your `conftest.py` and read `NOT RUN`; nothing fails.
+
+**`reference-mcp-open` (the unguarded HTTP mount).** `authority.anonymous`
+applies to every tool. The five read tools **fail** it — an anonymous
+`tools/call` answered — and the three mutating tools are `not_verifiable`,
+deferred to the active tier (a listing is not a call, and the readonly check
+never says `critical`). The page reads **BLOCKED**, which is the truth about
+an MCP server mounted without authentication, and every cell carries the
+published id it answers (ASI03, CWE-306 …).
+
+`lookalike_read` passes the readonly mutation-class check on both mounts by
+design; only the active-tier observed check can catch it (see the tool table
+above).
 
 ## Why a reference server has to exist
 

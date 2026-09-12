@@ -1,0 +1,42 @@
+# THIS IS A DELIBERATELY DEFECTIVE EXAMPLE — NOT A TEMPLATE.
+#
+# It declares the reference server's UNGUARDED HTTP mount (`server.py --http`
+# serves `/open/mcp` with no authentication at all). An MCP server mounted
+# without authentication is the defect this file exists to demonstrate: over a
+# network transport an anonymous caller is a real thing, so every tool here
+# gets the `authority.anonymous` check, and the read tools FAIL it on purpose —
+# that is the catch being shown, on a stage that is allowed to be broken.
+#
+# Do not copy this shape for a real server. A real declaration names an auth
+# scheme and never sets `allow_private_hosts`.
+#
+# The same facts-in rules apply: the URL is named (REFERENCE_MCP_OPEN_URL),
+# never written. See README.md for the two-terminal demo.
+server: reference-mcp-open
+
+transport:
+  kind: http
+  # A NAME, never a URL. Export it after starting `python server.py --http`:
+  #   export REFERENCE_MCP_OPEN_URL=http://127.0.0.1:8000/open/mcp
+  url_env: REFERENCE_MCP_OPEN_URL
+  # The mount is on loopback, which the private-host (SSRF) guard refuses by
+  # default. This opt-in exists for a local reference or test server like this
+  # one and for nothing else; every plan names a server that sets it.
+  allow_private_hosts: true
+
+# No auth block: the open mount has no scheme and takes no credential. That
+# absence is the defect, stated rather than hidden.
+
+sentinels:
+  # The same sentinels as reference-mcp.yaml: an id no record can have, and a
+  # record that exists and is safe to read.
+  nonexistent_id: sentinel-cannot-exist-0000
+  readable_record: r-1
+
+environments:
+  active_allowed_in: [staging]
+
+defaults:
+  mutation: detect
+  egress: none
+  active: true
