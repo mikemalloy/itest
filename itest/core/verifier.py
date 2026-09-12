@@ -895,7 +895,15 @@ def build_tool_ledger(
                 "exceptions": exceptions,
             }
         )
-    return {"servers": servers}
+    # The standards lens: one entry per published id any check cites, plus
+    # every OWASP Agentic entry nothing cites, as not covered. Derived here,
+    # from the rows above, so it can never drift from them.
+    from itest.traits.standards import standards_rollup
+
+    cited = [
+        c for server in servers for tool in server["tools"] for c in tool["checks"]
+    ]
+    return {"servers": servers, "standards": standards_rollup(cited)}
 
 
 _STATUS_TAG = {

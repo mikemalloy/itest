@@ -529,6 +529,64 @@ def _trait_header(slug: str, check) -> dict:
     }
 
 
+#: Status -> the class of its segment in the band's compact bar.
+_STANDARDS_BAR = {
+    "pass": "ok",
+    "fail": "bad",
+    "critical": "bad",
+    "changed": "warn",
+    "not_verifiable": "none",
+    "not_applicable": "none",
+    "held_out": "none",
+    "not_run": "none",
+}
+
+_COVERAGE_LABEL = {
+    "covered": "covered",
+    "partial": "partial",
+    "not_covered": "not covered",
+}
+
+
+def _standards_block(page: Page) -> dict:
+    """The Standards band: one row per OWASP Agentic entry, the status counts
+    as a compact bar, and covered / partial / not covered stated plainly. An
+    uncovered row is quiet — a scope statement, not a finding. The families
+    grid beside it is untouched: standards are a lens, not the structure."""
+    empty = "No agent tools declared, so there is nothing to see through a standard."
+    if page.tools is None:
+        return {"eyebrow": "", "rows": [], "empty": empty}
+    rows = []
+    for entry in page.tools.standards:
+        if entry.framework != "ASI":
+            continue
+        bar = [
+            {"l": status, "n": count, "cls": _STANDARDS_BAR.get(status, "none")}
+            for status, count in entry.statuses.items()
+            if count
+        ]
+        rows.append(
+            {
+                "id": entry.id,
+                "title": entry.title,
+                "coverage": entry.coverage,
+                "label": _COVERAGE_LABEL.get(entry.coverage, entry.coverage),
+                "quiet": entry.coverage == "not_covered",
+                "checks": entry.checks,
+                "bar": bar,
+                "note": entry.note or "",
+            }
+        )
+    covered = sum(1 for r in rows if r["coverage"] == "covered")
+    partial = sum(1 for r in rows if r["coverage"] == "partial")
+    eyebrow = (
+        f"OWASP Top 10 for Agentic Applications (ASI) · {covered} covered"
+        + (f", {partial} partial" if partial else "")
+        + f", {len(rows) - covered - partial} not covered"
+    )
+    return {"eyebrow": eyebrow, "rows": rows, "empty": "" if rows else empty}
+
+
 def _attention(ledger) -> list[str]:
     """One line per server whose checks need a human: "3 hand-edited, 1 stale"."""
     lines = []
@@ -744,6 +802,7 @@ def build_blocks(page: Page) -> dict[str, object]:
                 "since": f"since {page.since}" if page.since else "",
             },
             "toolBand": _tool_band(page),
+            "standards": _standards_block(page),
             "tools": tool_labels,
             "api": api_labels,
             "graph": graph_labels,

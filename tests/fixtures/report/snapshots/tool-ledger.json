@@ -108,6 +108,146 @@
       "since": "",
       "toolsMeta": "reference-mcp \u00b7 staging"
     },
+    "standards": {
+      "empty": "",
+      "eyebrow": "OWASP Top 10 for Agentic Applications (ASI) \u00b7 3 covered, 7 not covered",
+      "rows": [
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 1
+            },
+            {
+              "cls": "warn",
+              "l": "changed",
+              "n": 1
+            }
+          ],
+          "checks": 2,
+          "coverage": "not_covered",
+          "id": "ASI01",
+          "label": "not covered",
+          "note": "model-behaviour risk; ITest asserts boundaries, not judgment (but see change.description_drift, which is goal-hijack surface)",
+          "quiet": true,
+          "title": "Agent Goal Hijack"
+        },
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 1
+            }
+          ],
+          "checks": 1,
+          "coverage": "covered",
+          "id": "ASI02",
+          "label": "covered",
+          "note": "",
+          "quiet": false,
+          "title": "Tool Misuse"
+        },
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 2
+            }
+          ],
+          "checks": 2,
+          "coverage": "covered",
+          "id": "ASI03",
+          "label": "covered",
+          "note": "",
+          "quiet": false,
+          "title": "Identity & Privilege Abuse"
+        },
+        {
+          "bar": [
+            {
+              "cls": "ok",
+              "l": "pass",
+              "n": 2
+            },
+            {
+              "cls": "warn",
+              "l": "changed",
+              "n": 1
+            }
+          ],
+          "checks": 3,
+          "coverage": "covered",
+          "id": "ASI04",
+          "label": "covered",
+          "note": "",
+          "quiet": false,
+          "title": "Agentic Supply Chain Vulnerabilities"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI05",
+          "label": "not covered",
+          "note": "no check in this run cites it",
+          "quiet": true,
+          "title": "Unexpected Code Execution"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI06",
+          "label": "not covered",
+          "note": "model-behaviour risk",
+          "quiet": true,
+          "title": "Memory & Context Poisoning"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI07",
+          "label": "not covered",
+          "note": "multi-agent transport, out of scope",
+          "quiet": true,
+          "title": "Insecure Inter-Agent Communication"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI08",
+          "label": "not covered",
+          "note": "system-level behaviour, out of scope",
+          "quiet": true,
+          "title": "Cascading Failures"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI09",
+          "label": "not covered",
+          "note": "not covered as a check; ITest's own answer is that a report never overstates: stale blocks VERIFIED",
+          "quiet": true,
+          "title": "Human-Agent Trust Exploitation"
+        },
+        {
+          "bar": [],
+          "checks": 0,
+          "coverage": "not_covered",
+          "id": "ASI10",
+          "label": "not covered",
+          "note": "model-behaviour risk",
+          "quiet": true,
+          "title": "Rogue Agents"
+        }
+      ]
+    },
     "toolBand": {
       "cls": "risk",
       "review": "1 change to review",

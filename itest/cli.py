@@ -519,6 +519,60 @@ def recipes(
 
 
 @app.command()
+def standards(
+    # B008: see the note on `plan` above — typer requires the call here.
+    from_json: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--from",
+        help=(
+            "A `verify --output json` document. Reads stdin when omitted, so "
+            "`itest verify --output json | itest standards` works."
+        ),
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the rollup as JSON."),
+) -> None:
+    """Show this run's tool checks through the published standards they answer."""
+    from itest.traits.standards import (
+        StandardsCatalogError,
+        render_rollup,
+        rollup_for_ledger,
+    )
+
+    if from_json is None:
+        if sys.stdin.isatty():
+            echo(
+                "Pass --from <verify --output json document>, or pipe one in: "
+                "`itest verify --output json | itest standards`. No server is "
+                "contacted; only the ledger and the shipped standards list are read.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        raw = sys.stdin.read()
+        source = "<stdin>"
+    else:
+        if not from_json.exists():
+            echo(f"No verify JSON found at {from_json}.", err=True)
+            raise typer.Exit(code=2)
+        raw = from_json.read_text(encoding="utf-8")
+        source = str(from_json)
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        echo(f"{source} is not valid JSON: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+    ledger = document.get("tools") if isinstance(document, dict) else None
+    try:
+        rollup = rollup_for_ledger(ledger)
+    except StandardsCatalogError as exc:
+        echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    if as_json:
+        typer.echo(json.dumps(rollup, indent=2))
+    else:
+        echo(render_rollup(rollup, ledger))
+
+
+@app.command()
 def redact(
     # B008: see the note on `plan` above — typer requires the call here.
     input_path: Path | None = typer.Argument(  # noqa: B008

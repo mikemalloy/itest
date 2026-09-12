@@ -543,6 +543,13 @@ Shipped:
   prefix naming the value. Shown in `itest traits`, carried on every ledger
   check, and on the readiness page as the first id beside each trait's slug
   with the full list in the cell's detail.
+- The standards view (`docs/traits.md`): `tools.standards[]` in the ledger —
+  one entry per published id any check cites, with counts by status, derived
+  at emit time from the checks and never a second list — plus every OWASP
+  Agentic entry ITest does not cite, rendered `not_covered` with a one-line
+  reason from the shipped `itest/traits/standards.yaml`. A "Standards" band on
+  the readiness page beside the untouched families grid, and `itest standards
+  [--from verify.json] [--json]`, reading only the ledger and the catalogue.
 - `itest report --environment`: the report's own verify runs in the
   environment given, with verify's resolution and refusals. `--out` is the
   file-path flag on report and redact; `report --output` is a deprecated alias

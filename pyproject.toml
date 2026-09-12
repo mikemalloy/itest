@@ -61,7 +61,7 @@ include = ["itest*"]
 # Data the engine reads at run time through importlib.resources. Not Python, so
 # setuptools leaves it out of a wheel unless it is named here.
 [tool.setuptools.package-data]
-"itest.traits" = ["traits.yaml"]
+"itest.traits" = ["traits.yaml", "standards.yaml"]
 "itest.report" = ["templates/*.html"]
 
 [tool.ruff]

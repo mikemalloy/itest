@@ -281,7 +281,45 @@ itest traits --for <server>/<tool>      # every trait decided for one tool: APPL
 itest traits --json                     # either of the above as JSON
 itest recipes [--recipes-dir DIR]       # every recipe the table names: path, present/missing, traits
 itest recipes --json
+itest standards --from verify.json      # this run's checks through the published standards
+itest standards --json                  # the rollup as JSON (reads stdin when --from is omitted)
 ```
+
+## The standards view
+
+A security reader wants to see the report through the framework they already
+report against. The families stay the skeleton — a clean partition that carries
+the tier semantics and never gets renumbered when OWASP publishes an edition —
+and a trait maps to *several* ids, so standards cannot be the structure. They
+are a **second lens** over the same checks:
+
+- **In the ledger.** `itest verify --output json` emits `tools.standards[]`
+  beside `tools.servers[]`: one entry per published id any check in the run
+  cites — `id`, `title`, `framework`, `coverage`, `note`, `checks`, and
+  `statuses` (pass / fail / critical / changed / not_verifiable /
+  not_applicable / held_out / not_run). It is derived at emit time from the
+  checks themselves, never from a hand-maintained second list, so the two
+  cannot drift.
+- **What is not covered, named.** `itest/traits/standards.yaml` ships the full
+  OWASP Agentic list (ASI01–ASI10) and the LLM list (LLM01–LLM10) with their
+  titles. Every ASI entry appears in the rollup: cited ones carry their
+  counts; uncited ones read `not_covered` with a one-line reason
+  (model-behaviour risk, multi-agent transport out of scope, …). ASI05 is
+  `partial` — `containment.expression_passthrough` probes the boundary; static
+  analysis finds the code path — and ASI01 stays `not_covered` even though
+  `change.description_drift` cites it, because goal hijack is a
+  model-behaviour risk and ITest asserts boundaries, not judgment. Coverage is
+  a statement about *this run's evidence*: a covered id nothing in the run
+  cites reads `not_covered` too. LLM ids appear only where a check cites them;
+  that list is a neighbouring framework, not ITest's coverage claim.
+- **On the page.** A "Standards" band sits under the tool posture tiles: one
+  row per ASI entry, the status counts as a compact bar, and covered / partial
+  / not covered stated plainly. Uncovered rows are present and quiet — a scope
+  statement, not a finding. The families grid beside it is unchanged.
+- **In the terminal.** `itest standards` prints the same rollup from a
+  `verify --output json` document (`--from`, or stdin), with `--json` for the
+  list exactly as the ledger carries it. It reads only the ledger and the
+  shipped catalogue; no server is contacted.
 
 Both commands read only the manifest and the table; no server is contacted.
 `--for` decides from the attributes the manifest recorded. It says so when the
