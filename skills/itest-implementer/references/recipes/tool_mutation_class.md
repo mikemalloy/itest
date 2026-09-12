@@ -157,7 +157,7 @@ reports the store's size, which is why the reference declaration names it).
 
 | status | means |
 |---|---|
-| `critical` | The snapshots differ. The detail names the tool, its claimed class, what claimed it (`annotation readOnlyHint`, or `name get_*`), the snapshot tool, both hashes and what changed. An agent has been told this tool is safe to call freely. |
+| `critical` | The snapshots differ. The detail names the tool, its claimed class, what claimed it (`annotation readOnlyHint`, or `name get_*`), the snapshot tool, the sizes, how many paths changed and which (bounded), and both hashes — never a value. An agent has been told this tool is safe to call freely. |
 | `pass` | No observable change through the snapshot tool after one sentinel call. |
 | `not_verifiable` | No `observation.snapshot_tool` declared (never a pass); the snapshot tool is not listed, is not a read tool, or answered with an error; the tool is not listed or has no sentinel form; the session was refused or failed; or the tool's class is write, destructive or unknown — the check never calls those, and nothing is opened. |
 
@@ -170,6 +170,30 @@ The single-session path it uses has **no mutation opt-in at all**: a write or
 destructive class anywhere in the sequence refuses the whole sequence before
 anything is opened.
 
+### Evidence never carries raw application data
+
+A snapshot view is the server's data: it can hold customer records, tenant
+data or PII. A `CheckResult`'s detail flows into verify JSON, the failing-test
+traceback and the rendered report, and none of those is reached by the
+credential scrubber — it removes tokens and account ids, not a customer's
+email. So the two views are **compared in memory and never persisted**. What
+a result carries is structure only:
+
+- the before and after **hashes** (over the canonical view);
+- the before and after **sizes** (the number of scalar values in the view);
+- a **bounded list of changed field names or paths** (`customers[1].email`,
+  `total`; at most ten, and `changed_paths_truncated` says when there were
+  more, with the full count in `changed_paths_total`).
+
+The detail follows the same rule. `'search_records': 3 -> 4 values, 2
+path(s) changed (ids[0], total) (before 50389d988895, after aba90f872549)` is
+what it says; the id that was added is not in it, and the tool's own answer
+(which a server can echo data into) is not quoted either. A test with a
+snapshot tool that returns obviously sensitive content asserts that none of
+it appears in the result, the verify JSON or the page. A field *name* is
+treated as structure: if your snapshot tool keys a mapping by customer id,
+choose a projection that does not.
+
 ### Evidence fields
 
 | field | meaning |
@@ -177,7 +201,8 @@ anything is opened.
 | `snapshot_tool` | The declared read tool state was observed through. |
 | `claimed`, `claimed_by` | The class the tool claims, and what claimed it. |
 | `arguments`, `called`, `call_status` | What the tool was called with, whether it was, and how it answered (`ok`, or `error` for a tool error — it ran either way). |
-| `before`, `after` | `{hash, view}` of each snapshot. |
+| `before`, `after` | `{hash, size}` of each snapshot. Never the view. |
+| `changed_paths`, `changed_paths_total`, `changed_paths_truncated` | The changed field names or paths (at most ten), how many there were, and whether the list was cut. |
 
 ### What the reviewer does with a `critical`
 

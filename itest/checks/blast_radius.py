@@ -53,6 +53,11 @@ NO_SNAPSHOT_TOOL = (
 #: Strictness order for "the stricter of the recorded and the live class".
 _RANK = {"informational": 0, "read": 1, "unknown": 2, "write": 3, "destructive": 4}
 
+#: How many changed paths a result names. A snapshot view can hold customer
+#: records, tenant data or PII, so a result carries structure only — hashes,
+#: sizes, field names or paths — and even the path list is bounded.
+CHANGED_PATHS_CAP = 10
+
 #: Manifest provenance values that mean the declaration stated the class.
 _DECLARED = frozenset({"confirmed", "declared"})
 
@@ -242,26 +247,63 @@ def _view(result: Any) -> Any:
     return parsed[0] if len(parsed) == 1 else parsed
 
 
-def _snapshot(result: Any) -> dict[str, Any]:
+def _leaves(view: Any, path: str = "") -> dict[str, Any]:
+    """Every scalar in ``view`` by its path (``customers[1].email``)."""
+    if isinstance(view, dict):
+        out: dict[str, Any] = {}
+        for key in sorted(view, key=str):
+            out.update(_leaves(view[key], f"{path}.{key}" if path else str(key)))
+        return out
+    if isinstance(view, list):
+        out = {}
+        for index, item in enumerate(view):
+            out.update(_leaves(item, f"{path}[{index}]"))
+        return out
+    return {path or "$": view}
+
+
+def _snapshot(result: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``(summary, leaves)``: what persists, and what is compared in memory.
+
+    The summary is structure only — a hash of the canonical view and the
+    number of scalar values in it. The view itself never leaves this module:
+    it can hold customer records, tenant data or PII, and a result's detail
+    flows into verify JSON and the rendered report.
+    """
     view = _view(result)
     canonical = json.dumps(view, sort_keys=True, separators=(",", ":"), default=str)
-    return {
+    leaves = _leaves(view)
+    summary = {
         "hash": hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12],
-        "view": view,
+        "size": len(leaves),
     }
+    return summary, leaves
 
 
-def _what_changed(before: Any, after: Any) -> str:
-    """One line naming what moved between two views."""
-    if isinstance(before, dict) and isinstance(after, dict):
-        moved = [
-            f"{key}: {before.get(key)!r} -> {after.get(key)!r}"
-            for key in sorted(set(before) | set(after))
-            if before.get(key) != after.get(key)
-        ]
-        if moved:
-            return "; ".join(moved)
-    return f"{before!r} -> {after!r}"
+def _changed_paths(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """The paths whose value differs, or that exist on one side only. Names and
+    positions, never values."""
+    return sorted(
+        path
+        for path in set(before) | set(after)
+        if path not in before or path not in after or before[path] != after[path]
+    )
+
+
+def _describe_change(
+    snapshot_tool: str, before: dict, after: dict, paths: list[str]
+) -> str:
+    """One line, structural: sizes, how many paths moved, which (bounded),
+    and the two hashes. ``search_records: 3 -> 4 values, 2 path(s) changed
+    (ids[0], total) (before 50389d988895, after aba90f872549)``."""
+    shown = ", ".join(paths[:CHANGED_PATHS_CAP])
+    if len(paths) > CHANGED_PATHS_CAP:
+        shown += f", and {len(paths) - CHANGED_PATHS_CAP} more"
+    return (
+        f"{snapshot_tool!r}: {before['size']} -> {after['size']} values, "
+        f"{len(paths)} path(s) changed ({shown}) (before {before['hash']}, "
+        f"after {after['hash']})"
+    )
 
 
 @engine_check("blast.mutation_class_observed")
@@ -285,7 +327,11 @@ def check_blast__mutation_class_observed(
 
     - ``critical`` — the two snapshots differ: the tool mutated while claiming
       not to. The detail names the tool, its claimed class, what claimed it
-      (the annotation, or the name) and what changed. Stop and escalate: an
+      (the annotation, or the name) and what changed — structurally: sizes,
+      the changed field names or paths (at most :data:`CHANGED_PATHS_CAP`,
+      and it says when there are more) and the two hashes. Never a value:
+      a snapshot can hold customer data, and a detail flows into verify JSON
+      and the report, past the credential scrubber. Stop and escalate: an
       agent has been told this tool is safe to call freely.
     - ``pass`` — no observable change. One call, one observation window: a
       tool that mutates only under other conditions, or in state the snapshot
@@ -412,12 +458,15 @@ def check_blast__mutation_class_observed(
             evidence,
         )
 
-    evidence["before"], evidence["after"] = _snapshot(before), _snapshot(after)
-    ran = (
-        "answered"
-        if call.status == "ok"
-        else f"answered with a tool error ({call.detail})"
-    )
+    # Compared in memory; only structure persists (hashes, sizes, paths).
+    evidence["before"], leaves_before = _snapshot(before)
+    evidence["after"], leaves_after = _snapshot(after)
+    paths = _changed_paths(leaves_before, leaves_after)
+    evidence["changed_paths"] = paths[:CHANGED_PATHS_CAP]
+    evidence["changed_paths_total"] = len(paths)
+    evidence["changed_paths_truncated"] = len(paths) > CHANGED_PATHS_CAP
+    # The tool's own answer is not quoted: a server can echo data into it.
+    ran = "answered" if call.status == "ok" else "answered with a tool error"
     if evidence["before"]["hash"] == evidence["after"]["hash"]:
         return CheckResult(
             "pass",
@@ -426,12 +475,12 @@ def check_blast__mutation_class_observed(
             "observation window",
             evidence,
         )
-    changed = _what_changed(evidence["before"]["view"], evidence["after"]["view"])
+    changed = _describe_change(
+        snapshot_tool, evidence["before"], evidence["after"], paths
+    )
     return CheckResult(
         "critical",
         f"{tool!r} claims {cls} ({evidence['claimed_by']}) but changed observable "
-        f"state: {snapshot_tool!r} before {evidence['before']['hash']} -> after "
-        f"{evidence['after']['hash']}; {changed}. One sentinel call did this "
-        f"(it {ran})",
+        f"state: {changed}. One sentinel call did this (it {ran})",
         evidence,
     )
