@@ -435,3 +435,68 @@ def test_an_old_ledger_is_derived_with_the_same_state_filter() -> None:
     rollup = _by_id(standards.rollup_for_ledger(ledger))
     assert "CWE-778" not in rollup
     assert rollup["ASI03"]["checks"] == 1
+
+
+# --- bad input is exit 2, never a traceback -------------------------------------
+
+
+def test_itest_standards_refuses_a_directory_or_an_unreadable_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "adir").mkdir()
+    result = runner.invoke(app, ["standards", "--from", "adir"])
+    assert result.exit_code == 2, result.output
+    assert "adir" in result.output and "Traceback" not in result.output
+
+    import os
+
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        locked = tmp_path / "locked.json"
+        locked.write_text("{}", encoding="utf-8")
+        locked.chmod(0)
+        try:
+            result = runner.invoke(app, ["standards", "--from", str(locked)])
+        finally:
+            locked.chmod(0o600)
+        assert result.exit_code == 2, result.output
+        assert "locked.json" in result.output and "Traceback" not in result.output
+
+
+def test_itest_standards_refuses_a_tools_value_that_is_not_a_mapping(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    for bad in ('{"tools": 5}', '{"tools": [1]}', '{"tools": "x"}'):
+        (tmp_path / "v.json").write_text(bad, encoding="utf-8")
+        result = runner.invoke(app, ["standards", "--from", "v.json"])
+        assert result.exit_code == 2, (bad, result.output)
+        assert "tools" in result.output and "mapping" in result.output
+        assert "Traceback" not in result.output
+
+
+def test_a_ledger_supplied_rollup_is_validated_not_indexed_blind(
+    tmp_path: Path, monkeypatch
+) -> None:
+    for bad in ([{"bogus": 1}], [7], ["ASI01"], [{"id": "ASI01"}]):
+        with pytest.raises(standards.StandardsCatalogError) as excinfo:
+            standards.rollup_for_ledger({"servers": [], "standards": bad})
+        assert "standards" in str(excinfo.value)
+    with pytest.raises(standards.StandardsCatalogError):
+        standards.rollup_for_ledger([1, 2])  # not a mapping at all
+    with pytest.raises(standards.StandardsCatalogError):
+        standards.rollup_for_ledger({"servers": [], "standards": {"not": "a list"}})
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "v.json").write_text(
+        json.dumps({"tools": {"servers": [], "standards": [{"bogus": 1}]}}),
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["standards", "--from", "v.json"])
+    assert result.exit_code == 2, result.output
+    assert "Traceback" not in result.output
+
+
+def test_a_well_formed_ledger_supplied_rollup_passes_through_unchanged() -> None:
+    entries = standards.standards_rollup([_check("authority.anonymous", "pass")])
+    assert standards.rollup_for_ledger({"servers": [], "standards": entries}) == entries

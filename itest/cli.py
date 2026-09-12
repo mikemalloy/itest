@@ -553,7 +553,11 @@ def standards(
         if not from_json.exists():
             echo(f"No verify JSON found at {from_json}.", err=True)
             raise typer.Exit(code=2)
-        raw = from_json.read_text(encoding="utf-8")
+        try:
+            raw = from_json.read_text(encoding="utf-8")
+        except OSError as exc:  # a directory, no read permission
+            echo(f"{from_json} could not be read: {exc.strerror}", err=True)
+            raise typer.Exit(code=2) from None
         source = str(from_json)
     try:
         document = json.loads(raw)
@@ -561,10 +565,17 @@ def standards(
         echo(f"{source} is not valid JSON: {exc}", err=True)
         raise typer.Exit(code=2) from None
     ledger = document.get("tools") if isinstance(document, dict) else None
+    if ledger is not None and not isinstance(ledger, dict):
+        echo(
+            f"{source}: `tools` is a {type(ledger).__name__}, not a mapping; "
+            "expected the `tools` section of `itest verify --output json`.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     try:
         rollup = rollup_for_ledger(ledger)
     except StandardsCatalogError as exc:
-        echo(str(exc), err=True)
+        echo(f"{source}: {exc}", err=True)
         raise typer.Exit(code=2) from None
     if as_json:
         typer.echo(json.dumps(rollup, indent=2))

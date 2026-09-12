@@ -96,6 +96,22 @@ class Framework(BaseModel):
     entries: list[Entry] = Field(default_factory=list)
 
 
+class RollupEntry(BaseModel):
+    """One entry of a rollup as a verify JSON document carries it. What a
+    ledger supplies is validated against this before it is used; a document
+    edited by hand or written by another tool is input, not truth."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    title: str
+    framework: str
+    coverage: Coverage
+    note: str | None = None
+    checks: int = 0
+    statuses: dict[str, int] = Field(default_factory=dict)
+
+
 class StandardsCatalog(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -232,11 +248,36 @@ def standards_rollup(
 
 def rollup_for_ledger(ledger: dict | None) -> list[dict]:
     """The rollup a verify JSON ``tools`` section carries, or — for one written
-    before the rollup existed — the same thing derived from its checks."""
+    before the rollup existed — the same thing derived from its checks.
+
+    Raises :class:`StandardsCatalogError` for a ``tools`` value that is not a
+    mapping, or a ``standards`` list whose entries do not have the rollup's
+    shape: a document is input, and bad input is a message, never a traceback.
+    """
     if not ledger:
         return []
-    if ledger.get("standards"):
-        return list(ledger["standards"])
+    if not isinstance(ledger, dict):
+        raise StandardsCatalogError(
+            f"the document's `tools` value is a {type(ledger).__name__}, not a "
+            "mapping; expected the `tools` section of `itest verify --output json`."
+        )
+    supplied = ledger.get("standards")
+    if supplied:
+        if not isinstance(supplied, list):
+            raise StandardsCatalogError(
+                f"`tools.standards` is a {type(supplied).__name__}, not a list of "
+                "rollup entries."
+            )
+        entries = []
+        for index, entry in enumerate(supplied):
+            try:
+                entries.append(RollupEntry.model_validate(entry).model_dump())
+            except Exception as exc:  # pydantic ValidationError, rendered briefly
+                raise StandardsCatalogError(
+                    f"`tools.standards[{index}]` is not a rollup entry (id, title, "
+                    f"framework, coverage, note, checks, statuses): {exc}"
+                ) from None
+        return entries
     checks = [
         check
         for server in ledger.get("servers") or []
