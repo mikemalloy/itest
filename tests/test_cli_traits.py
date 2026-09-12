@@ -103,7 +103,7 @@ def test_traits_json_is_the_table(tmp_path: Path, monkeypatch) -> None:
         "kind": "engine",
         "tier": "readonly",
         "applies_when": "transport.kind == http or auth.enforced_over_stdio",
-        "standards": ["ASI03", "LLM02", "semgrep-server-4"],
+        "standards": ["ASI03", "LLM02", "semgrep-server-4", "CWE-306"],
         "recipe": "tool_authn.md",
     }
 
@@ -297,11 +297,11 @@ def test_the_table_shows_slug_code_family_kind_tier_rule_standards_recipe(
         line for line in lines if line.lstrip().startswith("authority.anonymous ")
     )
     assert "AUTH-1" in anonymous
-    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4, CWE-306" in anonymous
     gating = next(
         line for line in lines if line.lstrip().startswith("blast.destructive_gating ")
     )
-    assert "BLAST-2" in gating and "—" in gating  # no mapping yet, said so
+    assert "BLAST-2" in gating and "ASI02, LLM03" in gating
 
 
 def test_traits_json_carries_code_and_standards(tmp_path: Path, monkeypatch) -> None:
@@ -311,10 +311,11 @@ def test_traits_json_carries_code_and_standards(tmp_path: Path, monkeypatch) -> 
     assert by_id["change.description_drift"]["code"] == "CHANGE-3"
     assert by_id["change.description_drift"]["standards"] == [
         "ASI04",
+        "ASI01",
         "LLM01",
-        "semgrep-client-12",
+        "semgrep-client-2",
     ]
-    assert by_id["blast.egress"]["standards"] == []
+    assert by_id["blast.egress"]["standards"] == ["ASI04", "LLM02", "semgrep-server-21"]
 
 
 def test_traits_for_shows_each_decision_with_its_rule_and_standards(
@@ -327,7 +328,7 @@ def test_traits_for_shows_each_decision_with_its_rule_and_standards(
     assert anonymous.lstrip().startswith("does not apply")  # stdio, no own check
     assert "AUTH-1" in anonymous
     assert "rule: transport.kind == http or auth.enforced_over_stdio" in anonymous
-    assert "ASI03, LLM02, semgrep-server-4" in anonymous
+    assert "ASI03, LLM02, semgrep-server-4, CWE-306" in anonymous
     isolation = next(line for line in lines if "authority.tenant_isolation " in line)
     assert isolation.lstrip().startswith("does not apply")
     assert "rule: auth.second_tenant_env present" in isolation
@@ -335,7 +336,7 @@ def test_traits_for_shows_each_decision_with_its_rule_and_standards(
     payload = json.loads(_traits("--for", "reference-mcp/get_guide", "--json").output)
     first = payload["traits"][0]
     assert (first["id"], first["code"]) == ("authority.anonymous", "AUTH-1")
-    assert first["standards"] == ["ASI03", "LLM02", "semgrep-server-4"]
+    assert first["standards"] == ["ASI03", "LLM02", "semgrep-server-4", "CWE-306"]
 
 
 # --- authority.anonymous and the transport ------------------------------------------

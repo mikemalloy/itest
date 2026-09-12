@@ -76,7 +76,8 @@ plan time, before `blast.mutation_class` could ever see it.
 - **OWASP Top 10 for Agentic Applications:** ASI02, Tool Misuse and
   Exploitation — a tool whose declared effect does not match its real one is how
   an agent is led into a write it was told was a read.
-- **OWASP Top 10 for LLM Applications:** LLM06, Excessive Agency.
+- **OWASP Top 10 for LLM Applications:** LLM03, Excessive Agency (LLM03 in
+  the 2026 edition; it was LLM06 in 2025).
 - **OWASP Agent Control Standard, AgBOM:** the tool's **mutation** attribute. `blast.mutation_class`
   is what keeps that attribute honest against the server's own statements.
 - **Semgrep MCP security cheatsheet:** no row mapped. The cheatsheet asks what a

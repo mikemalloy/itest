@@ -132,6 +132,8 @@ server echoes it.
   Disclosure, for a `fail` (an anonymous read that answers).
 - **Semgrep MCP security cheatsheet:** server tab, row 4 (authorization) — the
   front door.
+- **CWE-306**, Missing Authentication for Critical Function — what a `fail`
+  is.
 - **AgBOM (OWASP Agent Control Standard):** no attribute mapped yet; the
   front-door evidence is the natural input to one.
 

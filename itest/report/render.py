@@ -381,7 +381,14 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
                     continue
                 fallback = (check.status.upper(), "none")
                 token, cls = CHECK_CELL.get(check.status, fallback)
-                entry = {"txt": token, "cls": cls}
+                # The cell's detail names the trait and every id it answers.
+                header = _trait_header(trait, check)
+                entry = {
+                    "txt": token,
+                    "cls": cls,
+                    "standards": header["standards"],
+                    "title": header["title"],
+                }
                 if check.state in STATE_TAG:
                     entry["state"] = STATE_TAG[check.state]
                 cells.append(entry)
@@ -505,7 +512,10 @@ def _column_rank(slug: str, check, ledger) -> tuple:
 
 def _trait_header(slug: str, check) -> dict:
     """One column head: the code for the narrow column, the slug beneath it,
-    and the standards the trait answers in the hover detail."""
+    the first published id beside the slug as the cross-reference (``std``),
+    and the full standards list in the hover detail. The slug is the identity;
+    the id is how a security reader finds the row in the framework they
+    already report against."""
     label = _trait_label(slug, check.code)
     standards = list(check.standards)
     mapped = ", ".join(standards) if standards else "no standards mapped yet"
@@ -514,6 +524,7 @@ def _trait_header(slug: str, check) -> dict:
         "code": check.code,
         "label": label,
         "standards": standards,
+        "std": standards[0] if standards else None,
         "title": f"{label} — {mapped}",
     }
 

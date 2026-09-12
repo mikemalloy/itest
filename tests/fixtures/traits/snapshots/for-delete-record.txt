@@ -1,18 +1,18 @@
 reference-mcp/delete_record: destructive (detected) [approval confirm_param]
   id=49dc4907b3ff  declared in .itest/tools/reference-mcp.yaml
-  11 of 14 traits apply (table 6460a7f4488e), decided from the manifest's recorded attributes.
+  11 of 14 traits apply (table 7e16218b0c97), decided from the manifest's recorded attributes.
 
-  does not apply   authority.anonymous                 AUTH-1     refuses anonymous            engine     readonly  rule: transport.kind == http or auth.enforced_over_stdio            ASI03, LLM02, semgrep-server-4
-  APPLIES          authority.tenant_isolation          AUTH-2     tenant isolation             generated  active    rule: auth.second_tenant_env present and mutation != informational  —
-  APPLIES          authority.backing_least_privilege   AUTH-3     acts as declared identity    generated  active    rule: identity.runs_as present                                      —
-  does not apply   authority.delegation                AUTH-4     caller identity passthrough  generated  active    rule: identity.runs_as == passthrough                               —
-  APPLIES          blast.mutation_class                BLAST-1    mutation class               engine     readonly  rule: always                                                        ASI02, LLM06
-  APPLIES          blast.destructive_gating            BLAST-2    destructive gating           generated  active    rule: mutation == destructive                                       —
-  does not apply   blast.egress                        BLAST-3    external egress              engine     readonly  rule: egress != none                                                —
-  APPLIES          blast.audit                         BLAST-4    audit record                 generated  active    rule: mutation in [write, destructive] and audit.sink present       —
-  APPLIES          containment.parameter_scope         CONTAIN-1  parameter scope              engine     active    rule: mutation != informational                                     —
-  APPLIES          containment.expression_passthrough  CONTAIN-2  expression passthrough       engine     active    rule: has_free_form_input                                           —
-  APPLIES          containment.output_hygiene          CONTAIN-3  output hygiene               engine     readonly  rule: mutation != informational                                     —
-  APPLIES          change.inventory                    CHANGE-1   inventory                    engine     readonly  rule: always                                                        ASI04, LLM03, semgrep-client-14
-  APPLIES          change.schema_drift                 CHANGE-2   schema drift                 engine     readonly  rule: always                                                        ASI04, LLM03
-  APPLIES          change.description_drift            CHANGE-3   description drift            engine     readonly  rule: always                                                        ASI04, LLM01, semgrep-client-12
+  does not apply   authority.anonymous                 AUTH-1     refuses anonymous            engine     readonly  rule: transport.kind == http or auth.enforced_over_stdio            ASI03, LLM02, semgrep-server-4, CWE-306
+  APPLIES          authority.tenant_isolation          AUTH-2     tenant isolation             generated  active    rule: auth.second_tenant_env present and mutation != informational  ASI03, LLM02, semgrep-server-18, CWE-639
+  APPLIES          authority.backing_least_privilege   AUTH-3     acts as declared identity    generated  active    rule: identity.runs_as present                                      ASI03, LLM03, CWE-269
+  does not apply   authority.delegation                AUTH-4     caller identity passthrough  generated  active    rule: identity.runs_as == passthrough                               ASI03, semgrep-server-8, CWE-441
+  APPLIES          blast.mutation_class                BLAST-1    mutation class               engine     readonly  rule: always                                                        ASI02, LLM03, ACS-AgBOM
+  APPLIES          blast.destructive_gating            BLAST-2    destructive gating           generated  active    rule: mutation == destructive                                       ASI02, LLM03
+  does not apply   blast.egress                        BLAST-3    external egress              engine     readonly  rule: egress != none                                                ASI04, LLM02, semgrep-server-21
+  APPLIES          blast.audit                         BLAST-4    audit record                 generated  active    rule: mutation in [write, destructive] and audit.sink present       ACS-AgBOM, CWE-778
+  APPLIES          containment.parameter_scope         CONTAIN-1  parameter scope              engine     active    rule: mutation != informational                                     ASI02, semgrep-server-19, CWE-639
+  APPLIES          containment.expression_passthrough  CONTAIN-2  expression passthrough       engine     active    rule: has_free_form_input                                           ASI05, semgrep-server-20, semgrep-server-22, CWE-77, CWE-89
+  APPLIES          containment.output_hygiene          CONTAIN-3  output hygiene               engine     readonly  rule: mutation != informational                                     LLM02, LLM10, CWE-209
+  APPLIES          change.inventory                    CHANGE-1   inventory                    engine     readonly  rule: always                                                        ASI04, LLM04, semgrep-client-1, ACS-AgBOM
+  APPLIES          change.schema_drift                 CHANGE-2   schema drift                 engine     readonly  rule: always                                                        ASI04, LLM04, ACS-AgBOM
+  APPLIES          change.description_drift            CHANGE-3   description drift            engine     readonly  rule: always                                                        ASI04, ASI01, LLM01, semgrep-client-2

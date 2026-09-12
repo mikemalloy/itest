@@ -249,7 +249,7 @@ def test_a_recorded_check_result_is_the_status(workdir: Path) -> None:
     assert checks[("get_guide", "change.inventory")] == {
         "trait": "change.inventory",
         "code": "CHANGE-1",
-        "standards": ["ASI04", "LLM03", "semgrep-client-14"],
+        "standards": ["ASI04", "LLM04", "semgrep-client-1", "ACS-AgBOM"],
         "status": "pass",
         "detail": "change.inventory held",
         "test": f"{ENGINE_FILE}::test_engine[get_guide-change.inventory]",

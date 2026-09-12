@@ -66,7 +66,8 @@
                 "standards": [
                   "ASI03",
                   "LLM02",
-                  "semgrep-server-4"
+                  "semgrep-server-4",
+                  "CWE-306"
                 ],
                 "status": "pass",
                 "detail": "unauthenticated tools/call refused (401)",
@@ -78,7 +79,8 @@
                 "code": "BLAST-1",
                 "standards": [
                   "ASI02",
-                  "LLM06"
+                  "LLM03",
+                  "ACS-AgBOM"
                 ],
                 "status": "pass",
                 "detail": "declared destructive; annotations destructiveHint=true; name pattern delete_*",
@@ -90,7 +92,8 @@
                 "code": "CHANGE-2",
                 "standards": [
                   "ASI04",
-                  "LLM03"
+                  "LLM04",
+                  "ACS-AgBOM"
                 ],
                 "status": "pass",
                 "detail": "schema unchanged since v0.2.0",
@@ -102,8 +105,9 @@
                 "code": "CHANGE-3",
                 "standards": [
                   "ASI04",
+                  "ASI01",
                   "LLM01",
-                  "semgrep-client-12"
+                  "semgrep-client-2"
                 ],
                 "status": "pass",
                 "detail": "description unchanged since v0.2.0",
@@ -129,7 +133,8 @@
                 "standards": [
                   "ASI03",
                   "LLM02",
-                  "semgrep-server-4"
+                  "semgrep-server-4",
+                  "CWE-306"
                 ],
                 "status": "pass",
                 "detail": "unauthenticated tools/call refused (401)",
@@ -141,8 +146,9 @@
                 "code": "CHANGE-3",
                 "standards": [
                   "ASI04",
+                  "ASI01",
                   "LLM01",
-                  "semgrep-client-12"
+                  "semgrep-client-2"
                 ],
                 "status": "changed",
                 "detail": "description changed since v0.2.0",

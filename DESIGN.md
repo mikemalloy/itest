@@ -536,6 +536,13 @@ Shipped:
   network transport or a stdio server that declares its own credential check.
   A stdio dry run of `examples/reference-mcp` therefore reports no anonymous
   cells: the process boundary is the authentication boundary.
+- Published standards ids on every trait row (`docs/traits.md`): OWASP
+  Agentic (ASI), OWASP LLM 2026 (LLM), Semgrep MCP cheatsheet rows
+  (`semgrep-server-`/`semgrep-client-`), CWE and the Agent Control Standard's
+  AgBOM, verified 2026-09-11 and never invented — the loader refuses any other
+  prefix naming the value. Shown in `itest traits`, carried on every ledger
+  check, and on the readiness page as the first id beside each trait's slug
+  with the full list in the cell's detail.
 - `itest report --environment`: the report's own verify runs in the
   environment given, with verify's resolution and refusals. `--out` is the
   file-path flag on report and redact; `report --output` is a deprecated alias

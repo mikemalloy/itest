@@ -85,9 +85,10 @@ def check_blast__mutation_class(
     store — which is the active-tier "mutation class observed" check, not this
     one.
 
-    Standards: OWASP Agentic Top 10 ASI02 (Tool Misuse); the OWASP Agent Control
-    Standard's AgBOM mutation attribute. Semgrep MCP security cheatsheet: no row
-    mapped — it has no row for cross-checking a tool's annotations.
+    Standards: OWASP Agentic Top 10 ASI02 (Tool Misuse); OWASP LLM Top 10 LLM03
+    (Excessive Agency, 2026 numbering); the OWASP Agent Control Standard's
+    AgBOM mutation attribute. Semgrep MCP security cheatsheet: no row mapped —
+    it has no row for cross-checking a tool's annotations.
     """
     server, tool = server_of(point), tool_of(point)
     attributes = attributes_of(point)

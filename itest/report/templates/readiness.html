@@ -242,6 +242,7 @@
   .tag.ext{color:var(--muted);background:var(--surface-2)}
   .tag.mech{color:var(--accent);background:var(--accent-soft);border-color:transparent}
   .th-trait small{display:block;font-size:10px;line-height:1.25;color:var(--faint);text-transform:none;letter-spacing:0;word-break:break-all;margin-top:2px}
+  .th-trait small.std{font-family:"IBM Plex Mono";color:var(--muted);letter-spacing:.02em}
   .tag.state{color:var(--warn);background:var(--warn-soft);border-color:transparent;font-weight:400}
   .meta-row.attention span{color:var(--warn)}
   .row .ev{text-align:right;font-family:"IBM Plex Mono";font-size:11.5px}
@@ -368,7 +369,7 @@ const chev = `<svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill=
    other value goes through esc(). */
 const esc = s => String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-const cell = c => c ? `<span class="res ${c.cls}"><span class="dot"></span>${esc(c.txt)}${
+const cell = c => c ? `<span class="res ${c.cls}"${c.title ? ` title="${esc(c.title)}"` : ""}><span class="dot"></span>${esc(c.txt)}${
                       c.state ? ` <span class="tag state">${esc(c.state)}</span>` : ""}</span>`
                     : `<span class="res none">—</span>`;
 const plain = t => `<span class="res none">${esc(t)}</span>`;
@@ -443,7 +444,8 @@ el("toolsMeta").textContent = PAGE.posture.toolsMeta;
     const cols = `minmax(200px,1.4fr) 104px repeat(${g.headers.length}, 104px)`;
     const head = `<div class="thead" style="grid-template-columns:${cols}"><span>Tool</span><span>Reads as</span>${
       g.headers.map(h => `<span class="th-trait" title="${esc(h.title)}">${esc(h.code || h.slug)}${
-        h.code ? `<small>${esc(h.slug)}</small>` : ""}</span>`).join("")}</div>`;
+        h.code ? `<small>${esc(h.slug)}</small>` : ""}${
+        h.std ? `<small class="std">${esc(h.std)}</small>` : ""}</span>`).join("")}</div>`;
     const rows = g.rows.map(r => `
       <div class="trow${r.flag ? " flag" : ""}" style="grid-template-columns:${cols}">
         <span class="path">${esc(r.n)}</span>

@@ -31,7 +31,7 @@ traits:
     tier: active                   # static | readonly | active (the environment policy's tiers)
     kind: generated                # engine | generated
     recipe: tool_gating.md         # the skill file that says how the check works
-    standards: []                  # the published ids the trait answers; [] until confident
+    standards: [ASI02, LLM03]      # the published ids the trait answers; never invented
 ```
 
 | column | meaning |
@@ -43,7 +43,7 @@ traits:
 | `tier` | What the check runs as, and what the environment policy gates on. Active-tier checks live in their own file. |
 | `kind` | Who runs the check (see below). |
 | `recipe` | The file in the bundled skill (`itest-implementer/references/recipes/`) that describes the check. |
-| `standards` | The published ids the trait answers, taken from its recipe's "Standards mapping" section. Empty until a mapping is confident — never an invented id. |
+| `standards` | The published ids the trait answers (below). Verified against the published lists, never invented; an unknown prefix refuses the table. |
 
 ### Ids, codes and standards
 
@@ -51,26 +51,52 @@ The shipped traits, and what each answers:
 
 | id | code | standards |
 |---|---|---|
-| `authority.anonymous` | AUTH-1 | ASI03, LLM02, semgrep-server-4 |
-| `authority.tenant_isolation` | AUTH-2 | — |
-| `authority.backing_least_privilege` | AUTH-3 | — |
-| `authority.delegation` | AUTH-4 | — |
-| `blast.mutation_class` | BLAST-1 | ASI02, LLM06 |
-| `blast.destructive_gating` | BLAST-2 | — |
-| `blast.egress` | BLAST-3 | — |
-| `blast.audit` | BLAST-4 | — |
-| `containment.parameter_scope` | CONTAIN-1 | — |
-| `containment.expression_passthrough` | CONTAIN-2 | — |
-| `containment.output_hygiene` | CONTAIN-3 | — |
-| `change.inventory` | CHANGE-1 | ASI04, LLM03, semgrep-client-14 |
-| `change.schema_drift` | CHANGE-2 | ASI04, LLM03 |
-| `change.description_drift` | CHANGE-3 | ASI04, LLM01, semgrep-client-12 |
+| `authority.anonymous` | AUTH-1 | ASI03, LLM02, semgrep-server-4, CWE-306 |
+| `authority.tenant_isolation` | AUTH-2 | ASI03, LLM02, semgrep-server-18, CWE-639 |
+| `authority.backing_least_privilege` | AUTH-3 | ASI03, LLM03, CWE-269 |
+| `authority.delegation` | AUTH-4 | ASI03, semgrep-server-8, CWE-441 |
+| `blast.mutation_class` | BLAST-1 | ASI02, LLM03, ACS-AgBOM |
+| `blast.destructive_gating` | BLAST-2 | ASI02, LLM03 |
+| `blast.egress` | BLAST-3 | ASI04, LLM02, semgrep-server-21 |
+| `blast.audit` | BLAST-4 | ACS-AgBOM, CWE-778 |
+| `containment.parameter_scope` | CONTAIN-1 | ASI02, semgrep-server-19, CWE-639 |
+| `containment.expression_passthrough` | CONTAIN-2 | ASI05, semgrep-server-20, semgrep-server-22, CWE-77, CWE-89 |
+| `containment.output_hygiene` | CONTAIN-3 | LLM02, LLM10, CWE-209 |
+| `change.inventory` | CHANGE-1 | ASI04, LLM04, semgrep-client-1, ACS-AgBOM |
+| `change.schema_drift` | CHANGE-2 | ASI04, LLM04, ACS-AgBOM |
+| `change.description_drift` | CHANGE-3 | ASI04, ASI01, LLM01, semgrep-client-2 |
 
-A standards entry is one of: `ASI..` (OWASP Top 10 for Agentic Applications),
-`LLM..` (OWASP Top 10 for LLM Applications), `semgrep-<tab>-<row>` (the Semgrep
-MCP security cheatsheet), `CWE-..`, or `ACS-..` (the OWASP Agent Control
-Standard). The traits with a dash have no recipe yet, so nothing has been mapped
-with confidence; they get one when their recipe ships.
+The ids were verified on 2026-09-11 against the published 2026 lists. A
+standards entry is one of:
+
+- `ASI01`–`ASI10` — OWASP Top 10 for Agentic Applications (December 2025):
+  ASI01 Agent Goal Hijack, ASI02 Tool Misuse, ASI03 Identity & Privilege
+  Abuse, ASI04 Agentic Supply Chain, ASI05 Unexpected Code Execution, and
+  ASI06–ASI10, which ITest does not cover (`itest standards` says so).
+- `LLM01`–`LLM10` — OWASP Top 10 for LLM Applications, 2026 edition: LLM01
+  Prompt Injection, LLM02 Sensitive Information Disclosure, LLM03 Excessive
+  Agency (LLM03 in 2026, not LLM06), LLM04 Supply Chain, LLM10 Improper Output
+  Handling.
+- `semgrep-server-<row>` / `semgrep-client-<row>` — the Semgrep MCP security
+  cheatsheet, by tab and row.
+- `CWE-<n>` — a Common Weakness Enumeration entry.
+- `ACS-AgBOM` — the Agent Bill of Materials from the OWASP Agent Control
+  Standard v0.1.
+
+Anything else refuses the table, naming the value; an empty list stays legal.
+The ids ride into verify's ledger on every check (`tools.servers[].tools[]
+.checks[].standards`), into the readiness page (the first id beside each
+trait's slug, the full list in the cell's detail) and into
+`itest traits` / `itest traits --for`.
+
+**Why `change.description_drift` maps to ASI04 *and* ASI01 *and* LLM01.** It
+is the counter-intuitive row and the strongest thing this table says. A tool's
+description is the text the model reads when deciding whether to call that
+tool. So an unreviewed change to it is a behaviour change shipped without
+review — supply chain, ASI04 and LLM04's neighbourhood — and a *malicious* one
+is an injection aimed squarely at the agent's tool choice: a prompt injection
+(LLM01) whose target is the agent's goal (ASI01, Agent Goal Hijack). The hash
+comparison is the same either way; what it defends is not one thing.
 
 **Old ids.** The first tables used AN-style ids (`A1`, `B2`, …). They read as
 OWASP ids to a security reader and were ours, so they were renamed; the map is
@@ -114,8 +140,9 @@ finds any of these:
   `A1`-style id included) or does not start with its own family
 - a duplicate code, or one that is not upper-case letters, a hyphen and a
   number
-- a `standards` entry outside the known prefixes (`ASI`, `LLM`, `semgrep-`,
-  `CWE-`, `ACS-`) — an empty list is fine
+- a `standards` entry outside the known prefixes (`ASI`, `LLM`,
+  `semgrep-server-`, `semgrep-client-`, `CWE-`, `ACS-`), named in the error —
+  an empty list is fine
 - an unknown family
 - a `kind` other than `engine` or `generated`
 - a `tier` the environment policy does not define

@@ -184,8 +184,9 @@ def check_authority__anonymous(
     It never returns ``critical``: that status means a *demonstrated* anonymous
     admission on a mutating tool, which only the active-tier check can show.
 
-    Standards: OWASP Agentic Top 10 ASI03 (Identity and Privilege Abuse); the
-    Semgrep MCP security cheatsheet, server tab, row 4.
+    Standards: OWASP Agentic Top 10 ASI03 (Identity and Privilege Abuse); OWASP
+    LLM Top 10 LLM02 (Sensitive Information Disclosure, what a fail is); the
+    Semgrep MCP security cheatsheet, server tab, row 4; CWE-306.
     """
     server, tool = server_of(point), tool_of(point)
     recorded = str(attributes_of(point).get("mutation") or "unknown")

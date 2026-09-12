@@ -12,11 +12,14 @@
 # fixture names (with the dot written as `__` where a name cannot hold one) —
 # and is `<family>.<slug>`. `code` (AUTH-1, BLAST-2, ...) is a short display
 # label for narrow table columns only: never an identity, never a dispatch key.
-# `standards` lists the published ids the trait answers — OWASP Agentic (ASI..),
-# OWASP LLM (LLM..), Semgrep MCP cheatsheet rows (semgrep-<tab>-<row>), CWE-..,
-# OWASP Agent Control Standard (ACS-..) — taken from the recipes' own "Standards
-# mapping" sections. A trait with no confident mapping yet has an empty list,
-# never an invented id; an entry with an unknown prefix refuses the table.
+# `standards` lists the published ids the trait answers, verified 2026-09-11
+# against the 2026 lists: OWASP Top 10 for Agentic Applications (ASI01–ASI10,
+# Dec 2025), OWASP Top 10 for LLM Applications (LLM01–LLM10, 2026 edition —
+# Excessive Agency is LLM03 in 2026, not LLM06), the Semgrep MCP security
+# cheatsheet (semgrep-server-<row>, semgrep-client-<row>), CWE-<n>, and the
+# OWASP Agent Control Standard v0.1 (ACS-AgBOM, the Agent Bill of Materials).
+# Never an invented id: an entry outside those prefixes refuses the table,
+# naming the value. `itest/traits/standards.yaml` carries the titles.
 #
 # `applies_when` is a tiny expression over the tool's attributes. The whole
 # grammar:
@@ -75,7 +78,7 @@ traits:
     tier: readonly
     kind: engine
     recipe: tool_authn.md
-    standards: [ASI03, LLM02, semgrep-server-4]
+    standards: [ASI03, LLM02, semgrep-server-4, CWE-306]
 
   - id: authority.tenant_isolation
     code: AUTH-2
@@ -85,7 +88,7 @@ traits:
     tier: active
     kind: generated
     recipe: tool_isolation.md
-    standards: []   # no recipe yet, so no confident mapping
+    standards: [ASI03, LLM02, semgrep-server-18, CWE-639]
 
   - id: authority.backing_least_privilege
     code: AUTH-3
@@ -95,7 +98,7 @@ traits:
     tier: active
     kind: generated
     recipe: tool_identity.md
-    standards: []   # no recipe yet
+    standards: [ASI03, LLM03, CWE-269]
 
   - id: authority.delegation
     code: AUTH-4
@@ -105,7 +108,7 @@ traits:
     tier: active
     kind: generated
     recipe: tool_identity.md
-    standards: []   # no recipe yet
+    standards: [ASI03, semgrep-server-8, CWE-441]
 
   - id: blast.mutation_class
     code: BLAST-1
@@ -115,7 +118,7 @@ traits:
     tier: readonly
     kind: engine
     recipe: tool_mutation_class.md
-    standards: [ASI02, LLM06]
+    standards: [ASI02, LLM03, ACS-AgBOM]
 
   - id: blast.destructive_gating
     code: BLAST-2
@@ -125,7 +128,7 @@ traits:
     tier: active
     kind: generated
     recipe: tool_gating.md
-    standards: []   # no recipe yet
+    standards: [ASI02, LLM03]
 
   - id: blast.egress
     code: BLAST-3
@@ -135,7 +138,7 @@ traits:
     tier: readonly
     kind: engine
     recipe: tool_egress.md
-    standards: []   # no recipe yet
+    standards: [ASI04, LLM02, semgrep-server-21]
 
   - id: blast.audit
     code: BLAST-4
@@ -145,7 +148,7 @@ traits:
     tier: active
     kind: generated
     recipe: tool_audit.md
-    standards: []   # no recipe yet
+    standards: [ACS-AgBOM, CWE-778]
 
   - id: containment.parameter_scope
     code: CONTAIN-1
@@ -155,7 +158,7 @@ traits:
     tier: active
     kind: engine
     recipe: tool_containment.md
-    standards: []   # no recipe yet
+    standards: [ASI02, semgrep-server-19, CWE-639]
 
   - id: containment.expression_passthrough
     code: CONTAIN-2
@@ -165,7 +168,7 @@ traits:
     tier: active
     kind: engine
     recipe: tool_containment.md
-    standards: []   # no recipe yet
+    standards: [ASI05, semgrep-server-20, semgrep-server-22, CWE-77, CWE-89]
 
   - id: containment.output_hygiene
     code: CONTAIN-3
@@ -175,7 +178,7 @@ traits:
     tier: readonly
     kind: engine
     recipe: tool_containment.md
-    standards: []   # no recipe yet
+    standards: [LLM02, LLM10, CWE-209]
 
   - id: change.inventory
     code: CHANGE-1
@@ -185,7 +188,7 @@ traits:
     tier: readonly
     kind: engine
     recipe: tool_provenance.md
-    standards: [ASI04, LLM03, semgrep-client-14]
+    standards: [ASI04, LLM04, semgrep-client-1, ACS-AgBOM]
 
   - id: change.schema_drift
     code: CHANGE-2
@@ -195,7 +198,7 @@ traits:
     tier: readonly
     kind: engine
     recipe: tool_provenance.md
-    standards: [ASI04, LLM03]
+    standards: [ASI04, LLM04, ACS-AgBOM]
 
   - id: change.description_drift
     code: CHANGE-3
@@ -205,4 +208,4 @@ traits:
     tier: readonly
     kind: engine
     recipe: tool_provenance.md
-    standards: [ASI04, LLM01, semgrep-client-12]
+    standards: [ASI04, ASI01, LLM01, semgrep-client-2]

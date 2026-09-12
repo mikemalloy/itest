@@ -96,12 +96,13 @@ _TRAIT_CODE = re.compile(r"^[A-Z]+-[0-9]+$")
 STANDARDS_PREFIXES = (
     "ASI (OWASP Top 10 for Agentic Applications, e.g. ASI03)",
     "LLM (OWASP Top 10 for LLM Applications, e.g. LLM02)",
-    "semgrep- (Semgrep MCP cheatsheet tab and row, e.g. semgrep-server-4)",
-    "CWE- (e.g. CWE-862)",
-    "ACS- (OWASP Agent Control Standard, e.g. ACS-AgBOM-mutation)",
+    "semgrep-server- (Semgrep MCP cheatsheet, server tab row, e.g. semgrep-server-4)",
+    "semgrep-client- (Semgrep MCP cheatsheet, client tab row, e.g. semgrep-client-1)",
+    "CWE- (e.g. CWE-306)",
+    "ACS- (OWASP Agent Control Standard, e.g. ACS-AgBOM)",
 )
 _STANDARD = re.compile(
-    r"^(ASI[0-9]{2}|LLM[0-9]{2}|semgrep-[a-z]+-[0-9]+|CWE-[0-9]+"
+    r"^(ASI[0-9]{2}|LLM[0-9]{2}|semgrep-(server|client)-[0-9]+|CWE-[0-9]+"
     r"|ACS-[A-Za-z0-9][A-Za-z0-9-]*)$"
 )
 
@@ -260,8 +261,8 @@ def _check_rows(path: object, raw: dict) -> None:
                     raise TraitTableError(
                         f"{path}: trait {trait_id} names standard {entry!r}, which "
                         "is not a published id this build recognises. Known "
-                        f"prefixes: {'; '.join(STANDARDS_PREFIXES)}. Leave the "
-                        "list empty until a mapping is confident."
+                        f"prefixes: {'; '.join(STANDARDS_PREFIXES)}. Never invent "
+                        "one; leave the list empty until a mapping is confident."
                     )
         if "kind" in row and row["kind"] not in TRAIT_KINDS:
             raise TraitTableError(

@@ -74,12 +74,17 @@ compare" are different facts).
 - **OWASP Top 10 for Agentic Applications:** ASI04, Agentic Supply Chain
   Vulnerabilities — a tool whose contract or instructions move under a pinned
   review, and tools that arrive unreviewed.
-- **OWASP Top 10 for LLM Applications:** LLM01, Prompt Injection, for `change.description_drift` (a
-  description is instructions to the model); LLM03, Supply Chain, for `change.inventory` / `change.schema_drift`.
-- **Semgrep MCP security cheatsheet:** client tab, row 12 ("Does the client treat
-  tool descriptions as untrusted?") for `change.description_drift`, and row 14 ("How does the client
-  handle name collisions?") for `change.inventory`'s undeclared list — a newly appearing tool is
-  where a colliding name comes from.
+- **OWASP Top 10 for Agentic Applications, again:** ASI01, Agent Goal Hijack,
+  for `change.description_drift` alone — a description is the text the model
+  reads when deciding whether to call the tool, so a malicious rewording is an
+  injection aimed at the agent's tool choice.
+- **OWASP Top 10 for LLM Applications (2026):** LLM01, Prompt Injection, for
+  `change.description_drift` (a description is instructions to the model);
+  LLM04, Supply Chain, for `change.inventory` / `change.schema_drift`.
+- **Semgrep MCP security cheatsheet:** client tab, row 2 (tool descriptions
+  treated as untrusted) for `change.description_drift`, and row 1 (name
+  collisions) for `change.inventory`'s undeclared list — a newly appearing tool
+  is where a colliding name comes from. Row numbers as verified 2026-09-11.
 - **AgBOM (OWASP Agent Control Standard):** the tool inventory. `change.inventory` checks each
   entry still exists and that nothing live is missing from it; `change.schema_drift` and `change.description_drift` pin its
   content by hash.
