@@ -49,18 +49,22 @@ from the facts below and the live listing.
   under.
 - **If "don't know":** must answer. Nothing can be listed without it.
 
-### Q2.3 — private hosts (conditional)
+### Q2.3 — private hosts (http only)
 - **Fills:** `transport.allow_private_hosts`
-- **Ask:** *(only when the URL the owner describes is loopback or private:
-  127.0.0.1, localhost, 10/8, 172.16/12, 192.168/16, link-local, fc00::/7)*
-  The private-host guard refuses that address by default. For a local
-  reference or test server, the declaration can opt in with
+- **Ask:** *(http transports only)* Does the URL held in `<URL_ENV_NAME>`
+  point at a loopback or private host (127.0.0.1, localhost, 10/8,
+  172.16/12, 192.168/16, link-local, fc00::/7)? Yes or no — do not paste the
+  URL. If yes: the private-host guard refuses that address by default. For a
+  local reference or test server, the declaration can opt in with
   `allow_private_hosts: true`. A real deployment never needs it, and a
   reviewer should see it in the file. Opt in?
 - **Why:** The guard is the SSRF rule. It stays on unless the file says
-  otherwise, and every plan names a server that sets it.
-- **If "don't know":** leave default (`false`). Plan will refuse the private
-  host and say so; that is the answer showing itself.
+  otherwise, and every plan names a server that sets it. Plan does not
+  derive the opt-in from the resolved URL, so the fact has to be asked —
+  as a yes/no, because the URL itself never enters the conversation.
+- **If "don't know":** leave default (`false`). Plan will refuse a private
+  host and say so; that is the answer showing itself, and the question is
+  asked again.
 
 ### Q2.4 — the sentinel id
 - **Fills:** `sentinels.nonexistent_id`
@@ -106,7 +110,11 @@ from the facts below and the live listing.
   alone, a parameter in the arguments, or both?
 - **Why:** A tenant-isolation check has to vary whatever scopes the call. If
   a tenant id rides in the arguments, the check varies the argument too.
-- **If "don't know":** leave default (`credential`).
+- **If "don't know":** leave default (`credential`) when Q3.1 named no second
+  tenant — the field is inert without one. When Q3.1 named a second tenant,
+  must answer: a tenant-isolation check written against the wrong scoping
+  proves nothing, and the second tenant is not recorded until the scoping is
+  known (say so: tenant isolation stays not verifiable until then).
 
 ### Q3.3 — whose authority the server acts with
 - **Fills:** `identity.runs_as`, `identity.backing_role`

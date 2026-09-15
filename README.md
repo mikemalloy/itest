@@ -308,7 +308,9 @@ know about my server?"*.
 ## How it works
 
 **`itest plan`** reads `terraform show -json` (plan or state), runs every
-detector, and diffs the result against the manifest. It prints a
+detector, asks each declared MCP server under `.itest/tools/` for its live
+tool list (a project can be declarations-only, with no Terraform at all), and
+diffs the result against the manifest. It prints a
 Terraform-style changeset — new, unchanged, resurrected, orphan candidates,
 not-analyzed counts — and writes `.itest/plan.json` and a Mermaid diagram to
 `.itest/diagram.mmd`. Plan never modifies a test file or the manifest.

@@ -72,10 +72,11 @@ These are the skill's safety properties. They are not advice.
   to name their non-production environment(s). You never widen an existing
   policy.
 - **Private hosts are an offer, not a default.** `transport.allow_private_hosts:
-  true` is offered only when the URL the user names is loopback or private
-  (127.0.0.1, localhost, 10/8, 172.16/12, 192.168/16, link-local, fc00::/7),
-  and always with this sentence: A real deployment never needs it, and a
-  reviewer should see it in the file.
+  true` is offered only when the owner says the URL's host is loopback or
+  private (127.0.0.1, localhost, 10/8, 172.16/12, 192.168/16, link-local,
+  fc00::/7) — asked as a yes/no about the host behind the variable name,
+  never by collecting the URL — and always with this sentence: A real
+  deployment never needs it, and a reviewer should see it in the file.
 - **Stdio enforcement is a fact, not a preference.** `auth.enforced_over_stdio`
   is asked only for a stdio transport, phrased as a fact: does this server
   check a credential of its own when launched, or does it trust whoever
@@ -129,8 +130,11 @@ Ask, in one message, the reach questions from
   the **non-production** URL). A stdio server that also serves HTTP may name
   a URL variable too. This is the question that carries the non-production
   instruction: say it, and say why.
-- **Q2.3** (only when the URL the user describes is loopback or private) the
-  `allow_private_hosts` offer, with its sentence.
+- **Q2.3** (http only) whether the host behind that URL variable is loopback
+  or private — a yes/no, with the URL itself not to be pasted — and, on yes,
+  the `allow_private_hosts` offer with its sentence. Plan does not derive
+  the opt-in from the resolved URL; it takes the declaration's word, so a
+  local server declared without it lists as unreachable.
 - **Q2.4** the sentinel id — a value that cannot name a real record. Explain
   what it is for: it is what makes probing safe. A mutating check carries it
   so the check is proven by being *admitted*, never by destroying something.
@@ -342,8 +346,12 @@ Now run `itest plan`, and present only the deltas:
   to the new tools by name.
 - **Changed tools** — plan's `Changed` section: a schema, description or
   annotation that moved. Show the line plan printed, and for a mutation
-  change show what decided it. Ask nothing unless the change created a
-  conflict.
+  change show what decided it. Re-ask only the questions the change
+  touches, for that tool by name: a class that became destructive re-asks
+  its gate (Q4.3); a schema change on a tool with an `egress:` entry
+  re-confirms which arguments leave (Q4.1's `data` list, since the old
+  names may be gone); an annotation flip that created a conflict goes to
+  step 7. A description change alone asks nothing.
 - **Orphaned overrides** — `tools:` entries for names the server no longer
   lists (plan's "Orphaned tool overrides"). Ask whether each is a rename not
   yet deployed or a tool withdrawn; remove the entry only when the owner says
