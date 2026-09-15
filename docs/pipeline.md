@@ -108,8 +108,9 @@ but is a real artifact to publish and version. The thing such a declaration woul
 carry is an agent tool: an MCP server's endpoint, the traits its tools claim,
 which of them mutate. That per-server declaration file — `.itest/tools/<server>.yaml`
 — is built ([#26](https://github.com/mikemalloy/itest/issues/26); see
-[declarations.md](declarations.md)), so the HCL shape now has a real format to
-mirror. Stating the same thing in the HCL itself is what remains designed and not
+[declarations.md](declarations.md)), and the `itest-declare` skill writes it
+from an interview rather than by hand, so the HCL shape now has a real format
+to mirror. Stating the same thing in the HCL itself is what remains designed and not
 built, and whether it should have been HCL all along is the question that comes
 after.
 

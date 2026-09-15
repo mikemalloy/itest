@@ -286,10 +286,31 @@ Then, in a project where you have run `itest sync`: *"implement the ITest
 stubs"*. Add `.itest/skill-answers.yaml` to `.gitignore` — it records your
 profile and region.
 
+A second bundled skill, `skills/itest-declare/`, is the front door for MCP
+servers: it interviews a server's owner for facts — how it is reached, how
+callers authenticate, where calls are logged, what gates a destructive tool,
+which tools call out — and writes the server's declaration
+(`.itest/tools/<server>.yaml`, and `.itest/environments.yaml` when the project
+has none). It never asks whether a tool is dangerous: the mutation class is
+detected by `itest plan` and only shown back. Names of environment variables
+go in the file, never a URL or a token; the instance named is never a
+production one; and the skill ends at `itest plan`, never running sync itself.
+Re-run it on a server that already has a declaration and it asks only about
+what changed. Install it the same way:
+
+```sh
+ln -s /path/to/itest/skills/itest-declare ~/.claude/skills/itest-declare
+```
+
+Then, in the project: *"onboard my MCP server"* or *"what does ITest need to
+know about my server?"*.
+
 ## How it works
 
 **`itest plan`** reads `terraform show -json` (plan or state), runs every
-detector, and diffs the result against the manifest. It prints a
+detector, asks each declared MCP server under `.itest/tools/` for its live
+tool list (a project can be declarations-only, with no Terraform at all), and
+diffs the result against the manifest. It prints a
 Terraform-style changeset — new, unchanged, resurrected, orphan candidates,
 not-analyzed counts — and writes `.itest/plan.json` and a Mermaid diagram to
 `.itest/diagram.mmd`. Plan never modifies a test file or the manifest.

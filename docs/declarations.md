@@ -16,6 +16,25 @@ declared), and which checks each tool gets (the applies-when table in
 
 There is no `dangerous: true` field, and there will not be one.
 
+## Writing one with Claude
+
+The bundled `itest-declare` skill (`skills/itest-declare/`) writes this file
+by asking. It interviews the server's owner for the facts below — how the
+server is reached, how callers authenticate, what identity it runs as, where
+calls are logged, what gates a destructive tool, which tools call out — writes
+the minimal declaration, runs `itest plan` so every later question is asked
+against the real tool list, and shows the detected mutation classes back
+rather than asking for them. It creates `.itest/environments.yaml` when the
+project has none, refuses to record a URL or a token (names only), names the
+non-production instance and never a production one, and ends by showing the
+plan and the next command — it never runs `itest sync` itself. Run it again
+on a server that already has a declaration and it asks only about what
+changed. [`references/walkthrough.md`](../skills/itest-declare/references/walkthrough.md)
+is the interview run against the reference server, ending in the file below.
+
+The hand-written route — this page, with the schema open beside it — still
+works and produces the same file. Everything from here on describes that file.
+
 ## Where the file goes
 
 ```

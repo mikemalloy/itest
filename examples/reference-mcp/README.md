@@ -84,7 +84,11 @@ tools without it.
 
 - `.itest/tools/reference-mcp.yaml` — the server over **stdio**, launched as a
   subprocess. Whoever can launch it is authorised, so this declaration gets no
-  `authority.anonymous` check.
+  `authority.anonymous` check. It is also what the `itest-declare` skill
+  produces when its interview is answered from `server.py`
+  (`skills/itest-declare/references/walkthrough.md` is that transcript), and a
+  test holds the two to the same facts and the same trait set per tool: if the
+  skill and this file ever disagree, one of them is wrong.
 - `.itest/tools/reference-mcp-open.yaml` — the server's **unguarded HTTP
   mount**, declared with no auth scheme and `transport.allow_private_hosts:
   true` so the loopback url is accepted. A deliberately defective example, not

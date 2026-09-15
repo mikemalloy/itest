@@ -344,6 +344,17 @@ reference.
   the manifest: recipes hold policy (what a good assertion for a point type
   looks like), the CLI holds mechanism (detection, sync, verify). The skill
   never reimplements detection or sync logic.
+- `skills/itest-declare/` is the onboarding interview that writes a server's
+  declaration, under three rules: **facts in, traits out** (it asks how the
+  server is reached, authenticated, identified, logged and gated — never
+  whether a tool is dangerous; the mutation class is detected by plan and only
+  shown back), **one file per server, per-tool overrides only for deltas**,
+  and **re-runnable** (an existing declaration is read, planned, and patched
+  only where the server changed, changeset shown first). Its safety sentences
+  — names never values, never production, the policy as ceiling, plan as the
+  only network step, never running sync — are asserted verbatim by test, and
+  its field map is checked against the schema so a new field cannot ship
+  without an interview decision.
 
 ## Stack
 - Python 3.11+, typer, pydantic v2 for schema, PyYAML, rich for terminal
@@ -569,6 +580,16 @@ Shipped:
   `lookalike_read` is caught by behaviour; the agreement check still passes it
   by design. Never run against a write or destructive tool; held out in
   production.
+- The declaration interview skill (`skills/itest-declare/`): a nine-step,
+  batched interview that writes `.itest/tools/<server>.yaml` and, when absent,
+  `.itest/environments.yaml`; runs `itest plan` on the minimal declaration
+  first so the tool list, detected classes and free-form inputs inform every
+  later question; asks about conflicts only when plan's evidence shows one
+  and never resolves one itself; re-run mode asks only about deltas against
+  the manifest or the previous plan.json. Tests pin every schema field to a
+  disposition in its field map, the walkthrough's file to the shipped
+  reference-mcp declaration (facts and trait set per tool), and the safety
+  sentences verbatim.
 - `itest report --environment`: the report's own verify runs in the
   environment given, with verify's resolution and refusals. `--out` is the
   file-path flag on report and redact; `report --output` is a deprecated alias
@@ -578,7 +599,10 @@ Shipped:
 Not yet built (do not build without explicit instruction):
 - The remaining tool recipes (`tool_isolation`, `tool_identity`, `tool_gating`,
   `tool_egress`, `tool_audit`, `tool_containment`; `itest recipes` lists which
-  exist) and the skill flow that writes a declaration by asking.
+  exist).
+- `itest traits --for` from the plan alone: today it reads the manifest, so the
+  trait set with the rule per trait is available only after the first sync;
+  the declare skill reads `traits_planned` from `.itest/plan.json` until then.
 - **anonymous-refusal active** (active tier, non-production only): an anonymous `tools/call`
   on each mutating tool behind an open front door, with sentinel arguments —
   `critical` on admission. This is where the MCP probe's proven critical path
