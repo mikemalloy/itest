@@ -64,7 +64,7 @@ jobs:
       # below fails the job — a red build is exactly when the report matters.
       - name: Upload SARIF to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep-itest
