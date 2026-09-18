@@ -1,0 +1,35 @@
+# The declaration for HashiCorp's terraform-mcp-server, run unmodified from
+# hashicorp/terraform-mcp-server:1.3.0 over streamable HTTP (see README.md).
+#
+# FACTS IN, TRAITS OUT. This is the MINIMAL declaration: how to reach the
+# server and what a non-existent id looks like. Nothing here says what any
+# tool does — the mutation class is DETECTED from the live tool listing
+# (the server's own readOnlyHint / destructiveHint annotations, then the
+# name), and this file states no belief for it to be cross-checked against.
+#
+# NO URL AND NO TOKEN IS EVER LITERAL. `url_env` names an environment
+# variable; ITest resolves it at plan time and never logs it. There is no
+# auth block because no credential is used: the registry toolset needs none,
+# and this example never calls a tool.
+server: terraform-mcp-server
+
+transport:
+  # The server is reached over the network, not launched: HashiCorp's image
+  # serves streamable HTTP at /mcp, and ITest connects to it.
+  kind: http
+  # A NAME, never a URL. Export TF_MCP_URL as the loopback URL of the
+  # container's /mcp endpoint before `itest plan`; the value is never written
+  # here, and plan reports "TF_MCP_URL not set" rather than guessing one.
+  url_env: TF_MCP_URL
+  # The container is published on a loopback port, which the private-host
+  # (SSRF) guard refuses by default. This opt-in exists for a local reference
+  # or test server and for nothing else — a real deployment never needs it —
+  # and every plan names a server that sets it, so it is never silent.
+  allow_private_hosts: true
+
+sentinels:
+  # An id no registry entry can have: not a provider, not a module, not a
+  # document id. A mutating probe would carry it so the probe is proven by
+  # being ADMITTED, never by changing something. Required even though this
+  # example never calls a tool: there is no safe default for it.
+  nonexistent_id: itest-sentinel-cannot-exist-0000
