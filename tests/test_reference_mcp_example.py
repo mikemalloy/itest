@@ -386,6 +386,10 @@ GENERATED = (
     "examples/reference-mcp/.itest/environment",
     "examples/reference-mcp/readiness.html",
     "examples/reference-api/itest_tests/test_route_edges.py",
+    "examples/terraform-mcp-server/.itest/manifest.yaml",
+    "examples/terraform-mcp-server/.itest/plan.json",
+    "examples/terraform-mcp-server/.itest/diagram.mmd",
+    "examples/terraform-mcp-server/itest_tests/tools_terraform_mcp_server/conftest.py",
 )
 
 
