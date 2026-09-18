@@ -129,9 +129,10 @@ def test_no_field_holds_a_literal_url_host_or_token() -> None:
     ("path", "patterns"),
     [
         pytest.param(DECLARATION_FILE, _LITERALS[:5], id="declaration"),
-        # The README's docker command publishes a port pair (`-p 8080:8080`)
-        # and binds inside the container (`TRANSPORT_HOST=0.0.0.0`): neither is
-        # a URL, so those two patterns are the ones it is not held to.
+        # The README's docker command publishes a loopback port pair
+        # (`-p 127.0.0.1:8080:8080`) and binds inside the container
+        # (`--transport-host 0.0.0.0`): neither is a URL, so those two patterns
+        # are the ones it is not held to.
         pytest.param(README_FILE, _LITERALS[:1] + _LITERALS[3:5], id="readme"),
     ],
 )

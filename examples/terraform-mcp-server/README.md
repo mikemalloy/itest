@@ -10,7 +10,7 @@ its tool list honestly.
 ## Running the server
 
 ```sh
-docker run --rm -d --name tf-mcp -p 8080:8080 \
+docker run --rm -d --name tf-mcp -p 127.0.0.1:8080:8080 \
   hashicorp/terraform-mcp-server:1.3.0 \
   streamable-http --transport-host 0.0.0.0 --toolsets=registry
 ```
