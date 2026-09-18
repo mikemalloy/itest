@@ -11,8 +11,8 @@ its tool list honestly.
 
 ```sh
 docker run --rm -d --name tf-mcp -p 8080:8080 \
-  -e TRANSPORT_MODE=streamable-http -e TRANSPORT_HOST=0.0.0.0 \
-  hashicorp/terraform-mcp-server:1.3.0 --toolsets=registry
+  hashicorp/terraform-mcp-server:1.3.0 \
+  streamable-http --transport-host 0.0.0.0 --toolsets=registry
 ```
 
 The image is pinned to `1.3.0`. It serves MCP at the path `/mcp` on the
@@ -20,16 +20,25 @@ published port; the declaration reaches it through the environment variable
 **`TF_MCP_URL`** — a name, never a value — which you export as the loopback
 URL of that endpoint. The URL is written nowhere in this example, on purpose.
 
-**Toolsets.** `--toolsets` decides the tool surface. `registry` is the public
-Terraform Registry: provider, module and policy lookups, every one annotated
-`readOnlyHint: true`. `registry,terraform` adds the HCP Terraform / Terraform
-Enterprise tools — workspaces, variables, runs, including destructive ones.
-Restart the container with the other value and the tool list changes; a
-second `itest plan` sees the change.
+Use the `streamable-http` subcommand, as above. The image's other form —
+`-e TRANSPORT_MODE=streamable-http` with no subcommand — starts the same
+server but ignores `--toolsets`: it logs `Enabled toolsets: [all]` whatever
+you pass. The flag means something only in the subcommand form.
 
-**No token.** The `terraform` toolset needs `TFE_TOKEN` to *call* anything,
-but not to be *listed*, and listing is all this example does. No token is
-set, none is declared, and none will be: nothing here calls a tool.
+**Toolsets.** `--toolsets` decides the tool surface. `registry` is the public
+Terraform Registry: nine provider, module and policy lookups, every one
+annotated `readOnlyHint: true`. `terraform` is the HCP Terraform / Terraform
+Enterprise set — workspaces, variables, runs, including destructive ones —
+**and it registers nothing without `TFE_TOKEN`**: with no token,
+`registry,terraform` lists the same nine tools as `registry`, and
+`terraform` alone lists zero. Restart with a different value and the list
+changes; a second `itest plan` sees it (nine tools, or none).
+
+**No token.** The `terraform` toolset is gated by `TFE_TOKEN` at
+registration, not just at call time, so its tools cannot even be listed
+here. No token is set, none is declared, and none will be: this example
+lists tools and calls none, and the surface a token would add is for a
+later, separately gated session.
 
 ## Running ITest against it
 
