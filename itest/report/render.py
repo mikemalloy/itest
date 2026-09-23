@@ -19,7 +19,7 @@ import re
 from importlib import resources
 from pathlib import Path
 
-from itest.report.model import STATUS_CLASS, Page, Tile
+from itest.report.model import STATUS_CLASS, EvidenceLane, Page, SourceLine, Tile
 
 #: The committed template: a resource of the ``itest.report`` package, read
 #: through :mod:`importlib.resources` so an installed wheel finds it too.
@@ -397,15 +397,17 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
             statuses = {c.status for c in tool.checks}
             if statuses and statuses <= {"pass", "n/a", "not_verifiable"}:
                 passed += 1
-            rows.append(
-                {
-                    "n": tool.name,
-                    "flag": bool(statuses & {"changed", "fail", "critical", "held_out"})
-                    or tool.held_out
-                    or any(c.state == "stale" for c in tool.checks),
-                    "cells": cells,
-                }
-            )
+            row = {
+                "n": tool.name,
+                "flag": bool(statuses & {"changed", "fail", "critical", "held_out"})
+                or tool.held_out
+                or any(c.state == "stale" for c in tool.checks),
+                "cells": cells,
+            }
+            # Append-only: a row without evidence is exactly what it was.
+            if tool.evidence:
+                row["evidence"] = [_lane_block(lane) for lane in tool.evidence]
+            rows.append(row)
         tags = [{"cls": "locked", "txt": f"{passed} verified"}] if passed else []
         for status, label in (
             ("changed", "changed"),
@@ -486,7 +488,79 @@ def _tools_blocks(page: Page) -> tuple[list[dict], dict]:
         "exceptions": exceptions,
         "attention": _attention(ledger),
     }
+    sources = [_source_line_block(line) for line in _source_lines(page)]
+    if sources:
+        labels["sources"] = sources
     return groups, labels
+
+
+def _source_lines(page: Page) -> list[SourceLine]:
+    if page.tools is None:
+        return []
+    return [line for server in page.tools.servers for line in server.sources] + list(
+        page.unattached_sources
+    )
+
+
+def _run_label(run_id: str | None, run_at: str | None) -> str:
+    return f"run {run_id or '(no id)'} at {run_at or '(no time)'}"
+
+
+def _lane_block(lane: EvidenceLane) -> dict:
+    """The evidence lane under one tool row. Its words are the lane's own —
+    rate, run, stale, external evidence — never a check's."""
+    label = "external evidence"
+    if lane.standards:
+        label += f" · {', '.join(lane.standards)}"
+    return {
+        "label": label,
+        "src": f"{lane.source} ({lane.kind})",
+        "rate": lane.rate,
+        "targeted": lane.targeted,
+        "run": _run_label(lane.run_id, lane.run_at),
+        "agent": lane.agent,
+        "stale": lane.stale,
+        "standards": list(lane.standards),
+    }
+
+
+def _named(text: str, names: list[str]) -> str:
+    """``1 tool matched (delete_record)``: the count's phrase, then the names."""
+    return f"{text} ({', '.join(names)})" if names else text
+
+
+def _source_line_block(line: SourceLine) -> dict:
+    if line.status == "unreadable":
+        text = f"unreadable: {line.reason}"
+    elif line.status == "server_not_declared":
+        text = (
+            f"{_run_label(line.run_id, line.run_at)} · {line.rows} rows · server "
+            f"{line.server} not declared; nothing joined"
+        )
+    else:
+        matched = _named(
+            f"{_plural(len(line.matched_tools), 'tool')} matched", line.matched_tools
+        )
+        unmatched = _named(
+            f"{len(line.unmatched_tools)} unmatched", line.unmatched_tools
+        )
+        text = (
+            f"{_run_label(line.run_id, line.run_at)} · {line.rows} rows · "
+            f"{matched} · {unmatched}"
+        )
+        if line.stale:
+            text += " · stale"
+    return {
+        "name": line.name,
+        "kind": line.kind,
+        "server": line.server,
+        "status": line.status,
+        "text": text,
+        "agent": line.agent,
+        "standards": list(line.standards),
+        "notes": list(line.notes),
+        "stale": line.stale,
+    }
 
 
 def _trait_label(slug: str | None, code: str | None) -> str:
@@ -587,7 +661,56 @@ def _standards_block(page: Page) -> dict:
         + (f", {partial} partial" if partial else "")
         + f", {len(rows) - covered - partial} not covered"
     )
-    return {"eyebrow": eyebrow, "rows": rows, "empty": "" if rows else empty}
+    block = {"eyebrow": eyebrow, "rows": rows, "empty": "" if rows else empty}
+    external = _external_evidence(page, rows)
+    if external:
+        block["external"] = external
+    return block
+
+
+def _external_evidence(page: Page, rows: list[dict]) -> list[dict]:
+    """The ids the declared sources bear on. An id a check also cites keeps
+    the check's coverage and gets the sources listed beside it; every id
+    goes under the external heading with no covered count and no check
+    count — external evidence is not coverage. Append-only: a page with no
+    read source emits nothing here, so the rows above are untouched."""
+    from itest.traits.standards import _sort_key, load_standards
+
+    cited: dict[str, list[str]] = {}
+    for line in _source_lines(page):
+        if line.status != "read":
+            continue
+        for standard_id in line.standards:
+            names = cited.setdefault(standard_id, [])
+            if line.name not in names:
+                names.append(line.name)
+    if not cited:
+        return []
+    catalog = load_standards()
+    checks = {entry.id: entry.checks for entry in page.tools.standards}
+    # Beside a row only where a check cites the id too: there the check's
+    # coverage stands and the evidence is context. A row nothing cites stays
+    # exactly as it was — its only mention is under the external heading.
+    for row in rows:
+        if row["id"] in cited and checks.get(row["id"]):
+            row["evidence"] = list(cited[row["id"]])
+    external = []
+    for standard_id in sorted(cited, key=_sort_key):
+        count = checks.get(standard_id, 0)
+        external.append(
+            {
+                "id": standard_id,
+                "title": catalog.title(standard_id),
+                "sources": cited[standard_id],
+                "note": (
+                    f"also cited by {_plural(count, 'check')}; the coverage above "
+                    "is the check's"
+                    if count
+                    else "no check cites it; external evidence only"
+                ),
+            }
+        )
+    return external
 
 
 def _attention(ledger) -> list[str]:

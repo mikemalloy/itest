@@ -154,6 +154,11 @@ class SourceRecord(BaseModel):
     unmatched_tools: list[str] = Field(default_factory=list)
     #: The run was older than ``max_age_days`` at the sync that read it.
     stale: bool = False
+    #: The source's own declaration, carried so the page reads the manifest
+    #: alone: the agent it names and the published ids it bears on. Shown as
+    #: external evidence, never as coverage.
+    agent: str | None = None
+    standards: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
 

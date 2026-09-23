@@ -55,6 +55,8 @@ def unreadable_source(source: LoadedSource, reason: str) -> SourceRecord:
         server=source.source.server,
         status="unreadable",
         reason=reason,
+        agent=source.source.agent,
+        standards=list(source.source.standards),
     )
 
 
@@ -77,6 +79,8 @@ def join_evidence(
         status="read",
         shape=run.shape,
         rows=run.rows,
+        agent=source.source.agent,
+        standards=list(source.source.standards),
         notes=list(run.notes),
     )
     if not points:

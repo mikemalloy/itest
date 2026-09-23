@@ -125,6 +125,19 @@ Active tests run only where a committed policy allows the tier and a local
 binding selects that environment, and an environment named or flagged
 production refuses them outright — see [Environments](#environments).
 
+### Red beside blue
+
+The checks above say whether a tool *would let* a caller do something. A
+red-team tool says how often an agent *could be talked into* calling it. If
+you already run one — promptfoo against a declared MCP server, say — drop a
+source file under `.itest/sources/` naming its results file and the server,
+and `itest sync` reads it offline and joins it onto the tools it already
+inventories. The readiness page then shows, under each tool row, a dated rate
+(`calls 10 · refused 0 · of 12 rows`) beside the boundary checks. It is
+evidence of a different kind and is never counted: no red-team run can turn a
+cell green, change the verdict, or claim coverage of a standard. See
+[docs/evidence.md](docs/evidence.md).
+
 ## Proof it works on infrastructure you did not write
 
 Beyond its author's own systems, ITest has been run end to end — applied,

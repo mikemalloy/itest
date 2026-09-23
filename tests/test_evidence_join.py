@@ -192,6 +192,8 @@ def test_an_unreadable_source_is_a_record_with_its_reason() -> None:
         server="reference-mcp",
         status="unreadable",
         reason="results file not found: x.json",
+        agent="sonnet-5 + haiku-4-5 via agent.js",
+        standards=["ASI01", "LLM01"],
     )
     assert source.run_id is None
     assert source.shape == "none"
