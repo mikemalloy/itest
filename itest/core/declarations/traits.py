@@ -108,6 +108,17 @@ _STANDARD = re.compile(
     r"|ACS-[A-Za-z0-9][A-Za-z0-9-]*)$"
 )
 
+
+def is_standard_id(value: object) -> bool:
+    """Whether ``value`` is a published id this build recognises.
+
+    The one rule for a ``standards`` entry, wherever one is written — a trait
+    row or a declared evidence source — so the two cannot accept different
+    vocabularies.
+    """
+    return isinstance(value, str) and bool(_STANDARD.match(value))
+
+
 _IN_CLAUSE = re.compile(r"^(?P<field>[\w.]+)\s+in\s+\[(?P<items>[^\]]*)\]$")
 _COMPARISON = re.compile(r"^(?P<field>[\w.]+)\s*(?P<op>==|!=)\s*(?P<value>.+)$")
 _PRESENT = re.compile(r"^(?P<field>[\w.]+)\s+present$")
@@ -260,7 +271,7 @@ def _check_rows(path: object, raw: dict) -> None:
         standards = row.get("standards") or []
         if isinstance(standards, list):
             for entry in standards:
-                if not isinstance(entry, str) or not _STANDARD.match(entry):
+                if not is_standard_id(entry):
                     raise TraitTableError(
                         f"{path}: trait {trait_id} names standard {entry!r}, which "
                         "is not a published id this build recognises. Known "
