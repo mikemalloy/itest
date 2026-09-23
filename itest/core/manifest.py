@@ -95,6 +95,68 @@ class TestEntry(BaseModel):
         return f"{self.path}::{self.test_name}"
 
 
+class EvidenceRecord(BaseModel):
+    """External evidence about one tool, from a declared source's results.
+
+    A red-team tool's rate, joined onto a tool point by ``(server, tool name)``.
+    **Not a test and not a check**: it has no lifecycle state, no status, no
+    ownership hash and no tier, and it lives beside ``tests`` rather than in
+    it. Nothing that counts toward VERIFIED reads it. The rate is kept as its
+    parts — calls, refused, succeeded, over the run's rows — never as a
+    percentage alone: a denominator of twelve is the honest context.
+    """
+
+    point_id: str
+    source_name: str
+    kind: str
+    run_id: str | None = None
+    run_at: str | None = None
+    tool_version: str | None = None
+    agent: str | None = None
+    #: Older than the source's ``max_age_days`` at the sync that recorded it.
+    #: Computed then, stored, never recomputed: the report shows what sync knew.
+    stale: bool = False
+    calls: int = 0
+    refused: int = 0
+    succeeded: int = 0
+    rows_total: int = 0
+    rows_with_call: int = 0
+    #: Rows whose harness declared this tool as the target. ``None`` when the
+    #: harness declared no targeting at all — never inferred from a prompt.
+    targeted: int | None = None
+    recorded_at: datetime
+
+
+class SourceRecord(BaseModel):
+    """One declared evidence source as the last sync read it.
+
+    ``read`` joined at least the run; ``unreadable`` could not be read (the
+    reason says why, and sync went on); ``server_not_declared`` named a server
+    ITest does not inventory, so nothing joined. A source file that could not
+    even be parsed is ``unreadable`` with ``kind`` and ``server`` unknown.
+    """
+
+    name: str
+    kind: str | None = None
+    server: str | None = None
+    run_id: str | None = None
+    run_at: str | None = None
+    status: Literal["read", "unreadable", "server_not_declared"]
+    reason: str | None = None
+    #: ``agent`` | ``direct`` | ``mixed`` | ``none``: which promptfoo shape
+    #: the reader found. A results file never has to say which it is.
+    shape: str = "none"
+    rows: int = 0
+    #: Tools the results named that the manifest inventories under this
+    #: server: one EvidenceRecord each.
+    matched_tools: list[str] = Field(default_factory=list)
+    #: Tools the results named that the manifest does not inventory.
+    unmatched_tools: list[str] = Field(default_factory=list)
+    #: The run was older than ``max_age_days`` at the sync that read it.
+    stale: bool = False
+    notes: list[str] = Field(default_factory=list)
+
+
 class CoverageSummary(BaseModel):
     """Point-level coverage counts derived from the manifest alone.
 
@@ -117,6 +179,13 @@ class Manifest(BaseModel):
     trait_table_hash: str | None = None
     points: list[IntegrationPoint] = Field(default_factory=list)
     tests: list[TestEntry] = Field(default_factory=list)
+    #: External evidence per tool, from the sources under ``.itest/sources/``.
+    #: Top level, never under ``tests``: an evidence record is not a test.
+    #: Written only when a source exists, so a manifest without one is
+    #: byte-identical to one written before evidence existed — no schema bump.
+    evidence: list[EvidenceRecord] = Field(default_factory=list)
+    #: One line per declared source, as the last sync read it.
+    sources: list[SourceRecord] = Field(default_factory=list)
 
     #: Set by :func:`load_manifest` when the file held an old AN-style trait id:
     #: what is on disk is not what a save would write, so sync saves it even
@@ -245,10 +314,11 @@ def _migrate(manifest: Manifest, from_version: int) -> None:
 
 
 #: Fields written only when they differ from their default. All of them arrived
-#: with the live trait table and mean something only for a declared tool, so a
-#: manifest without one — every Terraform-only project — serializes exactly as
-#: it did before they existed. No schema bump: each loads as its default.
-_SPARSE_TOP = {"trait_table_hash": None}
+#: with the live trait table or with evidence sources and mean something only
+#: for a declared tool or a declared source, so a manifest without one — every
+#: Terraform-only project — serializes exactly as it did before they existed.
+#: No schema bump: each loads as its default.
+_SPARSE_TOP = {"trait_table_hash": None, "evidence": [], "sources": []}
 _SPARSE_POINT = {"traits_planned": None}
 _SPARSE_TEST = {"trait": None, "retired": False}
 

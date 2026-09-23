@@ -180,6 +180,7 @@ def sync(
             echo(f"Reclassified {reclassified} test(s) from their bodies.")
         if not (migrated or regenerated or superseded or reclassified):
             echo("No changes to apply. Manifest is up to date.")
+        _record_evidence(base_dir)
         return
 
     if not auto_approve:
@@ -195,6 +196,15 @@ def sync(
         echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
     echo(result.summary())
+    _record_evidence(base_dir)
+
+
+def _record_evidence(base_dir: Path) -> None:
+    """The evidence lane, written last: one line per declared source."""
+    from itest.core import syncer
+
+    for line in syncer.record_evidence(base_dir):
+        echo(syncer.render_evidence_line(line))
 
 
 @app.command()

@@ -34,6 +34,7 @@ from itest.core import planner, stubgen
 from itest.core.manifest import (
     IntegrationPoint,
     Manifest,
+    SourceRecord,
     TestEntry,
     Tier,
     load_manifest,
@@ -275,6 +276,88 @@ def regenerate(base_dir: Path) -> int:
     if regenerated:
         save_manifest(manifest, manifest_file)
     return regenerated
+
+
+def record_evidence(base_dir: Path) -> list[SourceRecord]:
+    """Read every declared evidence source, join it, and write the lane.
+
+    Runs **last** in every sync, after the manifest's own work is done and
+    saved, so nothing upstream of it — the point registry, the trait
+    lifecycle, the stubs, verify's ledger — can depend on it. Best-effort and
+    never blocking: a source that cannot be read is a line with its reason,
+    a server the manifest does not inventory joins nothing, and sync goes on.
+
+    Writes the manifest only when there is something to record or something
+    recorded before to clear, so a project with no source is untouched (and a
+    no-op sync there stays a no-op). Returns the source lines, one per file
+    under ``.itest/sources/``, for the CLI to print.
+    """
+    manifest_file = planner.manifest_path(base_dir)
+    if not manifest_file.exists():
+        return []
+    from itest.core.evidence import load_sources
+    from itest.core.evidence.join import join_evidence, unreadable_source
+    from itest.core.evidence.promptfoo import EvidenceReadError, read_results
+
+    loaded = load_sources(base_dir)
+    manifest = load_manifest(manifest_file)
+    if not loaded.sources and not loaded.errors:
+        if manifest.evidence or manifest.sources:
+            manifest.evidence = []
+            manifest.sources = []
+            save_manifest(manifest, manifest_file)
+        return []
+
+    now = datetime.now(UTC)
+    records = []
+    lines: list[SourceRecord] = [
+        SourceRecord(name=error.name, status="unreadable", reason=error.message)
+        for error in loaded.errors
+    ]
+    for source in loaded.sources:
+        if source.problem is not None or source.results_path is None:
+            lines.append(unreadable_source(source, source.problem or "no results path"))
+            continue
+        try:
+            run = read_results(
+                source.results_path, source_name=source.name, agent=source.source.agent
+            )
+        except EvidenceReadError as exc:
+            lines.append(unreadable_source(source, str(exc)))
+            continue
+        joined, line = join_evidence(run, source, manifest, now=now)
+        records.extend(joined)
+        lines.append(line)
+    lines.sort(key=lambda line: line.name)
+    manifest.evidence = records
+    manifest.sources = lines
+    save_manifest(manifest, manifest_file)
+    return lines
+
+
+def render_evidence_line(line: SourceRecord) -> str:
+    """One canonical line per source, in the evidence lane's own vocabulary:
+    a run, a rate's parts, matched and unmatched tools, stale. Never pass,
+    fail, verified or covered — those words belong to the boundary lane."""
+    kind = line.kind or "unknown kind"
+    head = f"evidence {line.name} ({kind}):"
+    if line.status == "unreadable":
+        return f"{head} unreadable: {line.reason}"
+    run = f"run {line.run_id or '(no id)'} at {line.run_at or '(no time)'}"
+    if line.status == "server_not_declared":
+        return (
+            f"{head} {run}, {line.rows} rows, server {line.server} not declared; "
+            "nothing joined"
+        )
+    matched = len(line.matched_tools)
+    unmatched = len(line.unmatched_tools)
+    text = (
+        f"{head} {run}, {line.rows} rows, {matched} tools matched, "
+        f"{unmatched} unmatched"
+    )
+    if line.stale:
+        text += ", STALE"
+    return text
 
 
 #: A generated binding's frozen docstring line (``stubgen.render_generated_stub``).

@@ -75,11 +75,12 @@ class SourcesLoad:
 
 
 def _format_validation_error(path: str, exc: ValidationError) -> str:
-    lines = [f"{path} is not a valid evidence source:"]
+    """One line, so it fits the one-line-per-source shape sync prints."""
+    parts = []
     for error in exc.errors():
         location = ".".join(str(part) for part in error["loc"]) or "(document)"
-        lines.append(f"  {location}: {error['msg']}")
-    return "\n".join(lines)
+        parts.append(f"{location}: {error['msg']}")
+    return f"{path} is not a valid evidence source: {'; '.join(parts)}"
 
 
 def _load_one(path: Path, shown: str) -> EvidenceSource:
