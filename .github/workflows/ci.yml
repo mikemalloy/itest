@@ -17,7 +17,11 @@ concurrency:
 jobs:
   gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The suite drives the reference MCP server over stdio for real in a few
+    # dozen tests and takes 13-15 minutes on a GitHub runner; 15 minutes was
+    # exceeded on 3.12 with every test green. Headroom, not a hang guard: a
+    # genuine hang is still cut off well before the runner's own limit.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
