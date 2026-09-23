@@ -286,3 +286,14 @@ def test_a_document_without_promptfoo_results_is_a_read_error(
     with pytest.raises(EvidenceReadError) as excinfo:
         read_results(path, source_name="s", agent=None)
     assert "results.results" in str(excinfo.value)
+
+
+def test_a_file_that_is_not_utf8_is_a_read_error(tmp_path: Path) -> None:
+    """A results file redirected through a shell that writes UTF-16 is not a
+    crash: the reader never raises anything but EvidenceReadError for a bad
+    file, and sync records it as unreadable."""
+    path = tmp_path / "utf16.json"
+    path.write_bytes(json.dumps({"evalId": "x"}).encode("utf-16"))
+    with pytest.raises(EvidenceReadError) as excinfo:
+        read_results(path, source_name="s", agent=None)
+    assert "not UTF-8" in str(excinfo.value)

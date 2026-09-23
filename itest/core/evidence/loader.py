@@ -90,6 +90,8 @@ def _load_one(path: Path, shown: str) -> EvidenceSource:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ValueError(f"{shown} could not be read: {exc.strerror}") from None
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{shown} is not UTF-8 text (byte {exc.start}).") from None
     try:
         raw = yaml.safe_load(text)
     except yaml.YAMLError as exc:

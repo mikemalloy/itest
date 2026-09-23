@@ -189,3 +189,38 @@ def test_the_line_never_borrows_the_boundary_lanes_words() -> None:
         text = render_evidence_line(line).lower()
         for word in ("pass", "fail", "verified", "covered"):
             assert word not in text, (line.status, word)
+
+
+def test_a_results_file_that_is_not_utf8_is_unreadable_and_sync_exits_0(
+    workdir: Path,
+) -> None:
+    _source(workdir, "ci", _promptfoo(workdir))
+    (workdir / "evidence" / "promptfoo.json").write_bytes(
+        json.dumps({"evalId": "x"}).encode("utf-16")
+    )
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    (line,) = _lines(result.output)
+    assert line.startswith("evidence ci (promptfoo): unreadable: ")
+    assert "not UTF-8" in line
+    assert load_manifest(workdir / ".itest" / "manifest.yaml").sources[0].status == (
+        "unreadable"
+    )
+
+
+def test_a_sync_that_changes_no_evidence_leaves_the_manifest_byte_identical(
+    workdir: Path,
+) -> None:
+    """The manifest is committed and reviewed: a sync that read the same
+    results and joined them the same way must not rewrite it with a new
+    recorded_at. A change in the lane — here, staleness — still writes."""
+    _source(workdir, "promptfoo-lab", _promptfoo(workdir))
+    assert _sync().exit_code == 0
+    manifest_file = workdir / ".itest" / "manifest.yaml"
+    before = manifest_file.read_bytes()
+    assert _sync().exit_code == 0
+    assert manifest_file.read_bytes() == before
+    _source(workdir, "promptfoo-lab", _promptfoo(workdir, max_age_days=0))
+    assert _sync().exit_code == 0
+    assert manifest_file.read_bytes() != before
+    assert load_manifest(manifest_file).sources[0].stale is True

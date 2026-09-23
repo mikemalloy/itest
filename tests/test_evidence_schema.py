@@ -197,3 +197,14 @@ def test_a_source_file_that_is_not_a_mapping_is_an_error(tmp_path: Path) -> None
     (error,) = loaded.errors
     assert error.name == "list"
     assert "mapping" in error.message
+
+
+def test_a_source_file_that_is_not_utf8_is_a_structured_error(tmp_path: Path) -> None:
+    path = sources_dir(tmp_path) / "utf16.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(yaml.safe_dump(VALID).encode("utf-16"))
+    loaded = load_sources(tmp_path)
+    assert loaded.sources == []
+    (error,) = loaded.errors
+    assert error.name == "utf16"
+    assert "not UTF-8" in error.message

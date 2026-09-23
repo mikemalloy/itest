@@ -104,6 +104,13 @@ def _load_document(path: Path) -> dict:
         raise EvidenceReadError(f"{path} does not exist") from None
     except OSError as exc:
         raise EvidenceReadError(f"{path} could not be read: {exc.strerror}") from None
+    except UnicodeDecodeError as exc:
+        # A ValueError, not an OSError: a file redirected through a shell that
+        # writes UTF-16 would otherwise crash sync instead of being a line.
+        raise EvidenceReadError(
+            f"{path} is not UTF-8 text (byte {exc.start}): not a promptfoo "
+            "results document"
+        ) from None
     try:
         document = json.loads(text)
     except json.JSONDecodeError as exc:

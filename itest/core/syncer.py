@@ -329,10 +329,20 @@ def record_evidence(base_dir: Path) -> list[SourceRecord]:
         records.extend(joined)
         lines.append(line)
     lines.sort(key=lambda line: line.name)
+    # The manifest is committed and reviewed: a sync that read the same file
+    # and joined it the same way must not rewrite it with a new clock. Only
+    # recorded_at is ignored — a staleness flip is a change and is written.
+    if _same_lane(records, manifest.evidence) and lines == manifest.sources:
+        return lines
     manifest.evidence = records
     manifest.sources = lines
     save_manifest(manifest, manifest_file)
     return lines
+
+
+def _same_lane(new: list, old: list) -> bool:
+    strip = [r.model_dump(exclude={"recorded_at"}) for r in new]
+    return strip == [r.model_dump(exclude={"recorded_at"}) for r in old]
 
 
 def render_evidence_line(line: SourceRecord) -> str:
