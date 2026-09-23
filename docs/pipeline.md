@@ -50,6 +50,16 @@ uploads it as an artifact. Report always exits 0 when the page renders — the
 verdict on the page is deliberately not an exit code, because a report command
 that could fail the build is a report command people stop running.
 
+If the pipeline also runs a red-team tool against a declared server — a
+promptfoo eval, say — its results file can ride into the same page. A source
+under `.itest/sources/<name>.yaml` names the file (literally, or by the NAME
+of a variable the job sets: `results_env: PROMPTFOO_RESULTS`) and the server
+it was run against; `itest sync` reads it last, offline, and the readiness
+page shows the run as a dated rate beside each tool's boundary checks. It is
+evidence of a different kind and is never counted: an unreadable or missing
+file is a line on the page, never a failed job, and no red-team result can
+change VERIFIED, the verdict or coverage. See [evidence.md](evidence.md).
+
 Credentials on the runner are read-only cloud credentials and nothing else: the
 generated `conftest.py` builds its boto3 session from the profile recorded in
 `.itest/skill-answers.yaml`, so leaving that profile empty falls through to

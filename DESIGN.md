@@ -339,6 +339,28 @@ passed — and stale, not-applicable and orphaned checks do not count; any stale
 check makes the page AT RISK and leads the exceptions. `docs/traits.md` is the
 reference.
 
+### Evidence sources (the judgment lane)
+
+A check says whether a tool *would let* a caller do something. A red-team tool
+says how often an agent *could be talked into* calling it. Those are different
+kinds of evidence, and `.itest/sources/<name>.yaml` (`docs/evidence.md`) puts
+the second beside the first on the same row without letting either stand in
+for the other. A source names a results file (a path, literal or by env-var
+NAME; never a credential) and the declared server it is about; sync reads it
+**last**, joins on `(server, tool name)` and nothing else, and writes
+`evidence` and `sources` as top-level manifest lists — never under `tests`,
+because an evidence record is not a test. **Judgment evidence is not a
+check**: it has no lifecycle state, never enters `COUNTED_STATES`, never
+changes `verified()`, the verdict or coverage, and its standards ids never
+enter the rollup's covered count — the never-counts test runs the same
+project with and without a source and asserts all three identical. The rate
+is shown as its parts (`calls N · refused R · of T rows`), never a percentage
+alone; staleness is decided at sync with the sync's clock and stored; a tool
+never called is absent, never a zero row; targeting is recorded only when the
+harness declares it. Best-effort and never blocking: an unreadable file, an
+undeclared server or an unmatched tool is a line with its reason, and sync
+goes on. ITest never runs the red-team tool.
+
 ## Skill layer
 - The bundled skill (`skills/itest-implementer/`) is a wrapper over the CLI and
   the manifest: recipes hold policy (what a good assertion for a point type
@@ -596,7 +618,23 @@ Shipped:
   for one release. `testpaths = ["tests"]` keeps the project suite to tests/,
   and the examples' generated artifacts are gitignored.
 
+- Evidence sources (promptfoo) — `docs/evidence.md`: `.itest/sources/<name>.yaml`
+  (schema + loader, promptfoo kind, `results` / `results_env`, validated
+  standards ids, `max_age_days`), a reader for both promptfoo result shapes
+  (agent `toolCalls[]` and direct `toolName`), the `(server, tool)` join onto
+  the manifest's tool points, top-level `evidence` / `sources` manifest lists
+  written only when a source exists (no schema bump), one sync line per
+  source, the *external evidence* lane under each tool row and the source
+  lines on the readiness page, and the standards view's separate external
+  evidence heading. Never counts: pinned by `tests/test_evidence_never_counts.py`.
+
 Not yet built (do not build without explicit instruction):
+- Targeting declared by the harness end to end: a promptfoo config that writes
+  `testCase.metadata.target_tool`, so the lane can say "targeted in N rows"
+  and the not-inducible reading has data behind it. The reader records it
+  when present; nothing produces it yet.
+- The `garak` evidence kind (the same source shape, a second reader).
+- Evidence via promptfoo's own MCP server, rather than a results file.
 - The remaining tool recipes (`tool_isolation`, `tool_identity`, `tool_gating`,
   `tool_egress`, `tool_audit`, `tool_containment`; `itest recipes` lists which
   exist).

@@ -51,7 +51,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from itest.core import lifecycle
-from itest.core.manifest import Manifest
+from itest.core.manifest import EvidenceRecord, Manifest, SourceRecord
 from itest.traits.ids import migrate_family_id, migrate_trait_id
 
 #: The status vocabulary a tool check may carry. Pinned against the committed
@@ -139,6 +139,49 @@ class ToolCheck(_Strict):
         return migrate_trait_id(value) if isinstance(value, str) else value
 
 
+class EvidenceLane(_Strict):
+    """External evidence on one tool row, derived from the manifest's
+    :class:`~itest.core.manifest.EvidenceRecord`.
+
+    A display record and nothing more: it has no status, no state and no
+    test, so nothing that reads a check can read it. The rate is its parts —
+    ``calls N · refused R · of T rows`` — never a percentage alone.
+    """
+
+    source: str
+    kind: str
+    agent: str | None = None
+    run_id: str | None = None
+    run_at: str | None = None
+    #: What sync decided with its own clock; never recomputed here.
+    stale: bool = False
+    rate: str
+    #: ``targeted in N of T rows``, or the note that the harness declared none.
+    targeted: str
+    #: The source's declared ids: shown as external evidence, never coverage.
+    standards: list[str] = Field(default_factory=list)
+
+
+class SourceLine(_Strict):
+    """One declared source as the last sync read it, for the section header."""
+
+    name: str
+    kind: str | None = None
+    server: str | None = None
+    status: str
+    reason: str | None = None
+    run_id: str | None = None
+    run_at: str | None = None
+    shape: str = "none"
+    rows: int = 0
+    matched_tools: list[str] = Field(default_factory=list)
+    unmatched_tools: list[str] = Field(default_factory=list)
+    stale: bool = False
+    agent: str | None = None
+    standards: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
 class ToolEntry(_Strict):
     # Not a pytest test class despite pydantic's introspection.
     __test__ = False
@@ -153,6 +196,9 @@ class ToolEntry(_Strict):
     schema_hash: str | None = None
     description_hash: str | None = None
     checks: list[ToolCheck] = Field(default_factory=list)
+    #: The evidence lane beneath this row. Never in verify JSON: attached from
+    #: the manifest by :func:`build`, and read by nothing that counts.
+    evidence: list[EvidenceLane] = Field(default_factory=list)
 
 
 class ToolFamily(_Strict):
@@ -202,6 +248,8 @@ class ToolServer(_Strict):
     families: list[ToolFamily] = Field(default_factory=list)
     tools: list[ToolEntry] = Field(default_factory=list)
     exceptions: list[ToolException] = Field(default_factory=list)
+    #: The declared sources about this server, from the manifest.
+    sources: list[SourceLine] = Field(default_factory=list)
 
 
 class StandardsEntry(_Strict):
@@ -423,11 +471,74 @@ class Page(BaseModel):
     since: str | None = None
     new_points: list[str] = Field(default_factory=list)
     removed_points: list[str] = Field(default_factory=list)
+    #: Source lines naming no server the ledger has (a file that did not parse,
+    #: a server the manifest does not inventory). Still shown, never dropped.
+    unattached_sources: list[SourceLine] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
 # Derivation.
 # ---------------------------------------------------------------------------
+
+#: What the lane says when no row of the run declared a target tool.
+TARGETING_NOT_DECLARED = "targeting not declared by the harness"
+
+
+def evidence_lane(record: EvidenceRecord, source: SourceRecord | None) -> EvidenceLane:
+    """The display record for one EvidenceRecord. ``source`` is its line, for
+    the declared standards; ``None`` when the manifest lost it."""
+    if record.targeted is None:
+        targeted = TARGETING_NOT_DECLARED
+    else:
+        targeted = f"targeted in {record.targeted} of {record.rows_total} rows"
+    return EvidenceLane(
+        source=record.source_name,
+        kind=record.kind,
+        agent=record.agent,
+        run_id=record.run_id,
+        run_at=record.run_at,
+        stale=record.stale,
+        rate=(
+            f"calls {record.calls} · refused {record.refused} · of "
+            f"{record.rows_total} rows"
+        ),
+        targeted=targeted,
+        standards=list(source.standards) if source is not None else [],
+    )
+
+
+def source_line(record: SourceRecord) -> SourceLine:
+    return SourceLine.model_validate(record.model_dump())
+
+
+def _attach_evidence(ledger: ToolLedger, manifest: Manifest) -> list[SourceLine]:
+    """Hang the manifest's evidence lane on the ledger's rows and servers.
+
+    Touches ``ToolEntry.evidence`` and ``ToolServer.sources`` only — never a
+    check, a summary or a family — so every count the ledger derives is what
+    it was before. Returns the source lines no server could claim.
+    """
+    by_name = {s.name: s for s in manifest.sources}
+    by_point: dict[str, list[EvidenceRecord]] = {}
+    for record in manifest.evidence:
+        by_point.setdefault(record.point_id, []).append(record)
+    for server in ledger.servers:
+        for tool in server.tools:
+            tool.evidence = [
+                evidence_lane(record, by_name.get(record.source_name))
+                for record in sorted(
+                    by_point.get(tool.point_id, []), key=lambda r: r.source_name
+                )
+            ]
+    servers = {s.server: s for s in ledger.servers}
+    unattached: list[SourceLine] = []
+    for record in manifest.sources:
+        server = servers.get(record.server or "")
+        if server is None:
+            unattached.append(source_line(record))
+        else:
+            server.sources.append(source_line(record))
+    return unattached
 
 
 def _trend(delta: int) -> tuple[str, str]:
@@ -564,6 +675,7 @@ def build(
     # --- tools ------------------------------------------------------------
     ledger = None
     tool_tiles: list[Tile] = []
+    unattached: list[SourceLine] = []
     if verify.get("tools"):
         ledger = ToolLedger.model_validate(verify["tools"])
         if not ledger.standards:
@@ -575,6 +687,7 @@ def build(
                 StandardsEntry.model_validate(entry)
                 for entry in rollup_for_ledger(verify["tools"])
             ]
+        unattached = _attach_evidence(ledger, manifest)
         for family in (s for server in ledger.servers for s in server.families):
             tool_tiles.append(
                 Tile(
@@ -723,4 +836,5 @@ def build(
         since=prior.generated_at.strftime("%Y-%m-%d") if prior else None,
         new_points=new_points,
         removed_points=removed_points,
+        unattached_sources=unattached,
     )

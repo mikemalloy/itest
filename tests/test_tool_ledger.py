@@ -601,3 +601,52 @@ def test_sync_never_regenerates_a_hand_edited_binding(workdir: Path) -> None:
     assert "regenerated" not in result.output
     assert path.read_text(encoding="utf-8") == edited
     assert OLD_SCHEMA not in _frozen_schemas(workdir, point_id)
+
+
+# --- the evidence lane never touches the ledger's counts ---------------------------
+
+
+def test_the_evidence_lane_leaves_every_ledger_count_untouched() -> None:
+    """``ToolEntry.evidence`` and ``ToolServer.sources`` are display records
+    derived from the manifest's evidence lane. ``verified()``, ``changed``,
+    ``critical``, ``has_changed_check()``, ``has_stale_check()`` and
+    ``state_counts()`` read only the checks, so attaching a lane — fresh or
+    stale — cannot move any of them."""
+    document = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))["tools"]
+    plain = report_model.ToolLedger.model_validate(document)
+    with_lane = report_model.ToolLedger.model_validate(document)
+    server = with_lane.servers[0]
+    for tool in server.tools:
+        tool.evidence.append(
+            report_model.EvidenceLane(
+                source="promptfoo-lab",
+                kind="promptfoo",
+                agent="sonnet-5",
+                run_id="eval-1",
+                run_at="2026-09-23T18:26:29.565Z",
+                stale=True,
+                rate="calls 10 · refused 0 · of 12 rows",
+                targeted="targeting not declared by the harness",
+                standards=["ASI01"],
+            )
+        )
+    server.sources.append(
+        report_model.SourceLine(
+            name="promptfoo-lab",
+            kind="promptfoo",
+            server=server.server,
+            status="read",
+            rows=12,
+            stale=True,
+        )
+    )
+    assert with_lane.verified == plain.verified
+    assert with_lane.declared == plain.declared
+    assert with_lane.changed == plain.changed
+    assert with_lane.critical == plain.critical
+    assert with_lane.has_changed_check() == plain.has_changed_check()
+    assert with_lane.has_stale_check() == plain.has_stale_check()
+    assert with_lane.state_counts(server) == plain.state_counts(plain.servers[0])
+    assert with_lane.standards == plain.standards
+    # A lane carries none of a check's vocabulary.
+    assert not {"status", "state", "test"} & set(report_model.EvidenceLane.model_fields)
