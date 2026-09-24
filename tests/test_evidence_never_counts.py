@@ -82,16 +82,27 @@ def test_evidence_never_changes_verified_the_verdict_or_the_rollup(
     monkeypatch.chdir(example)
     monkeypatch.setenv("REFERENCE_MCP_TOKEN", "dry-run-token")
     monkeypatch.delenv("REFERENCE_MCP_OPEN_URL", raising=False)
+    # The example ships a source of its own (promptfoo-ci, results by
+    # variable). With the variable unset it is unreadable, joins nothing, and
+    # is one more thing this test proves never counts.
+    monkeypatch.delenv("ITEST_PROMPTFOO_RESULTS", raising=False)
 
     _sync()
     without = _observe(example)
-    assert load_manifest(example / ".itest" / "manifest.yaml").evidence == []
+    manifest = load_manifest(example / ".itest" / "manifest.yaml")
+    assert manifest.evidence == []
+    assert [(s.name, s.status) for s in manifest.sources] == [
+        ("promptfoo-ci", "unreadable")
+    ]
 
     _declare_source(example)
     _sync()
     manifest = load_manifest(example / ".itest" / "manifest.yaml")
     assert manifest.evidence, "the source was read and joined"
-    assert [s.status for s in manifest.sources] == ["read"]
+    assert [(s.name, s.status) for s in manifest.sources] == [
+        ("promptfoo-ci", "unreadable"),
+        ("promptfoo-lab", "read"),
+    ]
     assert not any(r.stale for r in manifest.evidence)
     assert _observe(example) == without
 
@@ -105,7 +116,8 @@ def test_evidence_never_changes_verified_the_verdict_or_the_rollup(
     (example / ".itest" / "sources" / "promptfoo-lab.yaml").unlink()
     _sync()
     manifest = load_manifest(example / ".itest" / "manifest.yaml")
-    assert manifest.evidence == [] and manifest.sources == []
+    assert manifest.evidence == []
+    assert [s.name for s in manifest.sources] == ["promptfoo-ci"]
     assert _observe(example) == without
 
 

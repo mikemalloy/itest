@@ -1,0 +1,110 @@
+# The scheduled red-team job: promptfoo drives an agent holding reference-mcp's
+# tools through the pinned corpus, then ITest joins the results onto the
+# example's manifest as the external-evidence lane and renders the page.
+# It gates nothing: it never runs on a pull request or a push, and verify's
+# exit code is reported in the log, never enforced. A few cents of model calls
+# per run (twelve cells), about a minute.
+name: redteam nightly
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+# Read access to the checkout; the key is a secret, not a permission.
+permissions:
+  contents: read
+
+# Named, not defaulted: GitHub's default run shell is `bash -e` without
+# pipefail, under which `itest sync | tee` would succeed whatever sync did.
+# Naming bash gets `-eo pipefail`, which the tee'd steps below rely on.
+defaults:
+  run:
+    shell: bash
+
+# One run at a time, and a run in progress is never cancelled: a half-written
+# results file would be evidence of nothing.
+concurrency:
+  group: redteam-nightly
+  cancel-in-progress: false
+
+jobs:
+  redteam:
+    name: redteam (reference-mcp)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The only secret. It reaches the job as this variable and nothing else:
+      # agent.js reads it by name, never writes it, never passes it on.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Pinned model ids: the ones the 2026-09-23 run used. promptfooconfig.yaml
+      # reads them, so a laptop run sets the same two names.
+      AGENT_MODEL: claude-sonnet-5
+      AGENT_MODEL_2: claude-haiku-4-5-20251001
+      PROMPTFOO_DISABLE_TELEMETRY: 1
+      # Where promptfoo writes and where the declared source
+      # (.itest/sources/promptfoo-ci.yaml) reads: named by variable so the same
+      # source file works here and on a laptop.
+      ITEST_PROMPTFOO_RESULTS: ${{ github.workspace }}/redteam-results.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install
+        run: pip install -e ".[examples]"
+
+      # The harness runs from its own directory (the config names ./proxy-*.sh)
+      # and the scripts find the server from theirs. --no-cache: promptfoo
+      # writes no cache an artifact could pick up. promptfoo exits non-zero
+      # when a cell's guard fires — an agent called delete_record — which is
+      # the finding the page exists to show, so the join and the page still
+      # run; the step is marked failed in the run's view, the job is not.
+      - name: red team
+        id: red
+        continue-on-error: true
+        run: >-
+          cd examples/reference-mcp/redteam &&
+          npx -y promptfoo@0.123.1 eval -c promptfooconfig.yaml
+          -o "$ITEST_PROMPTFOO_RESULTS" --no-cache
+
+      # sync reads the source last and prints one line for it; verify runs the
+      # safe floor (static and readonly — no environment is bound here, and the
+      # active tier needs credentials and a policy decision this job does not
+      # make). The open HTTP mount is not running, so --allow-unreachable
+      # accepts that gap, as the README's stdio-only run does.
+      - name: join
+        run: |
+          cd examples/reference-mcp
+          itest sync --auto-approve --allow-unreachable 2>&1 | tee "${{ github.workspace }}/sync.log"
+          itest verify 2>&1 | tee "${{ github.workspace }}/verify.log" || echo "itest verify exited $?: reported, never enforced — this job gates nothing"
+
+      - name: report
+        run: |
+          cd examples/reference-mcp
+          itest report --html --out "${{ github.workspace }}/readiness.html" 2>&1 | tee "${{ github.workspace }}/report.log"
+
+      # Exactly two files, named in full: no glob can reach the harness, a
+      # promptfoo directory, or anything else.
+      - name: artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: redteam-reference-mcp
+          path: |
+            ${{ github.workspace }}/redteam-results.json
+            ${{ github.workspace }}/readiness.html
+          retention-days: 30
+          if-no-files-found: error
+
+      # The run page tells the story without a download.
+      - name: summary
+        if: always()
+        run: |
+          echo "red team step: ${{ steps.red.outcome }}"
+          grep -h '^evidence promptfoo-ci' "${{ github.workspace }}/sync.log" || echo "no source line: sync did not run"
+          grep -h 'integration points:' "${{ github.workspace }}/verify.log" || echo "no rollup: verify did not run"
+          grep -h '^Verdict:' "${{ github.workspace }}/report.log" || echo "no verdict: report did not run"
