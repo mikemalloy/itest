@@ -1,0 +1,41 @@
+name: itest plan
+
+# The PR gate on the reference example: `itest plan` in examples/reference-mcp,
+# as a first-time reader runs it. Plan launches the reference server over stdio
+# (a subprocess, no network) and reads its tool listing; it exits 2 — and this
+# job fails — when a declaration contradicts what the server actually serves,
+# so drift between .itest/tools/ and server.py cannot merge quietly. Seconds,
+# no secrets, no node, no model calls: those belong to redteam-nightly.yml, which
+# never runs on a pull request. This file is its own workflow so the gates
+# matrix in ci.yml is untouched.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: itest-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: itest plan (reference-mcp)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[examples]"
+      # The example's stdio declaration is `[python, server.py]`, and a bare
+      # `python` is the interpreter itest runs under — the one that just got
+      # the MCP SDK. The open HTTP mount's url is unset here, so plan reports
+      # that declaration unreachable, as a line, and still exits 0.
+      - name: itest plan
+        run: cd examples/reference-mcp && itest plan
