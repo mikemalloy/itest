@@ -1,0 +1,20 @@
+# The red-team harness's results, as an evidence source for reference-mcp.
+#
+# JUDGMENT EVIDENCE IS NOT A CHECK. What promptfoo says here — how often an
+# agent holding this server's tools could be talked into calling one — is
+# shown as a rate beside the boundary checks and never counts toward VERIFIED,
+# the verdict or coverage. `docs/evidence.md` is the reference.
+#
+# THE RESULTS FILE IS NAMED BY VARIABLE, NOT BY PATH. The scheduled job
+# (.github/workflows/redteam-nightly.yml) writes promptfoo's output wherever it
+# likes and exports the path as ITEST_PROMPTFOO_RESULTS; a laptop run does the
+# same. So this one file works locally and in CI unchanged, and a checkout with
+# the variable unset — every pull request — records the source as unreadable
+# with that reason and changes nothing else. A path is not a secret and could
+# be written literally; a variable is what lets it move.
+kind: promptfoo
+server: reference-mcp
+results_env: ITEST_PROMPTFOO_RESULTS
+agent: "claude-sonnet-5 and claude-haiku-4-5 via redteam/agent.js"
+standards: [ASI01, LLM01]
+max_age_days: 7
