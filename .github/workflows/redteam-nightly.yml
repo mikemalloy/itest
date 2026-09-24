@@ -15,6 +15,13 @@ on:
 permissions:
   contents: read
 
+# Named, not defaulted: GitHub's default run shell is `bash -e` without
+# pipefail, under which `itest sync | tee` would succeed whatever sync did.
+# Naming bash gets `-eo pipefail`, which the tee'd steps below rely on.
+defaults:
+  run:
+    shell: bash
+
 # One run at a time, and a run in progress is never cancelled: a half-written
 # results file would be evidence of nothing.
 concurrency:

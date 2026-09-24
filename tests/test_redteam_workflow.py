@@ -89,6 +89,23 @@ def test_it_is_scheduled_daily_and_runnable_on_demand_one_at_a_time() -> None:
     assert workflow["permissions"] == {"contents": "read"}
 
 
+def test_run_steps_use_bash_so_a_tee_pipeline_keeps_itest_exit_code() -> None:
+    """GitHub's default `run` shell is `bash -e` without pipefail, under
+    which `itest sync | tee` succeeds whatever sync did. Naming `bash` as the
+    shell is what gets `-eo pipefail` (documented), and the join step's
+    `|| echo` depends on it."""
+    assert _workflow()["defaults"]["run"]["shell"] == "bash"
+
+
+def _shell_options() -> list[str]:
+    """The options GitHub passes for the workflow's configured shell: for
+    `bash`, `--noprofile --norc -eo pipefail`. Anything else is a failure
+    here rather than a guess."""
+    shell = _workflow().get("defaults", {}).get("run", {}).get("shell")
+    assert shell == "bash", f"unhandled shell {shell!r}: this test knows bash"
+    return ["bash", "--noprofile", "--norc", "-eo", "pipefail"]
+
+
 def test_it_never_runs_on_a_pull_request_or_a_push() -> None:
     triggers = _triggers(_workflow())
     assert "pull_request" not in triggers
@@ -232,9 +249,8 @@ def job_run(tmp_path_factory: pytest.TempPathFactory) -> dict:
 
     outputs: dict[str, object] = {"workspace": workspace}
     for name in ("join", "report", "summary"):
-        # `bash -eo pipefail` is what `run:` gets on a GitHub runner.
         result = subprocess.run(
-            ["bash", "-eo", "pipefail", "-c", _script(_step(name), workspace)],
+            [*_shell_options(), "-c", _script(_step(name), workspace)],
             cwd=workspace,
             env=env,
             capture_output=True,
