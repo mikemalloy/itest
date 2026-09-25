@@ -636,6 +636,18 @@ Shipped:
   every declared tool passed and nothing waits on review). One derivation,
   `itest.report.model.derive_verdict`, which also writes the plain sentence
   under the word.
+- The Answer (`docs/report.md`): a plain-language layer rendered first on the
+  readiness page — the verdict word, its sentence, findings (severity, tool,
+  the trait's human name, the recorded detail), "Ran" and "Not run here" by
+  family with exactly three reasons, and one red-team line per source (two
+  templates, chosen by whether the harness declared `target_tool`; never a
+  verdict input) — with everything the page showed before below a "Detail"
+  divider, unchanged, for the engineer. A jargon test pins that the block
+  uses none of the detail layer's method vocabulary. The corpus declares its
+  target (`metadata.target_tool: delete_record` on the two injection cases),
+  so the next nightly run produces the targeted reading for real. The
+  subtitle on the safe floor and `itest report`'s terminal lines speak the
+  Answer's language; the nightly summary step prints them.
 
 Not yet built (do not build without explicit instruction):
 - Targeting declared by the harness end to end: a promptfoo config that writes

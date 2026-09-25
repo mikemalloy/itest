@@ -25,6 +25,92 @@ Exit code is 0 whenever the page renders. **The verdict never becomes an exit
 code** — that is `itest verify`'s job, and a report command that failed the
 build would make people stop running it.
 
+## Two audiences, two layers, one set of data
+
+The page opens with the **Answer**: a plain-language block for whoever has
+to decide whether to ship, readable in five seconds with none of the method
+vocabulary. Below a divider labelled **Detail** is everything the page showed
+before it existed — the banner, the posture grids, the tools grid with its
+lifecycle tags, the standards band, the evidence lanes, the sweep, the graph
+and the footer — unchanged, for the engineer who needs the exact terms (held
+out, not verifiable, stale, external evidence, safe floor, integration point).
+Both layers are rendered from the same verify document and manifest; the
+Answer adds no data, only words.
+
+### The Answer block
+
+Top to bottom:
+
+1. **The verdict word**, large, in its band colour (see Verdict below).
+2. **One sentence**, chosen by the word and nothing else — written by
+   `derive_verdict` alongside the word, so the template never re-derives
+   meaning from counts:
+
+   | Word | Sentence |
+   | --- | --- |
+   | BLOCKED | `{n} finding(s) need attention before release.` |
+   | NEEDS REVIEW | `No findings. {n} tool change(s) are waiting for a reviewer.` |
+   | PARTIAL | `No findings. {passed} of {total} checks passed; {held} were not run here.` |
+   | VERIFIED | `No findings. All {total} checks passed.` |
+
+   A *check* is one cell of the tools grid — the same unit it counts — plus
+   one integration point that is not itself a declared tool. `{held}` is the
+   held-out, not-verifiable and not-run cells and the stub or gated points.
+3. **Findings**, only when there are any: one line per critical or failing
+   check — severity, tool, the trait's human name from the trait table
+   (`destructive gating`, never the slug) and the check's recorded detail —
+   critical first; then failing or errored points. When the list is empty the
+   sentence already said "No findings" and no heading is drawn.
+4. **What was checked here**: `Ran: {families} — {passed} of {ran} passed.`
+   and one `Not run here: {families} — {why}.` line per reason. Families are
+   the human names (Authority, Blast radius, Containment, Change; Integrations
+   for Terraform points). `{why}` is one of exactly three phrases:
+
+   | Page state | Phrase |
+   | --- | --- |
+   | a check held out by the environment policy, a gated point (the safe floor, or an environment that withholds the tier) | `these need a staging environment with credentials` |
+   | `not_verifiable` because the server's declaration lacks a fact (the missing fact is named when the check recorded it) | `this server does not declare what they need` |
+   | `not_verifiable` because no engine check exists for the trait yet, a registered check that did not run, a stub point | `the check exists but has not been written yet` |
+5. **Red team**, only when a source was read, one line per source in one of
+   two templates, chosen by whether the harness declared what it was aiming
+   at (`testCase.metadata.target_tool`, see [docs/evidence.md](evidence.md)):
+
+   - targeting declared: `Red team ({date}): {rows} attempts. {t} targeted
+     {tool}; {i} induced a call; {r} of those were refused by the tool.` —
+     `t` rows named the tool as their target, `i` rows called it, `r` of
+     those calls the tool refused. The refused clause appears only when
+     `i > 0`.
+   - targeting not declared: `Red team ({date}): {rows} attempts. {m} tool(s)
+     exercised. No write or destructive tool was called.` — the last clause
+     is computed by joining each called tool to its mutation class; if any
+     called tool is write or destructive it becomes `{k} write/destructive
+     tool(s) were called: {names}`, styled as a warning. Never "on purpose",
+     never "resisted": without declared targeting ITest does not know intent.
+
+   Stale evidence appends `(stale — from {date})`. Neither template is a
+   verdict input: the word is identical with and without evidence, and
+   `tests/test_evidence_never_counts.py` pins that.
+6. `Detail below.`
+
+### The jargon contract
+
+The block uses none of the detail layer's vocabulary, and a test
+(`tests/test_answer.py`) renders the CI fixture and asserts it: no "held
+out", "not verifiable", "environment bound", "safe floor", "integration
+point", "judgment", "lane", "harness", "targeting", "tier", "readonly",
+"stub", "orphan", "manifest", "lifecycle", "rollup", "evidence lane",
+"external evidence" or "declared"; no trait slug, standards id, run id or
+ISO timestamp. Every label in the block is data, so the template's script
+carries no words of its own. The detail layer keeps every one of those
+terms, spelled exactly as before.
+
+On the safe floor (a policy present, nothing bound) the banner's subtitle
+reads `Ran in CI without credentials — active checks not run`; the exact
+original string (`no environment bound — N integration points · safe floor
+(static, readonly)`) is the footer's `bound` entry. `itest report` prints
+the same Answer to the terminal after `Wrote …`, which is what the scheduled
+red-team job's summary step shows on the run page.
+
 ## The rule the whole page obeys
 
 Every number, name and status comes from one of exactly three places: the
@@ -65,10 +151,11 @@ verifier already decided.
 
 | Section | What it shows | Source |
 | --- | --- | --- |
-| Verdict — integrations verified | `passing` / `total_points` | verify JSON |
+| Answer | the verdict word and sentence, findings, ran / not run by family, the red-team line | verify JSON `tools` and `points[]`, the trait table for human names, the manifest's `evidence` and `sources` |
+| Posture — integrations verified (tile) | `passing` / `total_points` | verify JSON |
+| Posture — agent tools verified (tile) | `tools.servers[].summary.verified` / `.declared` | verify JSON `tools` |
 | Verdict — endpoints verified | route_edge points passing / detected | verify JSON `points[]` + manifest `type` |
 | Verdict — drift | `orphaned_tests` + `len(unregistered)` | verify JSON |
-| Verdict — agent tools verified | `tools.servers[].summary.verified` / `.declared` | verify JSON `tools` |
 | Verdict — since-line | new / removed point ids | manifest vs `--since` manifest |
 | Posture — cross-stack | points with `attributes.external` | verify JSON `points[].attributes` |
 | Posture — wildcard | points with `attributes.wildcard_resource` | verify JSON `points[].attributes` |
@@ -86,6 +173,7 @@ verifier already decided.
 | Coverage list — evidence id | `points[].id` | verify JSON |
 | Not analyzed | the plan's census of unmodelled resource types | **not available** — see below |
 | Footer — run | `environment`, plus `--redact` when passed | verify JSON |
+| Footer — bound | on the safe floor only: `no environment bound — N integration points · safe floor (static, readonly)` | verify JSON `on_safe_floor` |
 | Footer — account, region | read out of the ARNs the report's own strings carry | verify JSON |
 | Footer — elapsed | `elapsed_seconds` | verify JSON |
 

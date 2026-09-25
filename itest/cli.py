@@ -375,8 +375,18 @@ def report(
     # A status note about a file, like the one `redact` writes: unstyled, and
     # it never carries the verdict into the exit code — that is verify's job.
     typer.echo(f"Wrote {out} ({out.stat().st_size} bytes).")
+    # The Answer, as the page shows it above the divider, so a run log reads
+    # the way the html does; then the engineer's count.
+    answer = page.answer
+    typer.echo(f"Verdict: {answer.word} — {answer.sentence}")
+    for finding in answer.findings:
+        detail = f" — {finding.detail}" if finding.detail else ""
+        typer.echo(f"  {finding.severity}: {finding.tool} — {finding.check}{detail}")
+    for line in [answer.ran, *answer.not_run, *(r.text for r in answer.red_team)]:
+        if line:
+            typer.echo(line)
     typer.echo(
-        f"Verdict: {page.verdict.word} — {page.verdict.integrations_verified} of "
+        f"{page.verdict.integrations_verified} of "
         f"{page.verdict.integrations_total} integration points verified."
     )
 

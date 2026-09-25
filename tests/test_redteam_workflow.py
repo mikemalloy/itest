@@ -181,7 +181,11 @@ def test_the_last_step_prints_the_story_to_the_log() -> None:
     assert "summary" in last["name"].lower()
     assert last.get("if") == "always()"
     assert "evidence promptfoo-ci" in last["run"]
+    # The verdict word, the Answer's sentence, and its lines: the run page
+    # reads the way the html does.
     assert "Verdict:" in last["run"]
+    assert "Not run here:" in last["run"]
+    assert "Red team" in last["run"]
 
 
 # --- the itest commands, executed -------------------------------------------------
@@ -317,5 +321,10 @@ def test_the_summary_step_tells_the_story_from_the_logs(job_run: dict) -> None:
     assert lines[0] == "red team step: skipped"
     assert lines[1].startswith("evidence promptfoo-ci (promptfoo): run eval-zyk-")
     assert lines[2].startswith("8 integration points: 8 passing")
-    assert lines[3].startswith("Verdict: ")
+    assert lines[3].startswith("Verdict: PARTIAL — No findings. ")
+    assert any(line.startswith("Ran: ") for line in lines[4:])
+    assert any(line.startswith("Not run here: ") for line in lines[4:])
+    assert any(
+        line.startswith("Red team (2026-09-23): 12 attempts.") for line in lines[4:]
+    )
     assert "did not run" not in job_run["summary"]

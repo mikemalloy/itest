@@ -100,6 +100,9 @@ _WARN_GLYPH = (
 
 #: Verdict word -> the CSS class of its band. PARTIAL has a band of its own
 #: (grey-blue): unchecked is neither a risk nor a pass.
+#: The banner's subtitle on the safe floor (a policy present, nothing bound).
+SAFE_FLOOR_SUBTITLE = "Ran in {where} without credentials — active checks not run"
+
 VERDICT_CLASS = {
     "VERIFIED": "",
     "NEEDS REVIEW": "risk",
@@ -245,14 +248,19 @@ def _verdict_block(page: Page) -> dict:
     for entry in nums[1:]:
         entry["sep"] = True
 
-    environment = (
-        f"<b>{_h(page.environment)}</b>"
-        if page.environment
-        else "<b>no environment bound</b>"
-    )
-    floor = " &nbsp;·&nbsp; safe floor (static, readonly)" if page.on_safe_floor else ""
-    points = _plural(verdict.integrations_total, "integration point")
-    sub = f"{environment} — {points}{floor}"
+    if page.on_safe_floor:
+        # The Answer's language: what happened, in words a reader without the
+        # method vocabulary can act on. The precise original string is in the
+        # footer (``bound``), where the engineer expects it.
+        sub = SAFE_FLOOR_SUBTITLE.format(where=page.environment or "CI")
+    else:
+        environment = (
+            f"<b>{_h(page.environment)}</b>"
+            if page.environment
+            else "<b>no environment bound</b>"
+        )
+        points = _plural(verdict.integrations_total, "integration point")
+        sub = f"{environment} — {points}"
 
     since = None
     if page.since:
@@ -950,6 +958,16 @@ def _footer_block(page: Page) -> list[dict]:
     if footer.commit:
         entries.append({"k": "commit", "v": footer.commit})
     entries.append({"k": "run", "v": footer.run})
+    if page.on_safe_floor:
+        # The exact line the subtitle carried before the Answer: the engineer's
+        # words, kept in the engineer's layer.
+        points = _plural(page.verdict.integrations_total, "integration point")
+        entries.append(
+            {
+                "k": "bound",
+                "v": f"no environment bound — {points} · safe floor (static, readonly)",
+            }
+        )
     if footer.account:
         entries.append({"k": "account", "v": footer.account})
     if footer.region:

@@ -790,3 +790,52 @@ def test_report_environment_and_from_are_one_or_the_other(
     assert result.exit_code == 2
     assert "--from" in result.output
     assert not (tmp_path / "readiness.html").exists()
+
+
+# --- the subtitle and the CLI speak the Answer's language ---------------------------
+
+
+def test_safe_floor_subtitle_speaks_the_answers_language(tmp_path, monkeypatch) -> None:
+    """A policy present and nothing bound is the safe floor. The banner's
+    subtitle says so in the Answer's words; the exact string the engineer
+    knows moves to the footer."""
+    from itest.report.render import extract_blocks
+
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    _with_policy(project)
+    out = tmp_path / "floor.html"
+    result = runner.invoke(app, ["report", "--html", "--out", str(out)])
+    assert result.exit_code == 0, result.output
+    page = extract_blocks(out.read_text(encoding="utf-8"))["PAGE"]
+    assert page["verdict"]["sub"] == (
+        "Ran in CI without credentials — active checks not run"
+    )
+    footer = {f["k"]: f["v"] for f in page["footer"]}
+    assert footer["bound"] == (
+        "no environment bound — 12 integration points · safe floor (static, readonly)"
+    )
+
+
+def test_without_a_policy_the_subtitle_is_unchanged(rendered_s7: str) -> None:
+    page = blocks(rendered_s7)["PAGE"]
+    assert (
+        page["verdict"]["sub"] == "<b>no environment bound</b> — 12 integration points"
+    )
+    assert "bound" not in {f["k"] for f in page["footer"]}
+
+
+def test_cli_report_prints_the_answer(tmp_path, monkeypatch) -> None:
+    """What the html says above the divider, the terminal says after `Wrote`."""
+    synced(tmp_path, monkeypatch, ALEX_S7)
+    result = runner.invoke(app, ["report", "--html", "--out", "a.html"])
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert (
+        "Verdict: PARTIAL — No findings. 0 of 12 checks passed; 12 were not run here."
+        in lines
+    )
+    assert (
+        "Not run here: Integrations — the check exists but has not been written yet."
+        in lines
+    )
+    assert "0 of 12 integration points verified." in lines
