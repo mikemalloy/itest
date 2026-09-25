@@ -116,6 +116,9 @@ def join_evidence(
                 rows_total=evidence.rows_total,
                 rows_with_call=evidence.rows_with_call,
                 targeted=evidence.targeted,
+                targeted_rows_with_call=evidence.targeted_rows_with_call,
+                targeted_rows_refused=evidence.targeted_rows_refused,
+                targeted_rows_succeeded=evidence.targeted_rows_succeeded,
                 recorded_at=now,
             )
         )

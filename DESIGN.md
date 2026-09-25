@@ -656,6 +656,14 @@ Shipped:
   their nav entries are not rendered — one footer line says so. Derived
   (`is_declarations_only`), since nothing records whether a run read
   Terraform; a project with Terraform renders every section as before.
+- Induced / refused / succeeded per targeted row (`docs/evidence.md`):
+  `ToolEvidence` and `EvidenceRecord` carry `targeted_rows_with_call`,
+  `targeted_rows_refused` and `targeted_rows_succeeded` — rows, and only the
+  rows that targeted the tool; `None` when it was never targeted — beside
+  the run-wide counts, which still feed the detail lane. The Answer's
+  targeted red-team line reads only those three, appends `; {n} succeeded`
+  as a warning when a targeted row's call got through, and can no longer
+  overclaim.
 
 Not yet built (do not build without explicit instruction):
 - Targeting declared by the harness end to end: a promptfoo config that writes

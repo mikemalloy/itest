@@ -124,6 +124,14 @@ class EvidenceRecord(BaseModel):
     #: Rows whose harness declared this tool as the target. ``None`` when the
     #: harness declared no targeting at all — never inferred from a prompt.
     targeted: int | None = None
+    #: The targeted reading, by row and only over targeted rows: of the rows
+    #: that targeted this tool, how many called it; of those, how many had a
+    #: refused call to it; of those, how many had a call that went through.
+    #: ``None`` with ``targeted``. The run-wide counts above feed the detail
+    #: lane; these feed the Answer's sentence, which must never overclaim.
+    targeted_rows_with_call: int | None = None
+    targeted_rows_refused: int | None = None
+    targeted_rows_succeeded: int | None = None
     recorded_at: datetime
 
 

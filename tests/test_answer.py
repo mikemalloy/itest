@@ -450,12 +450,75 @@ def test_declared_targeting_reads_as_targeted_induced_refused(ci_fixture) -> Non
         verify, _join(manifest, SYNTHETIC_TARGETED), generated_at=NOW
     )
     (line,) = page.answer.red_team
+    # Rows throughout, and only targeted rows: the fixture's benign untargeted
+    # call and its refused-twice row change neither number.
     assert line.text == (
-        "Red team (2026-09-24): 12 attempts. 8 targeted delete_record; "
+        "Red team (2026-09-24): 13 attempts. 8 targeted delete_record; "
         "2 induced a call; 2 of those were refused by the tool."
     )
     assert line.warning is False
     assert page.verdict.word == plain.verdict.word
+    assert page.verdict == plain.verdict
+
+
+@pytest.mark.slow
+def test_a_benign_untargeted_call_does_not_count_as_induced(
+    ci_fixture, tmp_path: Path
+) -> None:
+    """A tool called on a row the harness did not aim at it is a benign call,
+    not an induced one: rows_with_call goes up, the sentence does not."""
+    verify, manifest = ci_fixture
+    document = json.loads(SYNTHETIC_TARGETED.read_text(encoding="utf-8"))
+    rows = document["results"]["results"]
+
+    def calls_delete(row: dict) -> bool:
+        return any(c["name"] == "delete_record" for c in row["metadata"]["toolCalls"])
+
+    benign = [r for r in rows if not r["testCase"].get("metadata") and calls_delete(r)]
+    assert len(benign) == 1, "the fixture has one benign untargeted call"
+    document["results"]["results"] = [r for r in rows if r not in benign]
+    results = tmp_path / "no-benign.json"
+    results.write_text(json.dumps(document), encoding="utf-8")
+
+    full = _join(manifest, SYNTHETIC_TARGETED)
+    fewer = _join(manifest, results)
+    (record,) = [r for r in full.evidence if r.targeted]
+    (fewer_record,) = [r for r in fewer.evidence if r.targeted]
+    assert record.rows_with_call == fewer_record.rows_with_call + 1
+    assert record.targeted_rows_with_call == fewer_record.targeted_rows_with_call
+
+    (line,) = report_model.build(verify, full, generated_at=NOW).answer.red_team
+    (fewer_line,) = report_model.build(verify, fewer, generated_at=NOW).answer.red_team
+    assert line.text.replace("13 attempts", "12 attempts") == fewer_line.text
+
+
+@pytest.mark.slow
+def test_a_refused_then_admitted_row_shows_as_succeeded_and_warns(
+    ci_fixture, tmp_path: Path
+) -> None:
+    """A targeted row where the tool refused once and then let a retry
+    through is refused AND succeeded, and the line says so — styled as a
+    warning, and still never a verdict input."""
+    verify, manifest = ci_fixture
+    document = json.loads(SYNTHETIC_TARGETED.read_text(encoding="utf-8"))
+    row = document["results"]["results"][11]
+    assert row["testCase"]["metadata"] == {"target_tool": "delete_record"}
+    for holder in (row["metadata"], row["response"]["metadata"]):
+        holder["toolCalls"][-1]["is_error"] = False
+    results = tmp_path / "mixed.json"
+    results.write_text(json.dumps(document), encoding="utf-8")
+    plain = report_model.build(
+        verify,
+        manifest.model_copy(update={"evidence": [], "sources": []}),
+        generated_at=NOW,
+    )
+    page = report_model.build(verify, _join(manifest, results), generated_at=NOW)
+    (line,) = page.answer.red_team
+    assert line.text == (
+        "Red team (2026-09-24): 13 attempts. 8 targeted delete_record; "
+        "2 induced a call; 2 of those were refused by the tool; 1 succeeded."
+    )
+    assert line.warning is True
     assert page.verdict == plain.verdict
 
 
@@ -473,7 +536,7 @@ def test_declared_targeting_with_nothing_induced(ci_fixture, tmp_path: Path) -> 
     page = report_model.build(verify, _join(manifest, results), generated_at=NOW)
     (line,) = page.answer.red_team
     assert line.text == (
-        "Red team (2026-09-24): 12 attempts. 8 targeted delete_record; "
+        "Red team (2026-09-24): 13 attempts. 8 targeted delete_record; "
         "0 induced a call."
     )
     assert "refused" not in line.text
@@ -492,10 +555,11 @@ def test_the_synthetic_fixture_says_it_is_synthetic() -> None:
     document = json.loads(SYNTHETIC_TARGETED.read_text(encoding="utf-8"))
     assert document["_note"].startswith("SYNTHETIC")
     run = read_results(SYNTHETIC_TARGETED, source_name="s", agent=None)
-    assert run.rows == 12
-    assert run.per_tool["delete_record"].targeted == 8
-    assert run.per_tool["delete_record"].rows_with_call == 2
-    assert run.per_tool["delete_record"].refused == 2
+    assert run.rows == 13
+    delete = run.per_tool["delete_record"]
+    assert delete.targeted == 8
+    assert (delete.rows_with_call, delete.refused) == (3, 3)  # run-wide
+    assert (delete.targeted_rows_with_call, delete.targeted_rows_refused) == (2, 2)
     assert run.per_tool["get_guide"].targeted == 0
 
 

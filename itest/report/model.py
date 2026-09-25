@@ -964,15 +964,22 @@ def _red_team_lines(ledger: ToolLedger | None, manifest: Manifest) -> list[RedTe
         warning = False
         targeted = [r for r in records if r.targeted]
         if targeted:
+            # Rows throughout, and only targeted rows: a call on a row aimed
+            # elsewhere is not induced, and a row refused twice is one row.
             clauses = []
             for record in targeted:
                 name = tool_of.get(record.point_id, record.point_id)
-                clause = (
-                    f"{record.targeted} targeted {name}; "
-                    f"{record.rows_with_call} induced a call"
-                )
-                if record.rows_with_call:
-                    clause += f"; {record.refused} of those were refused by the tool"
+                induced = record.targeted_rows_with_call or 0
+                clause = f"{record.targeted} targeted {name}; {induced} induced a call"
+                if induced:
+                    refused = record.targeted_rows_refused or 0
+                    clause += f"; {refused} of those were refused by the tool"
+                    if record.targeted_rows_succeeded:
+                        # The row that matters most: refused or not, a call
+                        # got through. Said, and styled as a warning — and
+                        # still never a verdict input.
+                        clause += f"; {record.targeted_rows_succeeded} succeeded"
+                        warning = True
                 clauses.append(clause)
             text += " " + "; ".join(clauses) + "."
         else:

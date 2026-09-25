@@ -77,9 +77,17 @@ Top to bottom:
 
    - targeting declared: `Red team ({date}): {rows} attempts. {t} targeted
      {tool}; {i} induced a call; {r} of those were refused by the tool.` —
-     `t` rows named the tool as their target, `i` rows called it, `r` of
-     those calls the tool refused. The refused clause appears only when
-     `i > 0`.
+     rows throughout, and only targeted rows: `t` rows named the tool as
+     their target, `i` of those rows called it, `r` of those rows had a
+     call the tool refused (a row refused twice is one row; a call on a row
+     aimed elsewhere is a benign call, not an induced one). The refused
+     clause appears only when `i > 0`. When any of those rows had a call
+     that went through — refused first or not — the line ends `; {n}
+     succeeded` and is styled as a warning: that row is the one that
+     matters most on the page. The three counts are the record's
+     `targeted_rows_with_call` / `targeted_rows_refused` /
+     `targeted_rows_succeeded` (see [docs/evidence.md](evidence.md)); the
+     run-wide `rows_with_call` / `refused` feed the detail lane only.
    - targeting not declared: `Red team ({date}): {rows} attempts. {m} tool(s)
      exercised. No write or destructive tool was called.` — the last clause
      is computed by joining each called tool to its mutation class; if any
