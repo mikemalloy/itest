@@ -9,7 +9,7 @@ supply (a second tenant's credential, where an audit record lands); those are
 
 The whole public surface::
 
-    CheckResult(status, detail, evidence=None)
+    CheckResult(status, detail, evidence=None, reason=None)
     run_engine_check(trait_id, point, target, *, authenticated) -> CheckResult
     run_generated_check(trait_id, point, target, *, fixtures) -> CheckResult
     clear_cache()   # once per verify run: forget cached listings
@@ -41,6 +41,7 @@ from itest.checks._base import (
     not_verifiable,
     scrub_result,
 )
+from itest.core import reasons
 from itest.probes.mcp import McpTarget
 from itest.traits.ids import migrate_trait_id
 
@@ -71,7 +72,9 @@ def run_engine_check(
     trait_id = migrate_trait_id(trait_id)
     check = ENGINE_CHECKS.get(trait_id)
     if check is None:
-        return not_verifiable(f"no engine check for {trait_id}")
+        return not_verifiable(
+            f"no engine check for {trait_id}", reason=reasons.UNWRITTEN
+        )
     return scrub_result(check(point, target, authenticated=authenticated), target)
 
 
@@ -87,5 +90,7 @@ def run_generated_check(
     trait_id = migrate_trait_id(trait_id)
     check = GENERATED_CHECKS.get(trait_id)
     if check is None:
-        return not_verifiable(f"no generated check for {trait_id} yet")
+        return not_verifiable(
+            f"no generated check for {trait_id} yet", reason=reasons.UNWRITTEN
+        )
     return scrub_result(check(point, target, fixtures=fixtures), target)

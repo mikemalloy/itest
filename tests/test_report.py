@@ -835,7 +835,7 @@ def test_cli_report_prints_the_answer(tmp_path, monkeypatch) -> None:
         in lines
     )
     assert (
-        "Not run here: Integrations — the check exists but has not been written yet."
+        "Not run here: Integrations — 12 checks are waiting for a test to be written."
         in lines
     )
     assert "0 of 12 integration points verified." in lines

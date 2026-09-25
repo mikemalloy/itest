@@ -369,10 +369,12 @@ def test_the_answer_for_the_ci_fixture(ci_fixture) -> None:
     block = _answer_block(page)
     assert block["findings"] == []
     assert "Findings" not in _strings(block)  # no empty heading
-    credentials = [line for line in answer.not_run if "credentials" in line]
-    (line,) = credentials
+    held = [line for line in answer.not_run if "non-production copy" in line]
+    (line,) = held
     assert line.startswith("Not run here: Authority, Blast radius, Containment — ")
-    assert line.endswith("these need a staging environment with credentials.")
+    assert line.endswith("and this run was not pointed at one.")
+    for line in answer.not_run:
+        assert ";" not in line
     assert answer.ran.startswith("Ran: ")
     (red_team,) = answer.red_team
     assert red_team.text.startswith("Red team (2026-09-23): 12 attempts.")

@@ -202,7 +202,7 @@ def test_an_unknown_trait_is_not_verifiable_and_never_raises(
         "Q7", point(manifest_points, "get_guide"), stdio_target(), authenticated=True
     )
     assert result == CheckResult(
-        status="not_verifiable", detail="no engine check for Q7"
+        status="not_verifiable", detail="no engine check for Q7", reason="unwritten"
     )
 
 

@@ -62,15 +62,40 @@ Top to bottom:
    critical first; then failing or errored points. When the list is empty the
    sentence already said "No findings" and no heading is drawn.
 4. **What was checked here**: `Ran: {families} — {passed} of {ran} passed.`
-   and one `Not run here: {families} — {why}.` line per reason. Families are
-   the human names (Authority, Blast radius, Containment, Change; Integrations
-   for Terraform points). `{why}` is one of exactly three phrases:
+   and one `Not run here: {families} — {sentence}` line per **reason code**.
+   Families are the human names (Authority, Blast radius, Containment,
+   Change; Integrations for Terraform points). The Answer never prints an
+   engine reason string: every check that did not run carries a code from
+   `itest.core.reasons` (the check library names one on every
+   `not_verifiable` result; verify stamps one on every held-out, skipped,
+   missing, unregistered or stub outcome), and
+   `itest.report.model.REASON_SENTENCES` gives each code one plain sentence
+   with a count and nothing else. Two reasons on one point are two lines,
+   never a semicolon. A code the table does not know fails the render
+   (`UnknownReason`) rather than printing raw text; a ledger written before
+   the codes existed is read by the detail strings the engine emitted then,
+   and an unknown detail fails the same way.
 
-   | Page state | Phrase |
+   | Code | Sentence (`{n} checks …`) |
    | --- | --- |
-   | a check held out by the environment policy, a gated point (the safe floor, or an environment that withholds the tier) | `these need a staging environment with credentials` |
-   | `not_verifiable` because the server's declaration lacks a fact (the missing fact is named when the check recorded it) | `this server does not declare what they need` |
-   | `not_verifiable` because no engine check exists for the trait yet, a registered check that did not run, a stub point | `the check exists but has not been written yet` |
+   | `held_out.unbound` | need a non-production copy of this server where trying a write is safe, and this run was not pointed at one. |
+   | `held_out.production` | only run against a non-production copy of this server, and this run was pointed at production. |
+   | `held_out.withheld` | only run where the policy allows trying a write, and it does not allow that where this run was pointed. |
+   | `deferred` | stop short of calling a tool that changes data without credentials, and the check that would is not written yet. |
+   | `undeclared` | need a fact this server does not declare. |
+   | `needs_facts` | need facts only you can supply, in the server's conftest. |
+   | `unwritten` | ITest cannot perform yet. |
+   | `unregistered` | have no test in this project yet. |
+   | `stub` | are waiting for a test to be written. |
+   | `stdio_boundary` | do not apply to a server run as a local process, which has no anonymous caller to refuse. |
+   | `already_mutating` | do not apply, because the tool already says it changes data. |
+   | `unclassified` | could not tell what kind of tool this is. |
+   | `no_safe_call` | could not set up a safe call to the tool, so they made none. |
+   | `not_listed` | found that the server no longer lists the tool. |
+   | `unreachable` | could not get an answer from the server. |
+   | `no_credential` | had no credential to use. |
+   | `skipped` | were skipped before they ran. |
+   | `missing` | produced no result in this run. |
 5. **Red team**, only when a source was read, one line per source in one of
    two templates, chosen by whether the harness declared what it was aiming
    at (`testCase.metadata.target_tool`, see [docs/evidence.md](evidence.md)):
@@ -108,7 +133,8 @@ out", "not verifiable", "environment bound", "safe floor", "integration
 point", "judgment", "lane", "harness", "targeting", "tier", "readonly",
 "stub", "orphan", "manifest", "lifecycle", "rollup", "evidence lane",
 "external evidence" or "declared"; no trait slug, standards id, run id or
-ISO timestamp. Every label in the block is data, so the template's script
+ISO timestamp. `tests/test_not_run_reasons.py` renders every reason code's
+line and holds it to the same list plus "environment" and "guard". Every label in the block is data, so the template's script
 carries no words of its own. The detail layer keeps every one of those
 terms, spelled exactly as before.
 

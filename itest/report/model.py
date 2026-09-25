@@ -62,7 +62,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from itest.core import lifecycle
+from itest.core import lifecycle, reasons
 from itest.core.manifest import EvidenceRecord, Manifest, SourceRecord
 from itest.traits.ids import migrate_family_id, migrate_trait_id
 
@@ -148,6 +148,10 @@ class ToolCheck(_Strict):
     code: str | None = None
     #: The published ids the trait answers (``ASI03``, ``semgrep-server-4``).
     standards: list[str] = Field(default_factory=list)
+    #: Why the check did not run, as a code from ``itest.core.reasons``. Set
+    #: by the engine on every not-run cell; a ledger written before the codes
+    #: existed carries none, and the Answer then reads the detail it knows.
+    reason: str | None = None
 
     @field_validator("trait", mode="before")
     @classmethod
@@ -772,11 +776,197 @@ def derive_verdict(
     return word, reason, tally
 
 
-#: The three reasons a check was not run here, as the Answer states them.
-WHY_CREDENTIALS = "these need a staging environment with credentials"
-WHY_UNDECLARED = "this server does not declare what they need"
-WHY_UNWRITTEN = "the check exists but has not been written yet"
-_WHY_ORDER = (WHY_CREDENTIALS, WHY_UNDECLARED, WHY_UNWRITTEN)
+class UnknownReason(ValueError):
+    """A not-run reason the Answer has no sentence for. Raised at render time:
+    the page prints a plain sentence or nothing, never an engine string."""
+
+
+#: One plain sentence per reason code, as (one check, several checks) — a
+#: count, a family list, and nothing else. The engine's detail never reaches
+#: a line; the code chooses the words, and a code not in this table fails
+#: loudly (:class:`UnknownReason`). Keyed by ``itest.core.reasons``; a test
+#: pins that the two vocabularies are the same set, and that every sentence
+#: is free of the detail layer's vocabulary.
+REASON_SENTENCES: dict[str, tuple[str, str]] = {
+    reasons.HELD_OUT_UNBOUND: (
+        "needs a non-production copy of this server where trying a write is "
+        "safe, and this run was not pointed at one.",
+        "need a non-production copy of this server where trying a write is "
+        "safe, and this run was not pointed at one.",
+    ),
+    reasons.HELD_OUT_PRODUCTION: (
+        "only runs against a non-production copy of this server, and this run "
+        "was pointed at production.",
+        "only run against a non-production copy of this server, and this run "
+        "was pointed at production.",
+    ),
+    reasons.HELD_OUT_WITHHELD: (
+        "only runs where the policy allows trying a write, and it does not "
+        "allow that where this run was pointed.",
+        "only run where the policy allows trying a write, and it does not "
+        "allow that where this run was pointed.",
+    ),
+    reasons.DEFERRED: (
+        "stops short of calling a tool that changes data without credentials, "
+        "and the check that would is not written yet.",
+        "stop short of calling a tool that changes data without credentials, "
+        "and the check that would is not written yet.",
+    ),
+    reasons.UNDECLARED: (
+        "needs a fact this server does not declare.",
+        "need a fact this server does not declare.",
+    ),
+    reasons.NEEDS_FACTS: (
+        "needs facts only you can supply, in the server's conftest.",
+        "need facts only you can supply, in the server's conftest.",
+    ),
+    reasons.UNWRITTEN: (
+        "ITest cannot perform yet.",
+        "ITest cannot perform yet.",
+    ),
+    reasons.UNREGISTERED: (
+        "has no test in this project yet.",
+        "have no test in this project yet.",
+    ),
+    reasons.STUB: (
+        "is waiting for a test to be written.",
+        "are waiting for a test to be written.",
+    ),
+    reasons.STDIO_BOUNDARY: (
+        "does not apply to a server run as a local process, which has no "
+        "anonymous caller to refuse.",
+        "do not apply to a server run as a local process, which has no "
+        "anonymous caller to refuse.",
+    ),
+    reasons.ALREADY_MUTATING: (
+        "does not apply, because the tool already says it changes data.",
+        "do not apply, because the tool already says it changes data.",
+    ),
+    reasons.UNCLASSIFIED: (
+        "could not tell what kind of tool this is.",
+        "could not tell what kind of tool this is.",
+    ),
+    reasons.NO_SAFE_CALL: (
+        "could not set up a safe call to the tool, so it made none.",
+        "could not set up a safe call to the tool, so they made none.",
+    ),
+    reasons.NOT_LISTED: (
+        "found that the server no longer lists the tool.",
+        "found that the server no longer lists the tool.",
+    ),
+    reasons.UNREACHABLE: (
+        "could not get an answer from the server.",
+        "could not get an answer from the server.",
+    ),
+    reasons.NO_CREDENTIAL: (
+        "had no credential to use.",
+        "had no credential to use.",
+    ),
+    reasons.SKIPPED: (
+        "was skipped before it ran.",
+        "were skipped before they ran.",
+    ),
+    reasons.MISSING: (
+        "produced no result in this run.",
+        "produced no result in this run.",
+    ),
+}
+
+
+def not_run_sentence(reason: str, n: int) -> str:
+    """``3 checks could not get an answer from the server.`` — the plain
+    sentence for ``n`` checks not run for ``reason``."""
+    try:
+        one, many = REASON_SENTENCES[reason]
+    except KeyError:
+        raise UnknownReason(
+            f"no plain sentence for not-run reason {reason!r}; the Answer knows "
+            f"{', '.join(REASON_SENTENCES)}."
+        ) from None
+    return f"{_count(n, 'check')} {one if n == 1 else many}"
+
+
+#: How a ledger written before reason codes is read: the engine's detail
+#: strings at that time, by the prefix each began with. Anything else is an
+#: :class:`UnknownReason`, never raw text.
+_LEGACY_DETAILS: tuple[tuple[str, str], ...] = (
+    ("no engine check for", reasons.UNWRITTEN),
+    ("no generated check for", reasons.UNWRITTEN),
+    ("stdio transport:", reasons.STDIO_BOUNDARY),
+    ("anonymous session admitted; this tool mutates", reasons.DEFERRED),
+    ("anonymous session admitted; the class of", reasons.UNCLASSIFIED),
+    ("anonymous session admitted, but", reasons.NOT_LISTED),
+    ("declare observation.snapshot_tool", reasons.UNDECLARED),
+    ("no sentinels.nonexistent_id", reasons.UNDECLARED),
+    ("the manifest records no", reasons.UNDECLARED),
+    ("the anonymous session could not be attempted", reasons.UNREACHABLE),
+    ("could not snapshot through", reasons.UNREACHABLE),
+    ("tools/call failed", reasons.UNREACHABLE),
+    ("mutation class unknown", reasons.UNCLASSIFIED),
+    ("only the declaration states a class", reasons.UNCLASSIFIED),
+    ("the class of", reasons.UNCLASSIFIED),
+    ("observation.snapshot_tool", reasons.NO_SAFE_CALL),
+    ("an authenticated listing was asked for", reasons.NO_CREDENTIAL),
+    ("the server refused the anonymous tool listing", reasons.NO_CREDENTIAL),
+    ("no test is registered", reasons.UNREGISTERED),
+    ("registered, but pytest reported no result", reasons.MISSING),
+)
+
+
+def _legacy_reason(status: str, detail: str, environment: str | None) -> str:
+    if status == "held_out":
+        if environment is None:
+            return reasons.HELD_OUT_UNBOUND
+        if environment in ("prod", "production"):
+            return reasons.HELD_OUT_PRODUCTION
+        return reasons.HELD_OUT_WITHHELD
+    if status == "not_verifiable" and " could not run: " in detail:
+        return reasons.UNREACHABLE
+    if status == "not_verifiable" and "is not in tools/list" in detail:
+        return reasons.NOT_LISTED
+    if status == "not_verifiable" and "it already declares that it mutates" in detail:
+        return reasons.ALREADY_MUTATING
+    if status == "not_verifiable" and "was not called:" in detail:
+        return reasons.UNREACHABLE
+    if status == "not_verifiable" and "has no sentinel" in detail:
+        return reasons.NO_SAFE_CALL
+    for prefix, reason in _LEGACY_DETAILS:
+        if detail.startswith(prefix):
+            return reason
+    if status == "not_run":
+        return reasons.skip_reason(detail)
+    raise UnknownReason(
+        f"a {status} check carries no reason code and its detail is not one the "
+        f"Answer knows: {detail!r}. The Answer prints a plain sentence or nothing."
+    )
+
+
+def _reason_of(check: ToolCheck, environment: str | None) -> str:
+    """The reason code for a cell nobody looked at: the engine's, or — for a
+    ledger written before codes — read from the detail it emitted then."""
+    if check.reason:
+        if check.reason not in REASON_SENTENCES:
+            raise UnknownReason(
+                f"not-run reason {check.reason!r} on {check.trait} has no plain "
+                f"sentence; the Answer knows {', '.join(REASON_SENTENCES)}."
+            )
+        return check.reason
+    return _legacy_reason(check.status, check.detail or "", environment)
+
+
+def _point_reason(point: dict, environment: str | None) -> str:
+    reason = point.get("reason")
+    if reason:
+        if reason not in REASON_SENTENCES:
+            raise UnknownReason(
+                f"not-run reason {reason!r} on point {point.get('id')} has no "
+                f"plain sentence; the Answer knows {', '.join(REASON_SENTENCES)}."
+            )
+        return reason
+    if point["status"] == "gated":
+        return _legacy_reason("held_out", "", environment)
+    return reasons.STUB
+
 
 #: Family id -> human name, when the ledger did not carry one.
 FAMILY_NAMES = {
@@ -799,18 +989,6 @@ def _trait_names() -> dict[str, str]:
     return {trait.id: trait.name for trait in load_traits().traits}
 
 
-def _why_not_run(check: ToolCheck) -> tuple[str, str | None]:
-    """The reason a cell was not run here, and the missing fact if the check
-    recorded one."""
-    if check.status == "held_out":
-        return WHY_CREDENTIALS, None
-    if check.status == "not_verifiable":
-        if check.detail.startswith("no engine check for"):
-            return WHY_UNWRITTEN, None
-        return WHY_UNDECLARED, check.detail or None
-    return WHY_UNWRITTEN, None
-
-
 def _point_label(point: dict) -> str:
     return (
         point.get("tag") or f"{point.get('source', '?')} -> {point.get('target', '?')}"
@@ -828,17 +1006,20 @@ def build_answer(
 
     Findings are every critical or failing cell and every failing or errored
     point, critical first. "Ran" and "Not run here" count the same cells the
-    grid counts, by family, with one of exactly three reasons for a cell
-    nobody looked at. The red-team line is one sentence per source that was
-    read, in the template the source's data supports — and it is read from
-    the evidence lane only, never from a check, so it can inform the sentence
-    and never the word.
+    grid counts, by family; a cell nobody looked at is counted under its
+    reason code, and each code becomes one line in the code's own plain
+    sentence — never the engine's detail, and never two reasons on one line.
+    The red-team line is one sentence per source that was read, in the
+    template the source's data supports — and it is read from the evidence
+    lane only, never from a check, so it can inform the sentence and never
+    the word.
     """
     names = _trait_names()
+    environment = ledger.servers[0].environment if ledger and ledger.servers else None
     findings: list[Finding] = []
     ran: dict[str, list[int]] = {}  # family -> [passed, ran]
-    not_run: dict[str, dict[str, int]] = {w: {} for w in _WHY_ORDER}
-    facts: list[str] = []
+    # reason code -> family -> count, in the vocabulary's order.
+    not_run: dict[str, dict[str, int]] = {code: {} for code in reasons.REASONS}
     # Families are listed in the ledger's own order, integrations last.
     order: list[str] = []
 
@@ -875,10 +1056,8 @@ def build_answer(
                         counts[1] += 1
                         counts[0] += check.status == "pass" and check.state != "stale"
                     else:
-                        why, fact = _why_not_run(check)
+                        why = _reason_of(check, environment)
                         not_run[why][family] = not_run[why].get(family, 0) + 1
-                        if fact and fact not in facts:
-                            facts.append(fact)
 
     for point in verify_points:
         if types.get(point["id"]) == "mcp_tool":
@@ -894,8 +1073,7 @@ def build_answer(
             )
             ran.setdefault(INTEGRATIONS_FAMILY, [0, 0])[1] += 1
         else:
-            why = WHY_CREDENTIALS if status == "gated" else WHY_UNWRITTEN
-            bucket = not_run[why]
+            bucket = not_run[_point_reason(point, environment)]
             bucket[INTEGRATIONS_FAMILY] = bucket.get(INTEGRATIONS_FAMILY, 0) + 1
 
     findings.sort(key=lambda f: _SEVERITY_ORDER.get(f.severity, 9))
@@ -910,14 +1088,12 @@ def build_answer(
         total = sum(v[1] for v in ran.values())
         ran_line = f"Ran: {in_order(ran)} — {passed} of {total} passed."
     not_run_lines = []
-    for why in _WHY_ORDER:
+    for why in reasons.REASONS:
         families = not_run[why]
         if not families:
             continue
-        reason = why
-        if why == WHY_UNDECLARED and facts:
-            reason = f"{why}: {'; '.join(facts)}"
-        not_run_lines.append(f"Not run here: {in_order(families)} — {reason}.")
+        sentence = not_run_sentence(why, sum(families.values()))
+        not_run_lines.append(f"Not run here: {in_order(families)} — {sentence}")
 
     return Answer(
         word=verdict.word,

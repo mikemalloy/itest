@@ -24,6 +24,7 @@ from itest.checks._base import (
     server_of,
     tool_of,
 )
+from itest.core import reasons
 from itest.core.declarations.loader import declaration_path
 from itest.probes.mcp import (
     MUTATING_CLASSES,
@@ -207,7 +208,7 @@ def check_authority__anonymous(
     # mean anything. Decided from the point (what plan recorded from the
     # declaration), before a subprocess is spawned.
     if target.kind == "stdio" and not attributes_of(point).get("enforced_over_stdio"):
-        return not_verifiable(STDIO_BOUNDARY, evidence)
+        return not_verifiable(STDIO_BOUNDARY, evidence, reason=reasons.STDIO_BOUNDARY)
 
     # 1. The front door.
     try:
@@ -219,7 +220,9 @@ def check_authority__anonymous(
             return CheckResult("pass", FRONT_DOOR_REFUSED, evidence)
         evidence["anonymous_listing"] = "error"
         return not_verifiable(
-            f"the anonymous session could not be attempted: {exc}", evidence
+            f"the anonymous session could not be attempted: {exc}",
+            evidence,
+            reason=exc.reason,
         )
     evidence.update(
         anonymous_listing="admitted",
@@ -236,12 +239,13 @@ def check_authority__anonymous(
     evidence.update(live_mutation=live, mutation=cls)
 
     if cls in MUTATING_CLASSES:
-        return not_verifiable(MUTATING_DEFERRED, evidence)
+        return not_verifiable(MUTATING_DEFERRED, evidence, reason=reasons.DEFERRED)
     if cls not in CALLABLE_CLASSES:
         return not_verifiable(
             f"anonymous session admitted; the class of {tool!r} is {cls}, so it "
             "was not called",
             evidence,
+            reason=reasons.UNCLASSIFIED,
         )
     if info is None:
         return not_verifiable(
@@ -249,6 +253,7 @@ def check_authority__anonymous(
             "listing; it was not called (change.inventory reports a tool the server "
             "no longer lists)",
             evidence,
+            reason=reasons.NOT_LISTED,
         )
 
     sentinel = ""
@@ -260,11 +265,12 @@ def check_authority__anonymous(
                 f"no sentinels.nonexistent_id to call {tool!r} with: {exc} "
                 f"(expected {declaration_path(server)})",
                 evidence,
+                reason=reasons.UNDECLARED,
             )
     try:
         arguments = sentinel_arguments(info.input_schema, sentinel)
     except NoSentinel as exc:
-        return not_verifiable(str(exc), evidence)
+        return not_verifiable(str(exc), evidence, reason=reasons.NO_SAFE_CALL)
 
     evidence.update(called=True, arguments=arguments)
     result = call_tool(
@@ -300,4 +306,6 @@ def check_authority__anonymous(
             f"tool error ({result.detail}): the tool ran for an anonymous caller",
             evidence,
         )
-    return not_verifiable(f"tools/call failed: {result.detail}", evidence)
+    return not_verifiable(
+        f"tools/call failed: {result.detail}", evidence, reason=reasons.UNREACHABLE
+    )

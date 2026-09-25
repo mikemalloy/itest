@@ -664,6 +664,16 @@ Shipped:
   targeted red-team line reads only those three, appends `; {n} succeeded`
   as a warning when a targeted row's call got through, and can no longer
   overclaim.
+- Not-run reason codes (`itest/core/reasons.py`, `docs/report.md`): one
+  closed vocabulary for why a check did not run. The check library names a
+  code on every `not_verifiable` result (the keyword is required, and a test
+  walks every call); verify stamps one on every held-out (unbound /
+  production / withheld, from the resolution), skipped, missing,
+  unregistered and stub outcome — `reason` on ledger checks and on points.
+  The Answer's "Not run here" lines are one plain sentence per code with a
+  count and the family list, never an engine string and never two reasons on
+  one line; an unknown code, or a code-less ledger with an unknown detail,
+  fails the render rather than printing raw text.
 
 Not yet built (do not build without explicit instruction):
 - Targeting declared by the harness end to end: a promptfoo config that writes

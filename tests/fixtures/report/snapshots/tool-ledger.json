@@ -9,7 +9,7 @@
       "findings": [],
       "footer": "Detail below.",
       "notRun": [
-        "Not run here: Integrations \u2014 the check exists but has not been written yet."
+        "Not run here: Integrations \u2014 7 checks are waiting for a test to be written."
       ],
       "ran": "Ran: Authority, Blast radius, Change \u2014 5 of 6 passed.",
       "redTeam": [],

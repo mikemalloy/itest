@@ -21,7 +21,15 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core import environments, lifecycle, planner, points, redact, stubgen
+from itest.core import (
+    environments,
+    lifecycle,
+    planner,
+    points,
+    reasons,
+    redact,
+    stubgen,
+)
 from itest.core.manifest import (
     IntegrationPoint,
     Manifest,
@@ -78,6 +86,10 @@ class PointResult(BaseModel):
     #: Carried here because a PointResult has no type, and rendering must not
     #: guess at attributes that only one point type has.
     tag: str = ""
+    #: Why the point was not verified, as a code from
+    #: :data:`itest.core.reasons.REASONS`: ``stub`` for a stub, the run's
+    #: held-out code for a gated point. ``None`` when it ran.
+    reason: str | None = None
 
 
 class VerifyReport(BaseModel):
@@ -344,6 +356,8 @@ def run_verify(
     _require_pytest()
 
     gated = _gated_canonicals(manifest, resolution)
+    # Why this run withholds a tier: stamped on every gated point and check.
+    gating = reasons.held_out_reason(resolution)
     # Gated (tier-disallowed) and disabled tests are both kept out of collection.
     # Gated is tracked separately below because a fully-gated point still
     # reports [GATED]; a disabled test simply does not run.
@@ -431,6 +445,7 @@ def run_verify(
                     attributes=point.attributes,
                     status="gated",
                     tag=points.summary(point),
+                    reason=gating,
                 )
             )
             gated_points += 1
@@ -460,6 +475,7 @@ def run_verify(
                 attributes=point.attributes,
                 status=status,
                 tag=points.summary(point),
+                reason=reasons.STUB if status == "stub" else None,
             )
         )
 
@@ -472,7 +488,7 @@ def run_verify(
         save_manifest(manifest, manifest_file)
 
     tools = build_tool_ledger(
-        manifest, base_dir, resolved, outcomes, resolution.environment
+        manifest, base_dir, resolved, outcomes, resolution.environment, gating
     )
 
     report = VerifyReport(
@@ -636,6 +652,18 @@ def _pick_entry(entries: list[TestEntry], kind: str) -> TestEntry | None:
     return preferred[0] if preferred else None
 
 
+def _not_run_reason(outcome: str, raw: dict, gating: str) -> str | None:
+    """The reason code for an outcome pytest decided (no CheckResult): held
+    out by the policy, a placeholder or plain skip, or no result at all."""
+    if outcome == "gated":
+        return gating
+    if outcome == "skipped":
+        return reasons.skip_reason(raw.get("reason") or "")
+    if outcome == "missing":
+        return reasons.MISSING
+    return None
+
+
 def _tool_checks(
     point: IntegrationPoint,
     manifest: Manifest,
@@ -644,6 +672,7 @@ def _tool_checks(
     resolved: dict[str, tuple[str, str]],
     outcomes: dict[str, dict],
     environment: str | None,
+    gating: str,
 ) -> tuple[list[dict], list[dict]]:
     """The ledger rows for one tool, and the exceptions they raise."""
     entries = [
@@ -675,15 +704,18 @@ def _tool_checks(
                 "status": "not_run",
                 "detail": "no test is registered for this check; run `itest sync`",
                 "test": "",
+                "reason": reasons.UNREGISTERED,
             }
         outcome, detail = resolved.get(entry.canonical, ("missing", ""))
         raw = outcomes.get(entry.canonical) or {}
         check = raw.get("check")
         if check and outcome not in ("gated", "not_applicable"):
             status, text = check.get("status", "fail"), check.get("detail", "")
+            reason = check.get("reason") if status == "not_verifiable" else None
         else:
             status = _OUTCOME_STATUS.get(outcome, "not_run")
             text = _short_detail(outcome, detail, raw, environment)
+            reason = _not_run_reason(outcome, raw, gating)
         state = check_state(
             base_dir=base_dir,
             path=entry.path,
@@ -700,6 +732,10 @@ def _tool_checks(
             "test": entry.canonical,
             "state": state,
         }
+        if reason is not None:
+            # Only a check that did not run says why; a check that ran has
+            # its status and detail, and no reason key at all.
+            result["reason"] = reason
         if state == "stale":
             file = base_dir / entry.path
             frozen = _docstring_schema(file, entry.test_name)
@@ -772,13 +808,17 @@ def build_tool_ledger(
     resolved: dict[str, tuple[str, str]],
     outcomes: dict[str, dict],
     environment: str | None,
+    gating: str = reasons.HELD_OUT_UNBOUND,
 ) -> dict | None:
     """The ``tools`` section of verify's JSON: one entry per declared server.
 
     Built only from what verify knows — the manifest's tool points and their
     ``traits_planned``, the test registered for each check, pytest's outcome
     and the ``CheckResult`` a check recorded — so nothing in it is illustrative:
-    a check that did not run says ``not_run``, never ``pass``. ``None`` when the
+    a check that did not run says ``not_run``, never ``pass``, and carries a
+    ``reason`` code (``itest.core.reasons``) saying why: the check's own for
+    ``not_verifiable``, ``gating`` (the run's held-out code) for a gated one,
+    and the skip / missing / unregistered codes for the rest. ``None`` when the
     manifest records no declared tool.
     """
     tools = [p for p in manifest.points if p.type == "mcp_tool"]
@@ -800,7 +840,14 @@ def build_tool_ledger(
         verified = 0
         for point in points_here:
             checks, raised = _tool_checks(
-                point, manifest, base_dir, table, resolved, outcomes, environment
+                point,
+                manifest,
+                base_dir,
+                table,
+                resolved,
+                outcomes,
+                environment,
+                gating,
             )
             counted = [c for c in checks if c.get("state") in _COUNTED]
             egress = point.attributes.get("egress")

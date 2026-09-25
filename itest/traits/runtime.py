@@ -180,6 +180,7 @@ def run_engine_case(case: EngineCase, target, *, authenticated: bool, record=Non
                 "status": result.status,
                 "detail": result.detail,
                 "evidence": result.evidence,
+                "reason": result.reason,
             },
         )
     if result.status in NOT_A_FAILURE:

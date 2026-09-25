@@ -31,6 +31,7 @@ from itest.checks._base import (
     tool_of,
 )
 from itest.checks.authority import NoSentinel, sentinel_arguments
+from itest.core import reasons
 from itest.core.declarations.loader import declaration_path
 from itest.probes.mcp import (
     MUTATING_CLASSES,
@@ -134,13 +135,14 @@ def check_blast__mutation_class(
     try:
         tools = reference_listing(target, authenticated=authenticated)
     except ListingUnavailable as exc:
-        return not_verifiable(str(exc), base)
+        return not_verifiable(str(exc), base, reason=exc.reason)
     info = find_tool(tools, tool)
     if info is None:
         return not_verifiable(
             f"{tool!r} is not in tools/list, so its class cannot be read "
             "(change.inventory reports the orphan)",
             base,
+            reason=reasons.NOT_LISTED,
         )
 
     live, live_source = classify_mutation(info)
@@ -180,10 +182,12 @@ def check_blast__mutation_class(
                 f"only the declaration states a class (declared {declared}); the "
                 "server's annotations and name say nothing to agree with",
                 evidence,
+                reason=reasons.UNCLASSIFIED,
             )
         return not_verifiable(
             "mutation class unknown: no annotation, and the name suggests nothing",
             evidence,
+            reason=reasons.UNCLASSIFIED,
         )
 
     if conflict and provenance != "confirmed":
@@ -380,12 +384,12 @@ def check_blast__mutation_class_observed(
         "arguments": None,
     }
     if not snapshot_tool:
-        return not_verifiable(NO_SNAPSHOT_TOOL, evidence)
+        return not_verifiable(NO_SNAPSHOT_TOOL, evidence, reason=reasons.UNDECLARED)
 
     try:
         tools = reference_listing(target, authenticated=authenticated)
     except ListingUnavailable as exc:
-        return not_verifiable(str(exc), evidence)
+        return not_verifiable(str(exc), evidence, reason=exc.reason)
     info = find_tool(tools, tool)
     live = classify_mutation(info)[0] if info is not None else None
     cls = _stricter(recorded, live)
@@ -399,22 +403,27 @@ def check_blast__mutation_class_observed(
             f"{tool!r} is {cls}: it already declares that it mutates, so there is "
             "nothing to observe and this check never calls it",
             evidence,
+            reason=reasons.ALREADY_MUTATING,
         )
     if cls not in OBSERVABLE_CLASSES:
         return not_verifiable(
-            f"the class of {tool!r} is {cls}, so it was not called", evidence
+            f"the class of {tool!r} is {cls}, so it was not called",
+            evidence,
+            reason=reasons.UNCLASSIFIED,
         )
     if info is None:
         return not_verifiable(
             f"{tool!r} is not in tools/list, so it was not called "
             "(change.inventory reports the orphan)",
             evidence,
+            reason=reasons.NOT_LISTED,
         )
     snapshot_info = find_tool(tools, snapshot_tool)
     if snapshot_info is None:
         return not_verifiable(
             f"observation.snapshot_tool {snapshot_tool!r} is not in tools/list",
             evidence,
+            reason=reasons.NO_SAFE_CALL,
         )
     snapshot_class = classify_mutation(snapshot_info)[0]
     if snapshot_class not in OBSERVABLE_CLASSES:
@@ -422,6 +431,7 @@ def check_blast__mutation_class_observed(
             f"observation.snapshot_tool {snapshot_tool!r} is {snapshot_class}; a "
             "snapshot is taken only through a read tool",
             evidence,
+            reason=reasons.NO_SAFE_CALL,
         )
 
     try:
@@ -431,12 +441,13 @@ def check_blast__mutation_class_observed(
             f"no sentinels.nonexistent_id to call {tool!r} with: {exc} "
             f"(expected {declaration_path(server)})",
             evidence,
+            reason=reasons.UNDECLARED,
         )
     try:
         arguments = sentinel_arguments(info.input_schema, sentinel)
         snapshot_arguments = sentinel_arguments(snapshot_info.input_schema, sentinel)
     except NoSentinel as exc:
-        return not_verifiable(str(exc), evidence)
+        return not_verifiable(str(exc), evidence, reason=reasons.NO_SAFE_CALL)
 
     # The baseline: two snapshots before any call. A difference here is the
     # snapshot tool's, not the target's, and the target is then never called.
@@ -454,6 +465,7 @@ def check_blast__mutation_class_observed(
         return not_verifiable(
             f"could not snapshot through {snapshot_tool!r}: {failed.detail}",
             evidence,
+            reason=reasons.UNREACHABLE,
         )
     hashes = [_snapshot(shot)[0]["hash"] for shot in baseline]
     evidence["baseline"] = {"stable": hashes[0] == hashes[1], "hashes": hashes}
@@ -465,6 +477,7 @@ def check_blast__mutation_class_observed(
             "and it was not called. Declare a stable projection — no "
             "timestamps, request ids or unordered results.",
             evidence,
+            reason=reasons.NO_SAFE_CALL,
         )
 
     evidence.update(called=True, arguments=arguments)
@@ -485,12 +498,14 @@ def check_blast__mutation_class_observed(
         return not_verifiable(
             f"could not snapshot through {snapshot_tool!r}: {failed.detail}",
             evidence,
+            reason=reasons.UNREACHABLE,
         )
     if call.raw is None:
         evidence["called"] = False
         return not_verifiable(
             f"{tool!r} was not called: {call.detail}",
             evidence,
+            reason=reasons.UNREACHABLE,
         )
 
     # Compared in memory; only structure persists (hashes, sizes, paths).

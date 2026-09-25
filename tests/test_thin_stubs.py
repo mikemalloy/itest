@@ -353,7 +353,10 @@ def test_run_engine_case_returns_the_check_result(monkeypatch) -> None:
     assert result == CheckResult("pass", "ok", {"n": 1})
     assert calls == [("authority.anonymous", "t", "TARGET", True)]
     assert recorded == [
-        ("itest_check", {"status": "pass", "detail": "ok", "evidence": {"n": 1}})
+        (
+            "itest_check",
+            {"status": "pass", "detail": "ok", "evidence": {"n": 1}, "reason": None},
+        )
     ]
 
 

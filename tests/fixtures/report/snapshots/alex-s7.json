@@ -18,7 +18,7 @@
       "findings": [],
       "footer": "Detail below.",
       "notRun": [
-        "Not run here: Integrations \u2014 the check exists but has not been written yet."
+        "Not run here: Integrations \u2014 12 checks are waiting for a test to be written."
       ],
       "ran": null,
       "redTeam": [],
