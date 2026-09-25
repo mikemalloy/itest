@@ -558,11 +558,44 @@ class Page(BaseModel):
     #: Source lines naming no server the ledger has (a file that did not parse,
     #: a server the manifest does not inventory). Still shown, never dropped.
     unattached_sources: list[SourceLine] = Field(default_factory=list)
+    #: Integration points that are not declared tools: what a detector read
+    #: out of Terraform. Zero for a project that declares tools and reads none.
+    infrastructure_points: int = 0
+    #: The project declares tools and reads no Terraform, so the Terraform-side
+    #: sections (infrastructure tiles, API sweep, integration graph, not
+    #: analyzed) are not drawn and one footer line says so. **Derived**, by
+    #: :func:`is_declarations_only`: nothing verify or plan records says
+    #: whether a run read Terraform, so the page decides it from the absence
+    #: of every kind of Terraform data at once.
+    declarations_only: bool = False
 
 
 # ---------------------------------------------------------------------------
 # Derivation.
 # ---------------------------------------------------------------------------
+
+
+def is_declarations_only(page: Page) -> bool:
+    """Whether the page is a declarations-only project's: tools declared and
+    no Terraform read.
+
+    Derived, not recorded: neither verify JSON nor the plan says whether a run
+    read any Terraform, so this is decided conservatively from the absence of
+    every Terraform-side datum at once — no integration point that is not a
+    declared tool, no API route, no graph edge, and no not-analyzed census —
+    on a page that does have a tool ledger. A run with nothing at all is not
+    declarations-only: it may be a Terraform project whose state was empty,
+    and its sections stay, empty but named.
+    """
+    return (
+        page.tools is not None
+        and page.infrastructure_points == 0
+        and page.api.total == 0
+        and not page.graph.points
+        and not page.graph.chain
+        and page.not_analyzed is None
+    )
+
 
 #: What the lane says when no row of the run declared a target tool.
 TARGETING_NOT_DECLARED = "targeting not declared by the harness"
@@ -1252,7 +1285,7 @@ def build(
         attn=verdict.integrations_verified < verdict.integrations_total,
     )
 
-    return Page(
+    page = Page(
         verdict=verdict,
         answer=build_answer(verify_points, types, ledger, manifest, verdict),
         posture=posture,
@@ -1268,4 +1301,9 @@ def build(
         new_points=new_points,
         removed_points=removed_points,
         unattached_sources=unattached,
+        infrastructure_points=sum(
+            1 for p in verify_points if types.get(p["id"]) != "mcp_tool"
+        ),
     )
+    page.declarations_only = is_declarations_only(page)
+    return page

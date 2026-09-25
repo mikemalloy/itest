@@ -648,6 +648,14 @@ Shipped:
   so the next nightly run produces the targeted reading for real. The
   subtitle on the safe floor and `itest report`'s terminal lines speak the
   Answer's language; the nightly summary step prints them.
+- The page shows what this project has and advertises nothing
+  (`docs/report.md`): the Database and Queue roadmap cards and their nav
+  entries are gone from every page (their text is the docs' Roadmap section),
+  and for a declarations-only project the four Terraform-side sections
+  (infrastructure tiles, API sweep, integration graph, not analyzed) and
+  their nav entries are not rendered — one footer line says so. Derived
+  (`is_declarations_only`), since nothing records whether a run read
+  Terraform; a project with Terraform renders every section as before.
 
 Not yet built (do not build without explicit instruction):
 - Targeting declared by the harness end to end: a promptfoo config that writes
@@ -678,6 +686,8 @@ Not yet built (do not build without explicit instruction):
 - A declaration reconfirm flag: a way for a reviewer to accept a `changed` or
   `stale` finding in the declaration rather than by editing the check.
 - The PR loop: sync opening a pull request for the checks it adds or retires.
+- The Database round-trip and Queue marked-message probes (the Roadmap section
+  of `docs/report.md`).
 - DNS and endpoint-availability detectors
 - EKS. Explicitly out of scope: a Kubernetes Service, Ingress, or Deployment
   is not in Terraform state, so there is nothing for a detector to read. The

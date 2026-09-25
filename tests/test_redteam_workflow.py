@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from test_reference_mcp_example import copy_example
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "redteam-nightly.yml"
@@ -236,11 +237,10 @@ def job_run(tmp_path_factory: pytest.TempPathFactory) -> dict:
     file standing in for promptfoo's output. The key is not needed: promptfoo
     is the one step this fixture does not run."""
     workspace = tmp_path_factory.mktemp("workspace")
-    shutil.copytree(
-        EXAMPLE_DIR,
-        workspace / "examples" / "reference-mcp",
-        ignore=shutil.ignore_patterns("__pycache__", "itest_tests", "manifest.yaml"),
-    )
+    # The same copy `copy_example` makes: a clean clone, without the output a
+    # local run of the example may have left behind (plan.json included — a
+    # stale plan would make the join step sync a run this job never made).
+    copy_example(workspace / "examples" / "reference-mcp")
     results = workspace / "redteam-results.json"
     results.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
     env = {

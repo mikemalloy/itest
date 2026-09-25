@@ -92,18 +92,6 @@
         "pill": "warn"
       },
       {
-        "count": "soon",
-        "id": "database",
-        "label": "Database",
-        "pill": "soon"
-      },
-      {
-        "count": "soon",
-        "id": "queue",
-        "label": "Queue",
-        "pill": "soon"
-      },
-      {
         "count": null,
         "id": "notanalyzed",
         "label": "Not analyzed",

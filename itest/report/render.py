@@ -28,6 +28,21 @@ TEMPLATE_RESOURCE = "templates/readiness.html"
 
 MARKER = "<!-- itest:data:{name} -->"
 
+#: A Terraform-side region of the template: kept, markers and all, for a
+#: project that reads Terraform; removed whole for a declarations-only one.
+#: The markers sit on lines of their own, and the substitution eats the line,
+#: so a page that keeps its regions is the template minus the two comments.
+_TERRAFORM_REGION = re.compile(
+    r"^[ \t]*<!-- itest:terraform -->\n(?P<body>.*?)"
+    r"^[ \t]*<!-- itest:terraform:end -->\n",
+    re.MULTILINE | re.DOTALL,
+)
+
+#: What the footer says instead of four empty Terraform-side sections.
+NO_TERRAFORM_NOTE = (
+    "No Terraform in this project; infrastructure sections are not shown."
+)
+
 #: The JS constant each marker declares. Names are the template's, not ours.
 BLOCKS = {
     "PAGE": "PAGE",
@@ -329,13 +344,16 @@ def _verdict_note(page: Page) -> str:
 
 
 def _nav_block(page: Page) -> list[dict]:
+    """The jump nav: one entry per section the page draws. No roadmap entry —
+    a release report advertises nothing — and no Terraform-side entry for a
+    declarations-only project, whose sections are not drawn."""
     pill = VERDICT_PILL.get(page.verdict.word, "ok")
     tools_count = (
         f"{page.verdict.tools_total} · {page.verdict.tool_changes_to_review}"
         if page.tools is not None
         else None
     )
-    return [
+    nav = [
         {"id": "posture", "label": "Security Posture", "pill": pill, "count": None},
         {
             "id": "tools",
@@ -343,6 +361,10 @@ def _nav_block(page: Page) -> list[dict]:
             "pill": "soon" if page.tools is None else pill,
             "count": tools_count,
         },
+    ]
+    if page.declarations_only:
+        return nav
+    return nav + [
         {
             "id": "api",
             "label": "API access",
@@ -355,8 +377,6 @@ def _nav_block(page: Page) -> list[dict]:
             "pill": pill,
             "count": page.verdict.integrations_total or None,
         },
-        {"id": "database", "label": "Database", "pill": "soon", "count": "soon"},
-        {"id": "queue", "label": "Queue", "pill": "soon", "count": "soon"},
         {"id": "notanalyzed", "label": "Not analyzed", "pill": "soon", "count": None},
     ]
 
@@ -968,6 +988,10 @@ def _footer_block(page: Page) -> list[dict]:
                 "v": f"no environment bound — {points} · safe floor (static, readonly)",
             }
         )
+    if page.declarations_only:
+        # The one line that stands in for the four Terraform-side sections:
+        # named, never silently skipped.
+        entries.append({"k": "note", "v": NO_TERRAFORM_NOTE})
     if footer.account:
         entries.append({"k": "account", "v": footer.account})
     if footer.region:
@@ -983,38 +1007,53 @@ def _footer_block(page: Page) -> list[dict]:
 
 
 def build_blocks(page: Page) -> dict[str, object]:
-    """The seven data blocks, keyed by marker name."""
+    """The seven data blocks, keyed by marker name.
+
+    For a declarations-only page the Terraform-side sections' labels are
+    absent and their row blocks empty: the sections are not drawn (see
+    :func:`render`), and words for a section nobody draws would be a claim
+    nobody can read. The posture tiles stay: they are counts of the run, and
+    the former hero tile leads them whatever the project reads.
+    """
     tools, tool_labels = _tools_blocks(page)
-    sweep, api_labels = _sweep_blocks(page)
-    points, chain, graph_labels = _graph_blocks(page)
-    return {
-        "PAGE": {
-            "answer": _answer_block(page),
-            "verdict": _verdict_block(page),
-            "nav": _nav_block(page),
-            "posture": {
-                "infraMeta": _plural(page.verdict.integrations_total, "point"),
-                "toolsMeta": (
-                    tool_labels["eyebrow"] if page.tools is not None else "not declared"
-                ),
-                "since": f"since {page.since}" if page.since else "",
-            },
-            "toolBand": _tool_band(page),
-            "standards": _standards_block(page),
-            "tools": tool_labels,
-            "api": api_labels,
-            "graph": graph_labels,
-            "notAnalyzed": _not_analyzed_block(page),
-            "footer": _footer_block(page),
-        },
+    posture: dict = {
+        "toolsMeta": (
+            tool_labels["eyebrow"] if page.tools is not None else "not declared"
+        ),
+        "since": f"since {page.since}" if page.since else "",
+    }
+    page_block: dict = {
+        "answer": _answer_block(page),
+        "verdict": _verdict_block(page),
+        "nav": _nav_block(page),
+        "posture": posture,
+        "toolBand": _tool_band(page),
+        "standards": _standards_block(page),
+        "tools": tool_labels,
+        "footer": _footer_block(page),
+    }
+    blocks: dict[str, object] = {
+        "PAGE": page_block,
         "TOOLS": tools,
         "TOOLPOSTURE": [_tile(t) for t in page.tool_tiles],
-        "SWEEP": sweep,
+        "SWEEP": [],
         "POSTURE": [_tile(page.integration_tile)]
         + [_tile(t) for t in page.posture.tiles()],
-        "POINTS": points,
-        "CHAIN": chain,
+        "POINTS": [],
+        "CHAIN": [],
     }
+    if page.declarations_only:
+        return blocks
+    sweep, api_labels = _sweep_blocks(page)
+    points, chain, graph_labels = _graph_blocks(page)
+    posture["infraMeta"] = _plural(page.verdict.integrations_total, "point")
+    page_block["api"] = api_labels
+    page_block["graph"] = graph_labels
+    page_block["notAnalyzed"] = _not_analyzed_block(page)
+    blocks["SWEEP"] = sweep
+    blocks["POINTS"] = points
+    blocks["CHAIN"] = chain
+    return blocks
 
 
 def template_text() -> str:
@@ -1024,11 +1063,20 @@ def template_text() -> str:
 
 
 def render(page: Page, template_path: Path | None = None) -> str:
-    """Render ``page`` into the template and return the self-contained HTML."""
+    """Render ``page`` into the template and return the self-contained HTML.
+
+    The template's Terraform-side regions (between ``<!-- itest:terraform -->``
+    and its ``:end``) are kept for a project that reads Terraform and removed
+    whole for a declarations-only one; either way the marker lines themselves
+    are gone from the output.
+    """
     if template_path is None:
         document = template_text()
     else:
         document = template_path.read_text(encoding="utf-8")
+    document = _TERRAFORM_REGION.sub(
+        "" if page.declarations_only else r"\g<body>", document
+    )
     for name, value in build_blocks(page).items():
         marker = MARKER.format(name=name)
         if marker not in document:

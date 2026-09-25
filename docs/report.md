@@ -177,9 +177,39 @@ verifier already decided.
 | Footer — account, region | read out of the ARNs the report's own strings carry | verify JSON |
 | Footer — elapsed | `elapsed_seconds` | verify JSON |
 
-The **Database** and **Queue** cards are labelled product tiers, not data. They
-say "Designed · not yet built" and carry no numbers, because those probes are
-on the roadmap and nothing has run.
+### A declarations-only project
+
+The Infrastructure tiles, the API access sweep, the Integration graph and Not
+analyzed are Terraform-side sections; for a declarations-only project (tools
+declared, no Terraform read — `examples/reference-mcp`,
+`examples/terraform-mcp-server`) they are not rendered, nor are their nav
+entries, and the detail layer's footer carries one line instead:
+`No Terraform in this project; infrastructure sections are not shown.`
+Nothing records whether a run read Terraform, so the page **derives** it
+conservatively —
+`itest.report.model.is_declarations_only`: a tool ledger is present and there
+is no integration point that is not a declared tool, no route, no graph edge
+and no not-analyzed census — and a project with Terraform renders every
+section exactly as before.
+
+## Roadmap
+
+The page shows what this project has and advertises nothing: there is no
+card for a probe that has not run. Two probes are designed and not yet built,
+and this is where that is written down rather than on a release page:
+
+- **Database — read/write round-trip.** Designed on the same probe framework
+  as the API sweep, and gated by the same environments policy. Comes online
+  once a project answers one question: which CRUD operations may a probe
+  perform, and against which table?
+- **Queue → function — marked-message delivery.** Event-source mappings and
+  dead-letter redrives are verified as wiring today (see the integration
+  graph). The active probe would send a marked, self-cleaning message and
+  observe it arrive — proving delivery, not just configuration. Opt-in per
+  environment; refuses production.
+
+Both are on the scope ledger in [DESIGN.md](../DESIGN.md) under "Not yet
+built".
 
 ## What verify cannot supply today
 

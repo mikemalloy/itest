@@ -288,15 +288,6 @@
   .row .ev{text-align:right;font-family:"IBM Plex Mono";font-size:11.5px}
   .row .ev a{color:var(--accent);text-decoration:none} .row .ev a:hover{text-decoration:underline}
 
-  .tier{background:var(--surface);border:1px dashed var(--hair);border-radius:14px;padding:18px 20px;
-    display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center}
-  @media(max-width:640px){.tier{grid-template-columns:1fr}}
-  .tier .ic{width:44px;height:44px;border-radius:11px;background:var(--surface-2);border:1px solid var(--hair);display:grid;place-items:center;color:var(--faint)}
-  .tier h3{font-family:"Archivo";font-size:16px;font-weight:700}
-  .tier .q{font-size:13px;color:var(--muted);margin-top:5px;max-width:60ch} .tier .q b{color:var(--ink)}
-  .tier .state{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);
-    border:1px solid var(--hair);border-radius:999px;padding:5px 12px;white-space:nowrap;justify-self:end}
-
   .blind{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px dashed var(--hair);border-radius:12px;padding:15px 18px}
   .blind .i{color:var(--faint);flex:none;margin-top:1px}
   .blind p{margin:0;font-size:13px;color:var(--muted)} .blind b{color:var(--ink)}
@@ -374,8 +365,10 @@
     <div class="posture" id="toolPostureGrid"></div>
     <div class="sub-eyebrow">Standards <span class="mono" id="standardsMeta"></span></div>
     <div id="standardsBand"></div>
+    <!-- itest:terraform -->
     <div class="sub-eyebrow">Infrastructure <span class="mono" id="infraMeta"></span></div>
     <div class="posture" id="postureGrid"></div>
+    <!-- itest:terraform:end -->
   </section>
 
   <section id="tools">
@@ -383,6 +376,7 @@
     <div id="toolsBody"></div>
   </section>
 
+  <!-- itest:terraform -->
   <section id="api">
     <div class="eyebrow">API access sweep <span class="n" id="apiEyebrow"></span></div>
     <div id="apiBody"></div>
@@ -393,30 +387,11 @@
     <div id="graphBody"></div>
   </section>
 
-  <section id="database">
-    <div class="eyebrow">Database probes</div>
-    <div class="tier">
-      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" stroke-width="1.6"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" stroke="currentColor" stroke-width="1.6"/></svg></div>
-      <div><h3>Database — read/write round-trip</h3>
-        <p class="q">Designed on the same probe framework as the API sweep, and gated by the same environments policy. Comes online once a project answers one question: <b>which CRUD operations may a probe perform, and against which table?</b></p></div>
-      <span class="state">Designed · not yet built</span>
-    </div>
-  </section>
-
-  <section id="queue">
-    <div class="eyebrow">Queue delivery probes</div>
-    <div class="tier">
-      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="17" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/></svg></div>
-      <div><h3>Queue → function — marked-message delivery</h3>
-        <p class="q">Event-source mappings and dead-letter redrives are verified as <b>wiring</b> today (see the integration graph). The active probe would send a <b>marked, self-cleaning message</b> and observe it arrive — proving delivery, not just configuration. Opt-in per environment; refuses production.</p></div>
-      <span class="state">Designed · not yet built</span>
-    </div>
-  </section>
-
   <section id="notanalyzed">
     <div class="eyebrow">Not analyzed <span class="n">named, never silently skipped</span></div>
     <div id="notAnalyzed"></div>
   </section>
+  <!-- itest:terraform:end -->
 
   <div class="foot" id="foot"></div>
 </div>
@@ -512,8 +487,10 @@ const tileHtml = p => `
       p.trend ? `<span class="trend ${esc(p.dir)}">${esc(p.sym)} ${esc(p.trend)}</span>` : ""}</div>
     <span class="lab">${p.lab}</span>
   </div>`;
-el("postureGrid").innerHTML = posture.map(tileHtml).join("");
-el("infraMeta").textContent = PAGE.posture.infraMeta;
+if(el("postureGrid")){
+  el("postureGrid").innerHTML = posture.map(tileHtml).join("");
+  el("infraMeta").textContent = PAGE.posture.infraMeta;
+}
 el("postureSince").textContent = PAGE.posture.since || "";
 el("toolsMeta").textContent = PAGE.posture.toolsMeta;
 
@@ -640,8 +617,9 @@ function wireExpand(id, selector){
   });
 }
 
-/* ---- API access sweep ---- */
+/* ---- api sweep (a Terraform-side section: absent on a declarations-only page) ---- */
 (function(){
+  if(!el("api")) return;
   el("apiEyebrow").textContent = PAGE.api.eyebrow;
   if(!SWEEP.length){
     el("apiBody").innerHTML = emptyState(PAGE.api.emptyTitle, PAGE.api.emptyBody);
@@ -683,8 +661,9 @@ function wireExpand(id, selector){
   wireExpand("expandAll", "#sweepGroups .grp");
 })();
 
-/* ---- integration graph + coverage list ---- */
+/* ---- integration graph + coverage list (Terraform-side, like the sweep) ---- */
 (function(){
+  if(!el("graph")) return;
   el("graphEyebrow").textContent = PAGE.graph.eyebrow;
   if(!POINTS.length && !CHAIN.length){
     el("graphBody").innerHTML = emptyState(PAGE.graph.emptyTitle, PAGE.graph.emptyBody);
@@ -767,8 +746,8 @@ function drawGraph(){
 }
 drawGraph();
 
-/* ---- not analyzed ---- */
-el("notAnalyzed").innerHTML = PAGE.notAnalyzed.present
+/* ---- not analyzed (Terraform-side, like the sweep) ---- */
+if(el("notAnalyzed")) el("notAnalyzed").innerHTML = PAGE.notAnalyzed.present
   ? `<div class="blind">
       <span class="i" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.4" r="1.1" fill="currentColor"/></svg></span>
       <div><p><b>${esc(PAGE.notAnalyzed.headline)}</b> ${esc(PAGE.notAnalyzed.body)}</p>
