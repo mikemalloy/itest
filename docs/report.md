@@ -43,14 +43,19 @@ The word in the stamp, in the order the rules are tried:
 
 | Verdict | When |
 | --- | --- |
-| **BLOCKED** | any tool check is `critical` (or a server's `summary.critical` is nonzero), or any point is `failing` or `error` |
-| **AT RISK** | any tool check is `changed` and unreviewed; or a point reports `stub` while its manifest entry says `implemented`; or any point reports `stub` at all |
-| **VERIFIED** | every point verified, and no tool change waiting on review |
+| **BLOCKED** | a finding: any tool check is `critical` or `fail` (or a server's `summary.critical` is nonzero), or any point is `failing` or `error`. Red. |
+| **NEEDS REVIEW** | a human decision is pending: any tool check is `changed` and unreviewed, or `stale` (hand-edited against a schema the tool no longer has), or a point reports `stub` while its manifest entry says `implemented`. Amber. |
+| **PARTIAL** | nothing failed and nothing is pending, but the page cannot claim full coverage: checks were `held_out` by the environment policy, are `not_verifiable` for this server, or are not written yet; a declared tool is not verified; or a point reports `stub` or `gated`. Nothing is wrong that we know of; we did not look at everything. Grey-blue, never amber, never green. |
+| **VERIFIED** | every declared property of every declared tool passed, every point verified, and no tool change waiting on review. Green. |
 
-The last AT RISK clause is the one that matters most in practice: **a stub is
-not coverage.** A freshly synced project has a manifest full of stubs and a
-green pytest run, and a page that stamped VERIFIED over "0 of 26 verified"
-would be the most misleading thing ITest could print.
+PARTIAL is the word that matters most in practice: **a stub is not coverage,
+and unchecked is not danger.** A freshly synced project has a manifest full of
+stubs and a green pytest run, and a page that stamped VERIFIED over "0 of 26
+verified" would be the most misleading thing ITest could print — but a page
+that stamped a risk word over it would be the second most misleading, because
+nothing was found. The four words are derived in one place,
+`itest.report.model.derive_verdict`, together with the plain sentence the page
+shows beneath the word.
 
 Point statuses are verify's own, under its existing precedence
 (fail > error > pass > stub), so the page never re-derives a status the

@@ -11,6 +11,7 @@
     --ok:#0f9d58; --ok-soft:#e6f4ec; --ok-line:#8fd3ac;
     --warn:#c77700; --warn-soft:#f8efdd;
     --bad:#d64550; --bad-soft:#f8e5e6;
+    --partial:#5b7fa6; --partial-soft:#e8eef6;
     --shadow:0 1px 2px rgba(20,30,50,.04),0 6px 20px rgba(20,30,50,.06);
     --navh:52px;
     color-scheme:light;
@@ -24,6 +25,7 @@
       --ok:#35c07e; --ok-soft:#122a1f; --ok-line:#2f6f4f;
       --warn:#e5a13a; --warn-soft:#2c2312;
       --bad:#ef6b74; --bad-soft:#2e1a1c;
+      --partial:#8fb0d6; --partial-soft:#172232;
       --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.34);
       color-scheme:dark;
     }
@@ -36,6 +38,7 @@
     --ok:#35c07e; --ok-soft:#122a1f; --ok-line:#2f6f4f;
     --warn:#e5a13a; --warn-soft:#2c2312;
     --bad:#ef6b74; --bad-soft:#2e1a1c;
+    --partial:#8fb0d6; --partial-soft:#172232;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.34);
     color-scheme:dark;
   }
@@ -103,6 +106,7 @@
   nav.jump a.active .c{color:var(--accent)}
   nav.jump .pill{width:7px;height:7px;border-radius:50%}
   .pill.ok{background:var(--ok)} .pill.soon{background:var(--faint)} .pill.warn{background:var(--warn)}
+  .pill.partial{background:var(--partial)}
 
   section{margin-top:30px;scroll-margin-top:calc(var(--navh) + 14px)}
   .eyebrow{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600;
@@ -309,6 +313,13 @@
   .verdict.risk .band{background:var(--warn)}
   .verdict.risk .stamp .glyph{background:var(--warn-soft)}
   .verdict.risk .stamp .word{color:var(--warn)}
+  /* PARTIAL: unchecked, so neither the warning amber nor the pass green */
+  .verdict.partial .band{background:var(--partial)}
+  .verdict.partial .stamp .glyph{background:var(--partial-soft)}
+  .verdict.partial .stamp .word{color:var(--partial)}
+  .hn.tools .v.partial{color:var(--partial)}
+  .toolband.partial{border-color:color-mix(in srgb,var(--partial) 45%,transparent)}
+  .toolband.partial .glyph{background:var(--partial-soft)} .toolband.partial .word{color:var(--partial)}
   .verdict.blocked .band{background:var(--bad)}
   .verdict.blocked .stamp .glyph{background:var(--bad-soft)}
   .verdict.blocked .stamp .word{color:var(--bad)}

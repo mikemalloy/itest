@@ -84,6 +84,12 @@ _CHECK_GLYPH = (
     '<path d="M20 6.5 9.4 17 4 11.6" stroke="currentColor" stroke-width="2.6" '
     'stroke-linecap="round" stroke-linejoin="round"/></svg>'
 )
+_PARTIAL_GLYPH = (
+    '<svg viewBox="0 0 24 24" width="26" height="26" fill="none">'
+    '<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2.2"/>'
+    '<path d="M8 12h8" stroke="currentColor" stroke-width="2.4" '
+    'stroke-linecap="round"/></svg>'
+)
 _WARN_GLYPH = (
     '<svg viewBox="0 0 24 24" width="26" height="26" fill="none">'
     '<path d="M12 3 2 20h20L12 3z" stroke="currentColor" stroke-width="2.2" '
@@ -92,7 +98,30 @@ _WARN_GLYPH = (
     '<circle cx="12" cy="17" r="1.2" fill="currentColor"/></svg>'
 )
 
-VERDICT_CLASS = {"VERIFIED": "", "AT RISK": "risk", "BLOCKED": "blocked"}
+#: Verdict word -> the CSS class of its band. PARTIAL has a band of its own
+#: (grey-blue): unchecked is neither a risk nor a pass.
+VERDICT_CLASS = {
+    "VERIFIED": "",
+    "NEEDS REVIEW": "risk",
+    "PARTIAL": "partial",
+    "BLOCKED": "blocked",
+}
+
+#: Verdict word -> the jump nav's pill class.
+VERDICT_PILL = {
+    "VERIFIED": "ok",
+    "NEEDS REVIEW": "warn",
+    "PARTIAL": "partial",
+    "BLOCKED": "warn",
+}
+
+#: Verdict word -> the agent-tools band's word.
+TOOL_BAND_WORD = {
+    "VERIFIED": "TOOLS VERIFIED",
+    "NEEDS REVIEW": "TOOLS NEED REVIEW",
+    "PARTIAL": "TOOLS PARTIAL",
+    "BLOCKED": "TOOLS BLOCKED",
+}
 
 _BLOCK_RE = re.compile(
     r"^const (?P<name>PAGE|TOOLS|toolPosture|SWEEP|posture|POINTS|CHAIN) = "
@@ -221,12 +250,22 @@ def _verdict_block(page: Page) -> dict:
     return {
         "word": verdict.word,
         "cls": VERDICT_CLASS.get(verdict.word, ""),
-        "glyph": _CHECK_GLYPH if verdict.word == "VERIFIED" else _WARN_GLYPH,
+        "glyph": _verdict_glyph(verdict.word),
         "sub": sub,
         "nums": nums,
         "note": _verdict_note(page),
         "since": since,
     }
+
+
+def _verdict_glyph(word: str) -> str:
+    """A check for the one green word, a neutral mark for PARTIAL, and the
+    warning triangle for the two words that need a human."""
+    if word == "VERIFIED":
+        return _CHECK_GLYPH
+    if word == "PARTIAL":
+        return _PARTIAL_GLYPH
+    return _WARN_GLYPH
 
 
 def _verdict_note(page: Page) -> str:
@@ -262,9 +301,7 @@ def _verdict_note(page: Page) -> str:
 
 
 def _nav_block(page: Page) -> list[dict]:
-    pill = {"VERIFIED": "ok", "AT RISK": "warn", "BLOCKED": "warn"}.get(
-        page.verdict.word, "ok"
-    )
+    pill = VERDICT_PILL.get(page.verdict.word, "ok")
     tools_count = (
         f"{page.verdict.tools_total} · {page.verdict.tool_changes_to_review}"
         if page.tools is not None
@@ -308,11 +345,7 @@ def _tool_band(page: Page) -> dict:
             "review": "",
         }
     verdict = page.verdict
-    word = {
-        "VERIFIED": "TOOLS VERIFIED",
-        "AT RISK": "TOOLS AT RISK",
-        "BLOCKED": "TOOLS BLOCKED",
-    }[verdict.word]
+    word = TOOL_BAND_WORD[verdict.word]
     return {
         "cls": VERDICT_CLASS.get(verdict.word, ""),
         "word": word,

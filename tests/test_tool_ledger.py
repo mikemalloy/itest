@@ -20,7 +20,8 @@ tool *today*:
 ``orphan``         the tool is gone; the test is kept, never deleted
 
 VERIFIED is a coverage claim: stale, not-applicable and orphaned checks do not
-count toward it, and a server with any stale check cannot be VERIFIED.
+count toward it, and a server with any stale check cannot be VERIFIED — it
+NEEDS REVIEW.
 """
 
 from __future__ import annotations
@@ -412,7 +413,7 @@ def green_alex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return manifest, verify
 
 
-def test_a_stale_check_flips_the_band_to_at_risk(green_alex) -> None:
+def test_a_stale_check_flips_the_band_to_needs_review(green_alex) -> None:
     manifest, verify = green_alex
     ledger = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))["tools"]
     server = ledger["servers"][0]
@@ -428,9 +429,9 @@ def test_a_stale_check_flips_the_band_to_at_risk(green_alex) -> None:
 
     server["tools"][0]["checks"][0]["state"] = "stale"
     page = report_model.build(verify, manifest)
-    assert page.verdict.word == "AT RISK"
+    assert page.verdict.word == "NEEDS REVIEW"
     blocks = report_render.build_blocks(page)
-    assert blocks["PAGE"]["toolBand"]["word"] == "TOOLS AT RISK"
+    assert blocks["PAGE"]["toolBand"]["word"] == "TOOLS NEED REVIEW"
 
 
 def test_the_rendered_page_tags_state_and_says_what_needs_attention(

@@ -336,7 +336,7 @@ regenerates the owned ones), `not_applicable` (retired), `orphan` (the tool is g
 and `recipe_newer` (defined, not yet emitted: nothing records a recipe version).
 VERIFIED is a coverage claim — every planned trait needs a counted check that
 passed — and stale, not-applicable and orphaned checks do not count; any stale
-check makes the page AT RISK and leads the exceptions. `docs/traits.md` is the
+check makes the page NEEDS REVIEW and leads the exceptions. `docs/traits.md` is the
 reference.
 
 ### Evidence sources (the judgment lane)
@@ -475,7 +475,7 @@ Shipped:
   manifest, or a fixed label, and a section whose source is absent renders
   empty-but-named ("No agent tools declared") rather than as sample data — a
   test asserts none of the design artifact's example data can reach output. A
-  stub-only run is AT RISK, never VERIFIED: a stub is not coverage, so a green
+  stub-only run is PARTIAL, never VERIFIED: a stub is not coverage, so a green
   stamp over "0 of 26 verified" is the one thing the page must never print.
   Trends and the since-line appear only with `--since <prior manifest>`, never
   as "steady"; `--redact` reuses verify's own scrubber rather than adding a
@@ -627,6 +627,15 @@ Shipped:
   source, the *external evidence* lane under each tool row and the source
   lines on the readiness page, and the standards view's separate external
   evidence heading. Never counts: pinned by `tests/test_evidence_never_counts.py`.
+- The verdict vocabulary (`docs/report.md`): the former AT RISK is split in
+  two, because "unchecked" must never read as "danger". BLOCKED (a finding),
+  NEEDS REVIEW (a human decision is pending: changed, stale, or stuck at stub
+  though implemented), PARTIAL (nothing failed, nothing pending, but held-out,
+  not-verifiable or unwritten checks mean the page cannot claim full coverage;
+  grey-blue, never amber), VERIFIED (unchanged: every declared property of
+  every declared tool passed and nothing waits on review). One derivation,
+  `itest.report.model.derive_verdict`, which also writes the plain sentence
+  under the word.
 
 Not yet built (do not build without explicit instruction):
 - Targeting declared by the harness end to end: a promptfoo config that writes

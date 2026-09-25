@@ -16,28 +16,40 @@ the anonymous probe).
 
 Verdict rules
 -------------
-Evaluated in order; the first that matches wins.
+Four words, evaluated in this order; the first that matches wins. The one
+derivation is :func:`derive_verdict`, which also writes the plain sentence
+(``Verdict.reason``) the page shows beneath the word, so nothing downstream
+re-derives meaning from counts.
 
-**BLOCKED** — the release is not shippable on this evidence:
+**BLOCKED** — a finding. Red.
 
-* any tool check has status ``critical``, or a server's ``summary.critical``
-  is nonzero, or
+* any tool check has status ``critical`` or ``fail``, or a server's
+  ``summary.critical`` is nonzero, or
 * any integration point is ``failing`` or ``error``.
 
-**AT RISK** — something needs a human before this is a green release:
+**NEEDS REVIEW** — a human decision is pending. Amber.
 
 * any tool check has status ``changed`` (a declared property moved and no
   reviewer has confirmed it), or
-* any tool check is ``stale`` (hand-edited, and generated against a schema the
-  tool no longer has), or any declared tool is not verified — VERIFIED is a
-  coverage claim, and stale, not-applicable and orphaned checks do not count
-  toward it, or
+* any tool check is ``stale`` (generated against a schema the tool no longer
+  has, and nobody has re-read it since), or
 * a point reports ``stub`` while its manifest entry says ``implemented`` —
-  the test was written but did not verify anything this run, or
-* any point reports ``stub`` at all. A stub is not coverage, so a run with
-  unverified points cannot carry a green stamp however few they are.
+  the test was written but did not verify anything this run.
 
-**VERIFIED** — every point verified and no tool change is waiting on review.
+**PARTIAL** — nothing failed and nothing is pending, but the page cannot claim
+full coverage. Nothing is wrong that we know of; we did not look at
+everything. Grey-blue, never amber, never green.
+
+* any tool check is ``held_out`` (the environment policy withheld its tier),
+  ``not_verifiable`` (this server does not declare what it needs, or the
+  check is not written yet) or ``not_run``, or
+* any declared tool is not verified — VERIFIED is a coverage claim, and
+  stale, not-applicable and orphaned checks do not count toward it, or
+* any point reports ``stub`` or ``gated``. A stub is not coverage, so a run
+  with unverified points cannot carry a green stamp however few they are.
+
+**VERIFIED** — every declared property of every declared tool passed, every
+point verified, and nothing is waiting on review. Green. Never a bare green.
 
 Point statuses come from verify's own precedence (fail > error > pass > stub),
 so this never re-derives a status the verifier already decided.
@@ -67,6 +79,10 @@ CHECK_STATUSES = (
     # A registered check that did not run: skipped, or not implemented yet.
     "not_run",
 )
+
+#: The verdict vocabulary, in precedence order. :func:`derive_verdict` is the
+#: one place a word is chosen.
+VERDICT_WORDS = ("BLOCKED", "NEEDS REVIEW", "PARTIAL", "VERIFIED")
 
 #: A check's lifecycle state, and the ones that do not count toward VERIFIED.
 #: Defined once in ``itest.core.lifecycle``; re-exported here for the page.
@@ -322,8 +338,33 @@ class Tile(BaseModel):
     attn: bool = False
 
 
+class Tally(BaseModel):
+    """The counts the verdict's sentence is built from.
+
+    A *check* is one :class:`ToolCheck` cell — the unit the tools grid counts
+    — plus one integration point that is not itself a declared tool (a tool
+    point's checks are its cells, so the point is not counted twice). Retired
+    and orphaned cells are not checks on a tool as it is today and are left
+    out of the total.
+    """
+
+    total: int = 0
+    passed: int = 0
+    #: Held out, not verifiable or not run: cells nobody looked at here, and
+    #: points still at stub or gated.
+    not_run: int = 0
+    #: Critical and failing cells; failing and errored points.
+    findings: int = 0
+    #: Changed and stale cells; points stuck at stub though implemented.
+    pending: int = 0
+
+
 class Verdict(BaseModel):
+    #: One of :data:`VERDICT_WORDS`.
     word: str
+    #: The plain sentence beneath the word, written by :func:`derive_verdict`.
+    reason: str = ""
+    tally: Tally = Field(default_factory=Tally)
     integrations_verified: int
     integrations_total: int
     #: route_edge points verify verified, over route_edge points detected.
@@ -539,6 +580,120 @@ def _attach_evidence(ledger: ToolLedger, manifest: Manifest) -> list[SourceLine]
         else:
             server.sources.append(source_line(record))
     return unattached
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+#: Cell statuses by what they mean for the tally. ``n/a`` is a retired check
+#: and is left out of the total; anything unknown is treated as not run.
+_FINDING_STATUSES = ("critical", "fail")
+_PENDING_STATUSES = ("changed",)
+_PASSED_STATUSES = ("pass",)
+
+
+def tally_checks(
+    points: list[dict],
+    types: dict[str, str],
+    ledger: ToolLedger | None,
+    implemented: set[str],
+) -> Tally:
+    """Count every check on the page into the five buckets of :class:`Tally`."""
+    tally = Tally()
+    if ledger is not None:
+        critical_cells = 0
+        changed_cells = 0
+        for server in ledger.servers:
+            for tool in server.tools:
+                for check in tool.checks:
+                    if check.state in ("not_applicable", "orphan") or (
+                        check.status == "n/a"
+                    ):
+                        continue
+                    tally.total += 1
+                    if check.status in _FINDING_STATUSES:
+                        tally.findings += 1
+                        critical_cells += check.status == "critical"
+                    elif check.status in _PENDING_STATUSES or check.state == "stale":
+                        tally.pending += 1
+                        changed_cells += check.status == "changed"
+                    elif check.status in _PASSED_STATUSES:
+                        tally.passed += 1
+                    else:
+                        tally.not_run += 1
+        # A summary can record what its cells do not list (an older ledger).
+        summary_critical = sum(s.summary.critical for s in ledger.servers)
+        tally.findings += max(0, summary_critical - critical_cells)
+        tally.pending += max(0, ledger.changed - changed_cells)
+    for point in points:
+        if types.get(point["id"]) == "mcp_tool":
+            continue  # its checks are the cells above
+        tally.total += 1
+        status = point["status"]
+        if status == "passing":
+            tally.passed += 1
+        elif status in ("failing", "error"):
+            tally.findings += 1
+        elif status == "stub" and point["id"] in implemented:
+            tally.pending += 1
+        else:
+            tally.not_run += 1
+    return tally
+
+
+def derive_verdict(
+    points: list[dict],
+    types: dict[str, str],
+    ledger: ToolLedger | None,
+    implemented: set[str],
+) -> tuple[str, str, Tally]:
+    """The verdict word, its plain sentence, and the counts behind them.
+
+    The four words, in precedence order — the first that applies wins:
+
+    ``BLOCKED``       a finding: a critical or failing check, a failing or
+                      errored point. Nothing else matters until it is fixed.
+    ``NEEDS REVIEW``  a human decision is pending: a declared property changed
+                      and no reviewer confirmed it, a check is stale, or a
+                      point reports stub while its manifest entry says
+                      implemented.
+    ``PARTIAL``       nothing failed and nothing is pending, but the page
+                      cannot claim full coverage: checks were held out by the
+                      environment policy, are not verifiable for this server,
+                      or are not written yet; or a declared tool is not
+                      verified. Nothing is wrong that we know of; we did not
+                      look at everything. Never amber, never green.
+    ``VERIFIED``      every declared property of every declared tool passed,
+                      every point verified, nothing waiting on review. The
+                      only word that is ever green.
+
+    The sentence is chosen by the word and nothing else; the page shows it
+    verbatim rather than rebuilding meaning from the numbers.
+    """
+    tally = tally_checks(points, types, ledger, implemented)
+    if tally.findings:
+        word = "BLOCKED"
+        verb = "needs" if tally.findings == 1 else "need"
+        reason = f"{_count(tally.findings, 'finding')} {verb} attention before release."
+    elif tally.pending:
+        word = "NEEDS REVIEW"
+        verb = "is" if tally.pending == 1 else "are"
+        reason = (
+            f"No findings. {_count(tally.pending, 'tool change')} {verb} waiting "
+            "for a reviewer."
+        )
+    elif tally.not_run or (ledger is not None and ledger.verified < ledger.declared):
+        word = "PARTIAL"
+        verb = "was" if tally.not_run == 1 else "were"
+        reason = (
+            f"No findings. {tally.passed} of {_count(tally.total, 'check')} passed; "
+            f"{tally.not_run} {verb} not run here."
+        )
+    else:
+        word = "VERIFIED"
+        reason = f"No findings. All {_count(tally.total, 'check')} passed."
+    return word, reason, tally
 
 
 def _trend(delta: int) -> tuple[str, str]:
@@ -775,25 +930,14 @@ def build(
         for t in manifest.tests
         if t.status == "implemented" and not t.disabled and not t.retired
     }
-    statuses = [p["status"] for p in verify_points]
-    stuck = any(
-        p["status"] == "stub" and p["id"] in implemented_points for p in verify_points
+    word, reason, tally = derive_verdict(
+        verify_points, types, ledger, implemented_points
     )
-    if (ledger and ledger.critical) or any(s in ("failing", "error") for s in statuses):
-        word = "BLOCKED"
-    elif (
-        (ledger and ledger.has_changed_check())
-        or (ledger and ledger.has_stale_check())
-        or (ledger and ledger.verified < ledger.declared)
-        or stuck
-        or any(s == "stub" for s in statuses)
-    ):
-        word = "AT RISK"
-    else:
-        word = "VERIFIED"
 
     verdict = Verdict(
         word=word,
+        reason=reason,
+        tally=tally,
         integrations_verified=int(verify.get("passing", 0)),
         integrations_total=int(verify.get("total_points", 0)),
         endpoints_verified=api.verified,

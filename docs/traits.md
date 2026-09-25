@@ -120,7 +120,7 @@ disk, so it keeps the name it was generated with.
   `itest.checks.run_engine_check`. Add a tool and it is picked up without
   regenerating anything. The engine records each `CheckResult` for verify's
   ledger. A `changed` or `not_verifiable` result is recorded and then skipped
-  rather than failed: it is a finding that waits on a human (AT RISK), not a
+  rather than failed: it is a finding that waits on a human (NEEDS REVIEW), not a
   failing check (BLOCKED).
 - **`generated`**: the check needs a fact only a human can supply, such as a
   second tenant's record or the identity the server should act as. Sync writes

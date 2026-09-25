@@ -384,7 +384,7 @@ def test_a_finding_that_is_not_a_failure_is_recorded_then_skipped(
 ) -> None:
     """`changed` waits on a reviewer and `not_verifiable` could not be judged:
     neither is a failing check. The CheckResult is recorded (the ledger reports
-    it as-is), and the test skips, so the point reads as unverified — AT RISK —
+    it as-is), and the test skips, so the point reads as unverified — PARTIAL —
     rather than failing and blocking the release."""
     import itest.checks
 

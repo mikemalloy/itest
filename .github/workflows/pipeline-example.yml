@@ -91,7 +91,7 @@ jobs:
         # gate (0 green, 1 a failing integration point, 2 a collection or
         # configuration error). Here the example proceeds to render a
         # stub-only page: every point is an unimplemented stub, which verify
-        # reports as 0 and the readiness page stamps AT RISK.
+        # reports as 0 and the readiness page stamps PARTIAL.
         run: itest verify --environment "$ITEST_ENVIRONMENT" --output json > verify.json || true
 
       - name: itest report

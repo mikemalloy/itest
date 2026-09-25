@@ -252,7 +252,7 @@
       "cls": "risk",
       "review": "1 change to review",
       "sub": "<b>5 of 6</b> tools verified against every declared property",
-      "word": "TOOLS AT RISK"
+      "word": "TOOLS NEED REVIEW"
     },
     "tools": {
       "attention": [
@@ -329,7 +329,7 @@
       ],
       "since": null,
       "sub": "<b>no environment bound</b> \u2014 7 integration points",
-      "word": "AT RISK"
+      "word": "NEEDS REVIEW"
     }
   },
   "POINTS": [],
