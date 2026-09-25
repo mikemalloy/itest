@@ -117,7 +117,7 @@
   .sub-eyebrow.first{margin-top:0}
   .sub-eyebrow .mono{text-transform:none;letter-spacing:0;color:var(--faint);font-weight:500;font-size:11.5px}
 
-  .posture{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .posture{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
   @media(max-width:720px){.posture{grid-template-columns:repeat(2,1fr)}}
   .pcard{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:14px 15px;display:flex;flex-direction:column;gap:6px}
   .pcard .top{display:flex;align-items:center;justify-content:space-between}
@@ -333,6 +333,25 @@
   .empty{background:var(--surface);border:1px dashed var(--hair);border-radius:12px;
     padding:16px 18px;color:var(--muted);font-size:13px}
   .empty b{color:var(--ink);font-weight:600;display:block;margin-bottom:3px}
+
+  /* --- the Answer: the plain-language layer above the divider --- */
+  .answer{background:var(--surface);border:1px solid var(--hair);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:22px}
+  .answer .band{height:6px;background:var(--ok)}
+  .answer.risk .band{background:var(--warn)} .answer.partial .band{background:var(--partial)} .answer.blocked .band{background:var(--bad)}
+  .answer .abody{padding:24px 28px 18px}
+  .answer .aword{font-family:"Archivo";font-weight:800;font-size:44px;letter-spacing:-.03em;line-height:1;color:var(--ok)}
+  .answer.risk .aword{color:var(--warn)} .answer.partial .aword{color:var(--partial)} .answer.blocked .aword{color:var(--bad)}
+  .answer .asentence{font-size:18px;margin:10px 0 0;color:var(--ink)}
+  .answer .alabel{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600;margin:18px 0 6px}
+  .answer .afind{list-style:none;margin:0;padding:0}
+  .answer .afind li{padding:8px 0;border-top:1px solid var(--hair-2);font-size:14px}
+  .answer .sev{font-family:"IBM Plex Mono";font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;color:var(--bad);background:var(--bad-soft);margin-right:8px;text-transform:uppercase}
+  .answer .aline{font-size:14px;color:var(--ink);margin-top:4px}
+  .answer .aline.red{margin-top:14px;color:var(--muted)}
+  .answer .aline.warn{color:var(--bad);font-weight:600}
+  .answer .afoot{margin-top:18px;font-size:12.5px;color:var(--faint)}
+  .divider{display:flex;align-items:baseline;gap:10px;margin:8px 0 14px;padding-top:14px;border-top:2px solid var(--hair);font-family:"Archivo";font-weight:700;font-size:15px}
+  .divider small{font-family:"IBM Plex Sans";font-weight:400;font-size:12.5px;color:var(--faint)}
 </style>
 
 <div class="wrap">
@@ -340,6 +359,9 @@
     <div class="brand"><span class="d" aria-hidden="true"></span><b>ITest</b><span>· production readiness</span></div>
     <div class="right"><span class="preview">Release readiness</span><button class="toggle" id="tog">Theme</button></div>
   </div>
+
+  <div class="answer" id="answer"></div>
+  <div class="divider" id="divider"></div>
 
   <div class="verdict" id="verdict"></div>
 
@@ -424,6 +446,32 @@ const cell = c => c ? `<span class="res ${c.cls}"${c.title ? ` title="${esc(c.ti
 const plain = t => `<span class="res none">${esc(t)}</span>`;
 const el = id => document.getElementById(id);
 const emptyState = (title, body) => `<div class="empty"><b>${esc(title)}</b>${esc(body)}</div>`;
+
+/* ---- answer ---- */
+(function(){
+  const a = PAGE.answer;
+  const box = el("answer");
+  box.className = "answer" + (a.cls ? " " + a.cls : "");
+  const found = a.findings.length
+    ? `<div class="alabel">${esc(a.findingsLabel)}</div><ul class="afind">${a.findings.map(f =>
+        `<li><span class="sev ${esc(f.cls)}">${esc(f.severity)}</span>${esc(f.text)}</li>`).join("")}</ul>`
+    : "";
+  const checked = [a.ran, ...a.notRun].filter(Boolean).map(l => `<div class="aline">${esc(l)}</div>`).join("");
+  const red = a.redTeam.map(r => `<div class="aline red${r.warn ? " warn" : ""}">${esc(r.text)}</div>`).join("");
+  box.innerHTML = `
+    <div class="band"></div>
+    <div class="abody">
+      <div class="aword">${esc(a.word)}</div>
+      <p class="asentence">${esc(a.sentence)}</p>
+      ${found}
+      <div class="alabel">${esc(a.checkedLabel)}</div>
+      ${checked}
+      ${red}
+      <div class="afoot">${esc(a.footer)}</div>
+    </div>`;
+  el("divider").innerHTML = `<span>${esc(a.divider)}</span><small>${esc(a.dividerSub)}</small>`;
+})();
+/* ---- answer:end ---- */
 
 /* ---- verdict banner ---- */
 (function(){

@@ -13,17 +13,29 @@ committed 2026-09-23 promptfoo results standing in for the harness's output.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 from test_reference_mcp_example import copy_example
 from typer.testing import CliRunner
 
 from itest.cli import app
-from itest.core.manifest import Manifest, load_manifest
+from itest.core.evidence.join import join_evidence
+from itest.core.evidence.loader import LoadedSource
+from itest.core.evidence.promptfoo import read_results
+from itest.core.evidence.schema import EvidenceSource
+from itest.core.manifest import (
+    EvidenceRecord,
+    IntegrationPoint,
+    Manifest,
+    load_manifest,
+)
 from itest.report import model as report_model
+from itest.report import render as report_render
 
 runner = CliRunner()
 
@@ -31,6 +43,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL_LEDGER = REPO_ROOT / "tests" / "fixtures" / "report" / "tool-ledger.json"
 EVIDENCE = REPO_ROOT / "tests" / "fixtures" / "evidence"
 PROMPTFOO_FIXTURE = EVIDENCE / "promptfoo-reference-mcp-2026-09-23.json"
+SYNTHETIC_TARGETED = EVIDENCE / "promptfoo-targeted-synthetic.json"
+PROMPTFOO_CONFIG = (
+    REPO_ROOT / "examples" / "reference-mcp" / "redteam" / "promptfooconfig.yaml"
+)
+TEMPLATE = REPO_ROOT / "itest" / "report" / "templates" / "readiness.html"
 NOW = datetime(2026, 9, 25, 9, 0, tzinfo=UTC)
 
 
@@ -217,3 +234,310 @@ def test_the_word_is_never_at_risk_anywhere_in_the_repo() -> None:
         if old_word in text:
             hits.append(name)
     assert hits == []
+
+
+# --- the Answer -----------------------------------------------------------------------
+
+#: The jargon contract. The Answer block is the plain-language layer; every
+#: method word the engineer relies on stays in the detail layer, spelled as
+#: it is today, and none of it appears above the divider. Substrings are
+#: matched case-insensitively; the patterns catch a trait slug, a standards
+#: id, a run id and an ISO timestamp.
+JARGON_WORDS = (
+    "held out",
+    "not verifiable",
+    "environment bound",
+    "safe floor",
+    "integration point",
+    "judgment",
+    "lane",
+    "harness",
+    "targeting",
+    "tier",
+    "readonly",
+    "stub",
+    "orphan",
+    "manifest",
+    "lifecycle",
+    "rollup",
+    "evidence lane",
+    "external evidence",
+    "declared",
+)
+JARGON_PATTERNS = (
+    r"\b[a-z]+\.[a-z_]+\b",  # a trait slug (authority.anonymous)
+    r"\bASI\d\d\b",  # a standards id
+    r"\bLLM\d\d\b",
+    r"\beval-\w+",  # a run id
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",  # an ISO timestamp
+)
+
+DELETE_RECORD_POINT = "3f9a1c2b7d10"  # delete_record in the fixture ledger
+
+
+def _strings(value: object) -> list[str]:
+    """Every string anywhere in a data block."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def _answer_block(page: report_model.Page) -> dict:
+    return report_render.extract_blocks(report_render.render(page))["PAGE"]["answer"]
+
+
+def _join(manifest: Manifest, results: Path, *, max_age_days: int = 7) -> Manifest:
+    """``manifest`` with only ``results`` joined as its evidence, through the
+    real reader and the real join."""
+    manifest = manifest.model_copy(deep=True)
+    source = LoadedSource(
+        name="promptfoo-lab",
+        source=EvidenceSource(
+            kind="promptfoo",
+            server="reference-mcp",
+            results=str(results),
+            max_age_days=max_age_days,
+        ),
+        results_path=results,
+    )
+    run = read_results(results, source_name="promptfoo-lab", agent=None)
+    records, line = join_evidence(run, source, manifest, now=NOW)
+    manifest.evidence = records
+    manifest.sources = [line]
+    return manifest
+
+
+def _delete_record_manifest(**record: object) -> Manifest:
+    manifest = Manifest(
+        generated_at=NOW,
+        points=[
+            IntegrationPoint(
+                id=DELETE_RECORD_POINT,
+                type="mcp_tool",
+                source="reference-mcp",
+                target="delete_record",
+                hcl_address=".itest/tools/reference-mcp.yaml",
+                origin="declared",
+                first_seen=NOW,
+                last_seen=NOW,
+                attributes={"mutation": "destructive"},
+            )
+        ],
+    )
+    if record:
+        manifest.evidence = [
+            EvidenceRecord(
+                point_id=DELETE_RECORD_POINT,
+                source_name="promptfoo-lab",
+                kind="promptfoo",
+                run_id="eval-zyk-2026-09-23T18:26:29",
+                run_at="2026-09-23T18:26:29.565Z",
+                rows_total=12,
+                recorded_at=NOW,
+                **record,
+            )
+        ]
+        manifest.sources = [
+            report_model.SourceRecord(
+                name="promptfoo-lab",
+                kind="promptfoo",
+                server="reference-mcp",
+                run_id="eval-zyk-2026-09-23T18:26:29",
+                run_at="2026-09-23T18:26:29.565Z",
+                status="read",
+                shape="agent",
+                rows=12,
+                matched_tools=["delete_record"],
+                stale=bool(record.get("stale")),
+            )
+        ]
+    return manifest
+
+
+@pytest.mark.slow
+def test_the_answer_for_the_ci_fixture(ci_fixture) -> None:
+    verify, manifest = ci_fixture
+    page = report_model.build(verify, manifest, generated_at=NOW)
+    answer = page.answer
+    assert answer.word == "PARTIAL"
+    assert answer.sentence.startswith("No findings.")
+    assert answer.findings == []
+    block = _answer_block(page)
+    assert block["findings"] == []
+    assert "Findings" not in _strings(block)  # no empty heading
+    credentials = [line for line in answer.not_run if "credentials" in line]
+    (line,) = credentials
+    assert line.startswith("Not run here: Authority, Blast radius, Containment — ")
+    assert line.endswith("these need a staging environment with credentials.")
+    assert answer.ran.startswith("Ran: ")
+    (red_team,) = answer.red_team
+    assert red_team.text.startswith("Red team (2026-09-23): 12 attempts.")
+    assert "No write or destructive tool was called." in red_team.text
+    assert red_team.warning is False
+    assert answer.footer == "Detail below."
+
+
+def test_a_critical_names_the_tool_and_the_traits_human_name() -> None:
+    ledger = _green()
+    check = ledger["servers"][0]["tools"][0]["checks"][1]
+    check["trait"] = "blast.destructive_gating"
+    check["code"] = "BLAST-2"
+    check["status"] = "critical"
+    check["detail"] = "an anonymous caller deleted the sentinel"
+    page = _build(ledger)
+    assert page.answer.word == "BLOCKED"
+    assert page.answer.sentence == "1 finding needs attention before release."
+    (finding,) = page.answer.findings
+    assert finding.severity == "critical"
+    assert finding.tool == "delete_record"
+    assert finding.check == "destructive gating"
+    assert finding.detail == "an anonymous caller deleted the sentinel"
+    block = _answer_block(page)
+    (line,) = block["findings"]
+    assert "delete_record" in line["text"] and "destructive gating" in line["text"]
+    assert "blast.destructive_gating" not in line["text"]
+
+
+def test_findings_sort_critical_first() -> None:
+    ledger = _green()
+    checks = ledger["servers"][0]["tools"][0]["checks"]
+    checks[0]["status"] = "fail"
+    checks[1]["status"] = "critical"
+    assert [f.severity for f in _build(ledger).answer.findings] == [
+        "critical",
+        "failing",
+    ]
+
+
+def test_a_called_destructive_tool_is_named_and_never_moves_the_verdict() -> None:
+    verify = {"points": [], "tools": _green()}
+    without = report_model.build(verify, _delete_record_manifest(), generated_at=NOW)
+    manifest = _delete_record_manifest(calls=1, succeeded=1, rows_with_call=1)
+    page = report_model.build(verify, manifest, generated_at=NOW)
+    (line,) = page.answer.red_team
+    assert line.warning is True
+    assert "1 write/destructive tool was called: delete_record" in line.text
+    assert "1 tool exercised." in line.text
+    assert page.verdict.word == without.verdict.word
+    assert page.verdict == without.verdict
+    assert without.answer.red_team == []
+
+
+def test_stale_evidence_is_marked_with_its_date() -> None:
+    verify = {"points": [], "tools": _green()}
+    manifest = _delete_record_manifest(calls=1, refused=1, rows_with_call=1, stale=True)
+    page = report_model.build(verify, manifest, generated_at=NOW)
+    (line,) = page.answer.red_team
+    assert line.text.endswith("(stale — from 2026-09-23)")
+    assert page.verdict.word == "VERIFIED"
+
+
+@pytest.mark.slow
+def test_declared_targeting_reads_as_targeted_induced_refused(ci_fixture) -> None:
+    """Template (a): the harness said what it aimed at, so the line can say
+    how often the aim landed and how often the tool refused."""
+    verify, manifest = ci_fixture
+    plain = report_model.build(
+        verify,
+        manifest.model_copy(update={"evidence": [], "sources": []}),
+        generated_at=NOW,
+    )
+    page = report_model.build(
+        verify, _join(manifest, SYNTHETIC_TARGETED), generated_at=NOW
+    )
+    (line,) = page.answer.red_team
+    assert line.text == (
+        "Red team (2026-09-24): 12 attempts. 8 targeted delete_record; "
+        "2 induced a call; 2 of those were refused by the tool."
+    )
+    assert line.warning is False
+    assert page.verdict.word == plain.verdict.word
+    assert page.verdict == plain.verdict
+
+
+@pytest.mark.slow
+def test_declared_targeting_with_nothing_induced(ci_fixture, tmp_path: Path) -> None:
+    verify, manifest = ci_fixture
+    document = json.loads(SYNTHETIC_TARGETED.read_text(encoding="utf-8"))
+    for row in document["results"]["results"]:
+        for holder in (row["metadata"], row["response"]["metadata"]):
+            holder["toolCalls"] = [
+                c for c in holder["toolCalls"] if c["name"] != "delete_record"
+            ]
+    results = tmp_path / "none-induced.json"
+    results.write_text(json.dumps(document), encoding="utf-8")
+    page = report_model.build(verify, _join(manifest, results), generated_at=NOW)
+    (line,) = page.answer.red_team
+    assert line.text == (
+        "Red team (2026-09-24): 12 attempts. 8 targeted delete_record; "
+        "0 induced a call."
+    )
+    assert "refused" not in line.text
+
+
+def test_the_corpus_declares_its_target_on_the_injection_cases_only() -> None:
+    tests = yaml.safe_load(PROMPTFOO_CONFIG.read_text(encoding="utf-8"))["tests"]
+    baseline, indirect, direct = tests
+    assert baseline["description"].startswith("BASELINE")
+    assert "metadata" not in baseline
+    for case in (indirect, direct):
+        assert case["metadata"] == {"target_tool": "delete_record"}
+
+
+def test_the_synthetic_fixture_says_it_is_synthetic() -> None:
+    document = json.loads(SYNTHETIC_TARGETED.read_text(encoding="utf-8"))
+    assert document["_note"].startswith("SYNTHETIC")
+    run = read_results(SYNTHETIC_TARGETED, source_name="s", agent=None)
+    assert run.rows == 12
+    assert run.per_tool["delete_record"].targeted == 8
+    assert run.per_tool["delete_record"].rows_with_call == 2
+    assert run.per_tool["delete_record"].refused == 2
+    assert run.per_tool["get_guide"].targeted == 0
+
+
+def _template_answer_source() -> str:
+    """The template's Answer-rendering script, between its two markers."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    start = text.index("/* ---- answer ---- */")
+    end = text.index("/* ---- answer:end ---- */")
+    return text[start:end]
+
+
+@pytest.mark.slow
+def test_the_answer_block_uses_no_method_vocabulary(ci_fixture) -> None:
+    verify, manifest = ci_fixture
+    page = report_model.build(verify, manifest, generated_at=NOW)
+    for text in _strings(_answer_block(page)):
+        lowered = text.lower()
+        for word in JARGON_WORDS:
+            assert word not in lowered, (word, text)
+        for pattern in JARGON_PATTERNS:
+            assert not re.search(pattern, text), (pattern, text)
+    # The template's script for the block carries no words of its own (every
+    # label is data), so the word list is enough there: its member accesses
+    # (``a.findings``) would trip the slug pattern for the wrong reason.
+    script = _template_answer_source().lower()
+    for word in JARGON_WORDS:
+        assert word not in script, word
+
+
+@pytest.mark.slow
+def test_the_answer_comes_first_and_the_hero_tiles_moved_down(ci_fixture) -> None:
+    verify, manifest = ci_fixture
+    page = report_model.build(verify, manifest, generated_at=NOW)
+    html = report_render.render(page)
+    assert (
+        html.index('id="answer"')
+        < html.index('id="divider"')
+        < html.index('id="verdict"')
+    )
+    blocks = report_render.extract_blocks(html)
+    labels = [n["label"] for n in blocks["PAGE"]["verdict"]["nums"]]
+    assert "agent tools verified" not in labels
+    assert "integrations verified" not in labels
+    assert blocks["TOOLPOSTURE"][0]["lab"].startswith("agent tools verified")
+    assert blocks["POSTURE"][0]["lab"].startswith("integrations verified")

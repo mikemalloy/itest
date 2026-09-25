@@ -176,26 +176,46 @@ def _plural(count: int, noun: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+#: Finding severity -> the chip class beside the finding.
+_FINDING_CLASS = {"critical": "crit", "failing": "fail", "error": "fail"}
+
+
+def _answer_block(page: Page) -> dict:
+    """The plain-language layer. Every reader-visible string in the block —
+    the labels included — is data here, so the template's script carries no
+    words of its own and one test can read the whole block."""
+    answer = page.answer
+    block: dict = {
+        "word": answer.word,
+        "cls": VERDICT_CLASS.get(answer.word, ""),
+        "sentence": answer.sentence,
+        "findings": [
+            {
+                "severity": f.severity,
+                "cls": _FINDING_CLASS.get(f.severity, "fail"),
+                "text": f"{f.tool} — {f.check}"
+                + (f" — {f.detail}" if f.detail else ""),
+            }
+            for f in answer.findings
+        ],
+        "checkedLabel": "What was checked here",
+        "ran": answer.ran,
+        "notRun": list(answer.not_run),
+        "redTeam": [{"text": r.text, "warn": r.warning} for r in answer.red_team],
+        "divider": "Detail",
+        "dividerSub": "for the engineer",
+        "footer": answer.footer,
+    }
+    if answer.findings:
+        block["findingsLabel"] = "Findings"
+    return block
+
+
 def _verdict_block(page: Page) -> dict:
     verdict = page.verdict
+    # The two former hero tiles (agent tools verified, integrations verified)
+    # now lead the posture section's grids, where they have context.
     nums: list[dict] = []
-    if verdict.tools_total is not None:
-        nums.append(
-            {
-                "value": verdict.tools_verified,
-                "total": verdict.tools_total,
-                "label": "agent tools verified",
-                "cls": "tools",
-                "word": VERDICT_CLASS.get(verdict.word, ""),
-            }
-        )
-    nums.append(
-        {
-            "value": verdict.integrations_verified,
-            "total": verdict.integrations_total,
-            "label": "integrations verified",
-        }
-    )
     if verdict.endpoints_total:
         nums.append(
             {
@@ -951,6 +971,7 @@ def build_blocks(page: Page) -> dict[str, object]:
     points, chain, graph_labels = _graph_blocks(page)
     return {
         "PAGE": {
+            "answer": _answer_block(page),
             "verdict": _verdict_block(page),
             "nav": _nav_block(page),
             "posture": {
@@ -971,7 +992,8 @@ def build_blocks(page: Page) -> dict[str, object]:
         "TOOLS": tools,
         "TOOLPOSTURE": [_tile(t) for t in page.tool_tiles],
         "SWEEP": sweep,
-        "POSTURE": [_tile(t) for t in page.posture.tiles()],
+        "POSTURE": [_tile(page.integration_tile)]
+        + [_tile(t) for t in page.posture.tiles()],
         "POINTS": points,
         "CHAIN": chain,
     }

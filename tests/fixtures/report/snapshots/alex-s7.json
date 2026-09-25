@@ -10,6 +10,21 @@
     }
   ],
   "PAGE": {
+    "answer": {
+      "checkedLabel": "What was checked here",
+      "cls": "partial",
+      "divider": "Detail",
+      "dividerSub": "for the engineer",
+      "findings": [],
+      "footer": "Detail below.",
+      "notRun": [
+        "Not run here: Integrations \u2014 the check exists but has not been written yet."
+      ],
+      "ran": null,
+      "redTeam": [],
+      "sentence": "No findings. 0 of 12 checks passed; 12 were not run here.",
+      "word": "PARTIAL"
+    },
     "api": {
       "attest": "<span class='b'>Access-control report.</span> Every row is a route ITest detected in Terraform, carrying the status verify recorded for it. Verify does not yet record which registered test was the anonymous probe, so this run shows one status column rather than an unauthenticated/authenticated pair holding the same value.",
       "bars": [
@@ -144,13 +159,7 @@
       "note": "0 of 12 integration points verified against the live account, 12 awaiting an implemented test. 2 gateway routes detected; 0 verified. No agent tools declared.",
       "nums": [
         {
-          "label": "integrations verified",
-          "total": 12,
-          "value": 0
-        },
-        {
           "label": "endpoints verified",
-          "sep": true,
           "total": 2,
           "value": 0
         },
@@ -268,6 +277,11 @@
     }
   ],
   "POSTURE": [
+    {
+      "attn": true,
+      "lab": "integrations verified<br>of 12 points detected",
+      "n": 0
+    },
     {
       "lab": "cross-stack dependencies<br>resolved to other stacks",
       "n": 9

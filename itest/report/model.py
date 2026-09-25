@@ -496,10 +496,53 @@ class Footer(BaseModel):
     generated_at: str
 
 
+class Finding(BaseModel):
+    """One line of the Answer's findings list: a critical or failing check,
+    or a failing or errored point. The check is named by the trait's human
+    name from the trait table, never its slug."""
+
+    #: ``critical``, ``failing`` or ``error``.
+    severity: str
+    tool: str
+    check: str
+    detail: str | None = None
+
+
+class RedTeamLine(BaseModel):
+    """The Answer's one line per red-team source. Never a verdict input."""
+
+    source: str
+    text: str
+    #: A write or destructive tool was called.
+    warning: bool = False
+
+
+class Answer(BaseModel):
+    """The plain-language layer at the top of the page: is there a security
+    problem? Derived from the same data as everything below the divider and
+    written in none of the method vocabulary the detail layer relies on.
+    """
+
+    word: str
+    sentence: str
+    findings: list[Finding] = Field(default_factory=list)
+    #: ``Ran: Change — 24 of 24 passed.`` or ``None`` when nothing ran.
+    ran: str | None = None
+    #: ``Not run here: Authority, … — <why>.``: one line per reason.
+    not_run: list[str] = Field(default_factory=list)
+    red_team: list[RedTeamLine] = Field(default_factory=list)
+    footer: str = "Detail below."
+
+
 class Page(BaseModel):
     verdict: Verdict
+    answer: Answer
     posture: PostureInfra
     tools: ToolLedger | None = None
+    #: The two former hero tiles, now in the posture section's grids: agent
+    #: tools verified leads ``tool_tiles``; this one leads the infrastructure
+    #: grid.
+    integration_tile: Tile = Field(default_factory=lambda: Tile(n=0, label=""))
     tool_tiles: list[Tile] = Field(default_factory=list)
     api: ApiSweep
     graph: Graph
@@ -696,6 +739,163 @@ def derive_verdict(
     return word, reason, tally
 
 
+#: The three reasons a check was not run here, as the Answer states them.
+WHY_CREDENTIALS = "these need a staging environment with credentials"
+WHY_UNDECLARED = "this server does not declare what they need"
+WHY_UNWRITTEN = "the check exists but has not been written yet"
+_WHY_ORDER = (WHY_CREDENTIALS, WHY_UNDECLARED, WHY_UNWRITTEN)
+
+#: Family id -> human name, when the ledger did not carry one.
+FAMILY_NAMES = {
+    "authority": "Authority",
+    "blast": "Blast radius",
+    "containment": "Containment",
+    "change": "Change",
+}
+
+#: The Answer's family for integration points that are not declared tools.
+INTEGRATIONS_FAMILY = "Integrations"
+
+_SEVERITY_ORDER = {"critical": 0, "failing": 1, "error": 2}
+
+
+def _trait_names() -> dict[str, str]:
+    """Trait slug -> the table's human name (``destructive gating``)."""
+    from itest.core.declarations.traits import load_traits
+
+    return {trait.id: trait.name for trait in load_traits().traits}
+
+
+def _why_not_run(check: ToolCheck) -> tuple[str, str | None]:
+    """The reason a cell was not run here, and the missing fact if the check
+    recorded one."""
+    if check.status == "held_out":
+        return WHY_CREDENTIALS, None
+    if check.status == "not_verifiable":
+        if check.detail.startswith("no engine check for"):
+            return WHY_UNWRITTEN, None
+        return WHY_UNDECLARED, check.detail or None
+    return WHY_UNWRITTEN, None
+
+
+def _point_label(point: dict) -> str:
+    return (
+        point.get("tag") or f"{point.get('source', '?')} -> {point.get('target', '?')}"
+    )
+
+
+def build_answer(
+    verify_points: list[dict],
+    types: dict[str, str],
+    ledger: ToolLedger | None,
+    manifest: Manifest,
+    verdict: Verdict,
+) -> Answer:
+    """The Answer block, from the same data as the rest of the page.
+
+    Findings are every critical or failing cell and every failing or errored
+    point, critical first. "Ran" and "Not run here" count the same cells the
+    grid counts, by family, with one of exactly three reasons for a cell
+    nobody looked at. The red-team line is one sentence per source that was
+    read, in the template the source's data supports — and it is read from
+    the evidence lane only, never from a check, so it can inform the sentence
+    and never the word.
+    """
+    names = _trait_names()
+    findings: list[Finding] = []
+    ran: dict[str, list[int]] = {}  # family -> [passed, ran]
+    not_run: dict[str, dict[str, int]] = {w: {} for w in _WHY_ORDER}
+    facts: list[str] = []
+    # Families are listed in the ledger's own order, integrations last.
+    order: list[str] = []
+
+    if ledger is not None:
+        for server in ledger.servers:
+            family_names = {f.id: f.name for f in server.families}
+            order.extend(n for n in family_names.values() if n not in order)
+            for tool in server.tools:
+                for check in tool.checks:
+                    if check.state in ("not_applicable", "orphan") or (
+                        check.status == "n/a"
+                    ):
+                        continue
+                    family_id = check.trait.partition(".")[0]
+                    family = family_names.get(family_id) or FAMILY_NAMES.get(
+                        family_id, family_id.capitalize()
+                    )
+                    if check.status in ("critical", "fail"):
+                        findings.append(
+                            Finding(
+                                severity=(
+                                    "critical"
+                                    if check.status == "critical"
+                                    else "failing"
+                                ),
+                                tool=tool.name,
+                                check=names.get(check.trait, check.code or check.trait),
+                                detail=check.detail or None,
+                            )
+                        )
+                        ran.setdefault(family, [0, 0])[1] += 1
+                    elif check.status in ("pass", "changed"):
+                        counts = ran.setdefault(family, [0, 0])
+                        counts[1] += 1
+                        counts[0] += check.status == "pass" and check.state != "stale"
+                    else:
+                        why, fact = _why_not_run(check)
+                        not_run[why][family] = not_run[why].get(family, 0) + 1
+                        if fact and fact not in facts:
+                            facts.append(fact)
+
+    for point in verify_points:
+        if types.get(point["id"]) == "mcp_tool":
+            continue
+        status = point["status"]
+        if status == "passing":
+            counts = ran.setdefault(INTEGRATIONS_FAMILY, [0, 0])
+            counts[0] += 1
+            counts[1] += 1
+        elif status in ("failing", "error"):
+            findings.append(
+                Finding(severity=status, tool=_point_label(point), check="integration")
+            )
+            ran.setdefault(INTEGRATIONS_FAMILY, [0, 0])[1] += 1
+        else:
+            why = WHY_CREDENTIALS if status == "gated" else WHY_UNWRITTEN
+            bucket = not_run[why]
+            bucket[INTEGRATIONS_FAMILY] = bucket.get(INTEGRATIONS_FAMILY, 0) + 1
+
+    findings.sort(key=lambda f: _SEVERITY_ORDER.get(f.severity, 9))
+
+    def in_order(families: dict[str, int]) -> str:
+        rank = {name: i for i, name in enumerate(order)}
+        return ", ".join(sorted(families, key=lambda n: rank.get(n, len(rank))))
+
+    ran_line = None
+    if ran:
+        passed = sum(v[0] for v in ran.values())
+        total = sum(v[1] for v in ran.values())
+        ran_line = f"Ran: {in_order(ran)} — {passed} of {total} passed."
+    not_run_lines = []
+    for why in _WHY_ORDER:
+        families = not_run[why]
+        if not families:
+            continue
+        reason = why
+        if why == WHY_UNDECLARED and facts:
+            reason = f"{why}: {'; '.join(facts)}"
+        not_run_lines.append(f"Not run here: {in_order(families)} — {reason}.")
+
+    return Answer(
+        word=verdict.word,
+        sentence=verdict.reason,
+        findings=findings,
+        ran=ran_line,
+        not_run=not_run_lines,
+        red_team=_red_team_lines(ledger, manifest),
+    )
+
+
 def _trend(delta: int) -> tuple[str, str]:
     """The trend caption and direction for a delta against the prior release."""
     if delta > 0:
@@ -704,6 +904,73 @@ def _trend(delta: int) -> tuple[str, str]:
         # A minus sign, not a hyphen: this is prose, and it sits next to ↓.
         return f"−{abs(delta)}", "down"
     return "steady", "flat"
+
+
+def _red_team_lines(ledger: ToolLedger | None, manifest: Manifest) -> list[RedTeamLine]:
+    """One line per source that was read. Template (a) when the harness
+    declared what it was aiming at (any record carries ``targeted``);
+    template (b) otherwise, where the last clause is computed from the
+    called tools' mutation classes and never claims intent."""
+    tool_of = {p.id: p.target for p in manifest.points}
+    mutation_of = {p.id: (p.attributes or {}).get("mutation") for p in manifest.points}
+    if ledger is not None:
+        for server in ledger.servers:
+            for tool in server.tools:
+                mutation_of[tool.point_id] = tool.mutation
+    lines: list[RedTeamLine] = []
+    for line in manifest.sources:
+        if line.status != "read":
+            continue
+        records = sorted(
+            (r for r in manifest.evidence if r.source_name == line.name),
+            key=lambda r: tool_of.get(r.point_id, r.point_id),
+        )
+        run_at = line.run_at or ""
+        date = run_at[:10] if len(run_at) >= 10 else "undated"
+        text = f"Red team ({date}): {_count(line.rows, 'attempt')}."
+        warning = False
+        targeted = [r for r in records if r.targeted]
+        if targeted:
+            clauses = []
+            for record in targeted:
+                name = tool_of.get(record.point_id, record.point_id)
+                clause = (
+                    f"{record.targeted} targeted {name}; "
+                    f"{record.rows_with_call} induced a call"
+                )
+                if record.rows_with_call:
+                    clause += f"; {record.refused} of those were refused by the tool"
+                clauses.append(clause)
+            text += " " + "; ".join(clauses) + "."
+        else:
+            called = [r for r in records if r.calls > 0]
+            exercised = len(called) + len(line.unmatched_tools)
+            text += f" {_count(exercised, 'tool')} exercised."
+            bad = [
+                tool_of.get(r.point_id, r.point_id)
+                for r in called
+                if mutation_of.get(r.point_id) in ("write", "destructive")
+            ]
+            if bad:
+                verb = "was" if len(bad) == 1 else "were"
+                text += (
+                    f" {_count(len(bad), 'write/destructive tool')} {verb} called: "
+                    f"{', '.join(bad)}."
+                )
+                warning = True
+            else:
+                text += " No write or destructive tool was called."
+            if line.unmatched_tools:
+                unknown = len(line.unmatched_tools)
+                verb = "is" if unknown == 1 else "are"
+                text += (
+                    f" {_count(unknown, 'called tool')} {verb} not in the tool list "
+                    "and could not be classified."
+                )
+        if line.stale:
+            text += f" (stale — from {date})"
+        lines.append(RedTeamLine(source=line.name, text=text, warning=warning))
+    return lines
 
 
 def _short_target(label: str) -> str:
@@ -843,6 +1110,14 @@ def build(
                 for entry in rollup_for_ledger(verify["tools"])
             ]
         unattached = _attach_evidence(ledger, manifest)
+        # The former hero tile, now leading the agent-tools grid.
+        tool_tiles.append(
+            Tile(
+                n=ledger.verified,
+                label=f"agent tools verified<br>of {ledger.declared} declared",
+                attn=ledger.verified < ledger.declared,
+            )
+        )
         for family in (s for server in ledger.servers for s in server.families):
             tool_tiles.append(
                 Tile(
@@ -967,10 +1242,22 @@ def build(
         generated_at=generated_at.strftime("%Y-%m-%d %H:%M UTC"),
     )
 
+    # The other former hero tile, now leading the infrastructure grid.
+    integration_tile = Tile(
+        n=verdict.integrations_verified,
+        label=(
+            "integrations verified<br>of "
+            f"{_count(verdict.integrations_total, 'point')} detected"
+        ),
+        attn=verdict.integrations_verified < verdict.integrations_total,
+    )
+
     return Page(
         verdict=verdict,
+        answer=build_answer(verify_points, types, ledger, manifest, verdict),
         posture=posture,
         tools=ledger,
+        integration_tile=integration_tile,
         tool_tiles=tool_tiles,
         api=api,
         graph=graph,

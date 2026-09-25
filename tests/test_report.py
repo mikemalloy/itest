@@ -395,8 +395,10 @@ def test_rendered_numbers_trace_to_verify_json(alex_s7) -> None:
     data = blocks(render_module.render(page))
 
     nums = {n["label"]: n for n in data["PAGE"]["verdict"]["nums"]}
-    assert nums["integrations verified"]["value"] == verify["passing"]
-    assert nums["integrations verified"]["total"] == verify["total_points"]
+    integrations = data["POSTURE"][0]
+    assert integrations["n"] == verify["passing"]
+    assert integrations["lab"].startswith("integrations verified")
+    assert f"of {verify['total_points']} points" in integrations["lab"]
     assert nums["drift"]["value"] == verify["orphaned_tests"] + len(
         verify["unregistered"]
     )
@@ -467,7 +469,7 @@ def test_tool_ledger_renders_groups_rows_and_exceptions(alex_s7) -> None:
     assert exception["tag"] == "changed"
     assert "update_record" in exception["title"]
     assert data["PAGE"]["toolBand"]["word"] == "TOOLS NEED REVIEW"
-    assert len(data["TOOLPOSTURE"]) == 4
+    assert len(data["TOOLPOSTURE"]) == 5  # agent tools verified, then the families
 
 
 def test_since_toggles_trend_markup(tmp_path, monkeypatch) -> None:
