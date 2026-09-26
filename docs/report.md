@@ -57,10 +57,17 @@ Top to bottom:
    one integration point that is not itself a declared tool. `{held}` is the
    held-out, not-verifiable and not-run cells and the stub or gated points.
 3. **Findings**, only when there are any: one line per critical or failing
-   check — severity, tool, the trait's human name from the trait table
-   (`destructive gating`, never the slug) and the check's recorded detail —
-   critical first; then failing or errored points. When the list is empty the
-   sentence already said "No findings" and no heading is drawn.
+   check — severity, `server -> tool`, the trait's human name from the trait
+   table (`destructive gating`, never the slug) and one plain sentence —
+   critical first; then failing or errored points (`source -> target`, the
+   point's tag, the assertion's message or the exception). The entries are
+   the same ones `itest verify` prints in its `Findings (n):` block, from
+   one function (`itest.core.findings.findings_for`), so the terminal and
+   the page never disagree. The sentence is the check's recorded detail made
+   plain: no state hash, no "sentinel" clause, no quoted tool error, no test
+   node id — those stay in the manifest and in `.itest/verify.log` for the
+   engineer. When the list is empty the sentence already said "No findings"
+   and no heading is drawn.
 4. **What was checked here**: `Ran: {families} — {passed} of {ran} passed.`
    and one `Not run here: {families} — {sentence}` line per **reason code**.
    Families are the human names (Authority, Blast radius, Containment,
@@ -133,8 +140,10 @@ out", "not verifiable", "environment bound", "safe floor", "integration
 point", "judgment", "lane", "harness", "targeting", "tier", "readonly",
 "stub", "orphan", "manifest", "lifecycle", "rollup", "evidence lane",
 "external evidence" or "declared"; no trait slug, standards id, run id or
-ISO timestamp. `tests/test_not_run_reasons.py` renders every reason code's
-line and holds it to the same list plus "environment" and "guard". Every label in the block is data, so the template's script
+ISO timestamp; nor "sentinel", "traceback" or "assert", nor a twelve-hex
+state hash. `tests/test_not_run_reasons.py` renders every reason code's
+line and holds it to the same list plus "environment" and "guard", and
+`tests/test_verify_findings.py` holds every finding sentence to it. Every label in the block is data, so the template's script
 carries no words of its own. The detail layer keeps every one of those
 terms, spelled exactly as before.
 

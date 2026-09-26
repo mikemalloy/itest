@@ -62,6 +62,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from itest.core import findings as core_findings
 from itest.core import lifecycle, reasons
 from itest.core.manifest import EvidenceRecord, Manifest, SourceRecord
 from itest.traits.ids import migrate_family_id, migrate_trait_id
@@ -502,12 +503,18 @@ class Footer(BaseModel):
 
 class Finding(BaseModel):
     """One line of the Answer's findings list: a critical or failing check,
-    or a failing or errored point. The check is named by the trait's human
-    name from the trait table, never its slug."""
+    or a failing or errored point — the same entry `itest verify` prints,
+    from :func:`itest.core.findings.findings_for`. The check is named by the
+    trait's human name from the trait table, never its slug, and the detail
+    is the plain sentence: no state hash, no sentinel, no test node id."""
 
     #: ``critical``, ``failing`` or ``error``.
     severity: str
-    tool: str
+    #: The server (a tool check) or the edge's source (a point).
+    source: str
+    #: The tool, or the edge's target.
+    target: str
+    #: The trait's title, or the point's tag.
     check: str
     detail: str | None = None
 
@@ -979,21 +986,6 @@ FAMILY_NAMES = {
 #: The Answer's family for integration points that are not declared tools.
 INTEGRATIONS_FAMILY = "Integrations"
 
-_SEVERITY_ORDER = {"critical": 0, "failing": 1, "error": 2}
-
-
-def _trait_names() -> dict[str, str]:
-    """Trait slug -> the table's human name (``destructive gating``)."""
-    from itest.core.declarations.traits import load_traits
-
-    return {trait.id: trait.name for trait in load_traits().traits}
-
-
-def _point_label(point: dict) -> str:
-    return (
-        point.get("tag") or f"{point.get('source', '?')} -> {point.get('target', '?')}"
-    )
-
 
 def build_answer(
     verify_points: list[dict],
@@ -1001,22 +993,36 @@ def build_answer(
     ledger: ToolLedger | None,
     manifest: Manifest,
     verdict: Verdict,
+    verify: dict | None = None,
 ) -> Answer:
     """The Answer block, from the same data as the rest of the page.
 
     Findings are every critical or failing cell and every failing or errored
-    point, critical first. "Ran" and "Not run here" count the same cells the
-    grid counts, by family; a cell nobody looked at is counted under its
-    reason code, and each code becomes one line in the code's own plain
-    sentence — never the engine's detail, and never two reasons on one line.
+    point, critical first — the same entries, from the same function, that
+    `itest verify` prints (:func:`itest.core.findings.findings_for`, over the
+    verify document). "Ran" and "Not run here" count the same cells the grid
+    counts, by family; a cell nobody looked at is counted under its reason
+    code, and each code becomes one line in the code's own plain sentence —
+    never the engine's detail, and never two reasons on one line.
     The red-team line is one sentence per source that was read, in the
     template the source's data supports — and it is read from the evidence
     lane only, never from a check, so it can inform the sentence and never
     the word.
     """
-    names = _trait_names()
     environment = ledger.servers[0].environment if ledger and ledger.servers else None
-    findings: list[Finding] = []
+    document = verify if verify is not None else {"points": verify_points}
+    if ledger is not None and "tools" not in document:
+        document = {**document, "tools": ledger.model_dump(mode="json")}
+    findings = [
+        Finding(
+            severity=f.severity,
+            source=f.source,
+            target=f.target,
+            check=f.check,
+            detail=f.detail or None,
+        )
+        for f in core_findings.findings_for(document, core_findings.trait_names())
+    ]
     ran: dict[str, list[int]] = {}  # family -> [passed, ran]
     # reason code -> family -> count, in the vocabulary's order.
     not_run: dict[str, dict[str, int]] = {code: {} for code in reasons.REASONS}
@@ -1038,18 +1044,6 @@ def build_answer(
                         family_id, family_id.capitalize()
                     )
                     if check.status in ("critical", "fail"):
-                        findings.append(
-                            Finding(
-                                severity=(
-                                    "critical"
-                                    if check.status == "critical"
-                                    else "failing"
-                                ),
-                                tool=tool.name,
-                                check=names.get(check.trait, check.code or check.trait),
-                                detail=check.detail or None,
-                            )
-                        )
                         ran.setdefault(family, [0, 0])[1] += 1
                     elif check.status in ("pass", "changed"):
                         counts = ran.setdefault(family, [0, 0])
@@ -1068,15 +1062,10 @@ def build_answer(
             counts[0] += 1
             counts[1] += 1
         elif status in ("failing", "error"):
-            findings.append(
-                Finding(severity=status, tool=_point_label(point), check="integration")
-            )
             ran.setdefault(INTEGRATIONS_FAMILY, [0, 0])[1] += 1
         else:
             bucket = not_run[_point_reason(point, environment)]
             bucket[INTEGRATIONS_FAMILY] = bucket.get(INTEGRATIONS_FAMILY, 0) + 1
-
-    findings.sort(key=lambda f: _SEVERITY_ORDER.get(f.severity, 9))
 
     def in_order(families: dict[str, int]) -> str:
         rank = {name: i for i, name in enumerate(order)}
@@ -1470,7 +1459,7 @@ def build(
 
     page = Page(
         verdict=verdict,
-        answer=build_answer(verify_points, types, ledger, manifest, verdict),
+        answer=build_answer(verify_points, types, ledger, manifest, verdict, verify),
         posture=posture,
         tools=ledger,
         integration_tile=integration_tile,

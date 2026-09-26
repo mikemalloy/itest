@@ -211,7 +211,7 @@ def _answer_block(page: Page) -> dict:
             {
                 "severity": f.severity,
                 "cls": _FINDING_CLASS.get(f.severity, "fail"),
-                "text": f"{f.tool} — {f.check}"
+                "text": f"{f.source} -> {f.target} — {f.check}"
                 + (f" — {f.detail}" if f.detail else ""),
             }
             for f in answer.findings

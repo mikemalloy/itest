@@ -29,6 +29,7 @@ examples/*/.itest/plan.json
 examples/*/.itest/diagram.mmd
 examples/*/.itest/environment
 examples/*/.itest/_verify_report_*
+examples/*/.itest/verify.log
 examples/*/readiness.html
 examples/*/itest-results.xml
 

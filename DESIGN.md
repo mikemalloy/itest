@@ -55,6 +55,15 @@ integration points, generates test stubs, and verifies deployed infrastructure.
     [STUB] aws_security_group.alb -> aws_security_group.web (tcp:80 ingress)
     [STUB] aws_security_group.web -> aws_security_group.db (tcp:5432 ingress)
   ```
+
+  A run with failures prints a `Findings (n):` block after the points — one
+  entry per failed check in verdict order (critical, failing, errored):
+  status word, `source -> target`, the trait's title, and the plain sentence
+  on its own line — and names `.itest/verify.log`, where the complete pytest
+  output goes on every run. `--verbose` prints that output to the terminal
+  instead. Never a traceback, a test node id or pytest's failure
+  representation on the terminal by default: to anyone watching, that reads
+  as the tool crashing. Exit codes are unchanged.
 - `itest add`: registers an **existing** test function in the manifest against
   an **existing** point (`--point`/`--file`/`--function`/`--tier`). It never
   declares a new point — detection reads Terraform, not a filename — so an
@@ -674,6 +683,16 @@ Shipped:
   count and the family list, never an engine string and never two reasons on
   one line; an unknown code, or a code-less ledger with an unknown detail,
   fails the render rather than printing raw text.
+- `itest verify` prints findings, never pytest internals
+  (`itest/core/findings.py`): a `Findings (n):` block in verdict order —
+  status word, `source -> target`, trait title, plain sentence — and a
+  pointer to `.itest/verify.log`, which holds the complete pytest output
+  (overwritten per run, gitignored); `--verbose` prints it as before. The
+  sentence is the one the Answer prints for the same finding, from one
+  function: the recorded detail without state hashes, the sentinel clause
+  or a quoted tool error; a point's failure is the assertion's message or
+  the exception's one line. The jargon list gains "sentinel", "traceback",
+  "assert" and a twelve-hex pattern.
 
 Not yet built (do not build without explicit instruction):
 - Targeting declared by the harness end to end: a promptfoo config that writes

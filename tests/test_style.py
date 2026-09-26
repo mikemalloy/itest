@@ -328,6 +328,24 @@ def test_failing_tests_header_is_red_and_bold() -> None:
     }
 
 
+def test_findings_block_styles_the_header_and_status_words() -> None:
+    plain = "\n".join(
+        [
+            "Findings (2):",
+            "  CRITICAL  reference-mcp -> lookalike_read   mutation class (observed)",
+            "            'lookalike_read' claims read but changed observable state",
+            "  ERROR     a -> b   tcp:80 ingress",
+            "            ModuleNotFoundError: No module named 'x'",
+        ]
+    )
+    rendered = style.render(plain)
+    assert _styles_over(rendered, "Findings (2):") == {"bold red"}
+    assert _styles_over(rendered, "CRITICAL") == {"bold red"}
+    assert _styles_over(rendered, "ERROR") == {"bold magenta"}
+    assert "dim" in _styles_over(rendered, "claims read but changed observable state")
+    assert rendered.plain == plain
+
+
 def test_traceback_block_is_left_unstyled() -> None:
     """Pytest already formatted it; and it may contain our own keywords."""
     plain = "\n".join(

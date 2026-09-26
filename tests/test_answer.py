@@ -263,9 +263,14 @@ JARGON_WORDS = (
     "evidence lane",
     "external evidence",
     "declared",
+    # What a pytest failure would bring, and must not.
+    "sentinel",
+    "traceback",
+    "assert",
 )
 JARGON_PATTERNS = (
     r"\b[a-z]+\.[a-z_]+\b",  # a trait slug (authority.anonymous)
+    r"\b[0-9a-f]{12}\b",  # a state or ownership hash
     r"\bASI\d\d\b",  # a standards id
     r"\bLLM\d\d\b",
     r"\beval-\w+",  # a run id
@@ -389,18 +394,20 @@ def test_a_critical_names_the_tool_and_the_traits_human_name() -> None:
     check["trait"] = "blast.destructive_gating"
     check["code"] = "BLAST-2"
     check["status"] = "critical"
-    check["detail"] = "an anonymous caller deleted the sentinel"
+    check["detail"] = "an anonymous caller deleted a record"
     page = _build(ledger)
     assert page.answer.word == "BLOCKED"
     assert page.answer.sentence == "1 finding needs attention before release."
     (finding,) = page.answer.findings
     assert finding.severity == "critical"
-    assert finding.tool == "delete_record"
+    assert (finding.source, finding.target) == ("reference-mcp", "delete_record")
     assert finding.check == "destructive gating"
-    assert finding.detail == "an anonymous caller deleted the sentinel"
+    assert finding.detail == "an anonymous caller deleted a record"
     block = _answer_block(page)
     (line,) = block["findings"]
-    assert "delete_record" in line["text"] and "destructive gating" in line["text"]
+    assert line["text"].startswith(
+        "reference-mcp -> delete_record — destructive gating"
+    )
     assert "blast.destructive_gating" not in line["text"]
 
 

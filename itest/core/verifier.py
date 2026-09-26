@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from itest.core import (
     environments,
+    findings,
     lifecycle,
     planner,
     points,
@@ -40,6 +41,11 @@ from itest.core.manifest import (
 from itest.traits.ids import LEGACY_BY_TRAIT, trait_ident
 
 JUNIT_NAME = "itest-results.xml"
+
+#: Where the complete pytest output of the last run goes, relative to the
+#: project: what `itest verify` printed before it printed findings.
+#: Overwritten per run, gitignored with the rest of ``.itest/``.
+LOG_NAME = ".itest/verify.log"
 
 #: A generous ceiling on the pytest subprocess (seconds). A real integration
 #: suite can be slow; this only catches a genuine hang, which would otherwise
@@ -968,7 +974,42 @@ def _gated_tag(environment: str | None) -> str:
     return f"GATED {environment}" if environment else "GATED"
 
 
-def render_human(report: VerifyReport, redacted: bool = False) -> str:
+def write_log(base_dir: Path, text: str) -> Path:
+    """Write the run's full output to :data:`LOG_NAME`, replacing the last."""
+    path = base_dir / LOG_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "\n", encoding="utf-8")
+    return path
+
+
+def render_findings(found: list[findings.Finding]) -> list[str]:
+    """The ``Findings (n):`` block: one entry per failed check, in verdict
+    order — status word, source -> target, the trait's title — and the plain
+    sentence on its own indented line. Empty when there is nothing to find."""
+    if not found:
+        return []
+    width = max(len(f"{f.source} -> {f.target}") for f in found)
+    out = [f"Findings ({len(found)}):"]
+    for finding in found:
+        status = {"critical": "CRITICAL", "failing": "FAIL", "error": "ERROR"}.get(
+            finding.severity, finding.severity.upper()
+        )
+        edge = f"{finding.source} -> {finding.target}"
+        out.append(f"  {status:<8}  {edge:<{width}}  {finding.check}".rstrip())
+        if finding.detail:
+            out.append(f"            {finding.detail}")
+    return out
+
+
+def render_human(
+    report: VerifyReport, redacted: bool = False, *, verbose: bool = False
+) -> str:
+    """What `itest verify` prints. The summary line, the points, then — for a
+    run with failures — a findings block that says what each failed check
+    found, in plain sentences; the complete pytest output is in
+    :data:`LOG_NAME`. ``verbose`` prints that complete output instead: the
+    failing and errored tests with pytest's own text, as before.
+    """
     out: list[str] = []
     # One line, only when a policy is committed but nothing is bound: name the
     # floor the run fell back to, so a green suite is not mistaken for coverage
@@ -1018,22 +1059,31 @@ def render_human(report: VerifyReport, redacted: bool = False) -> str:
         out.append(f"  [{status}] {p.source} -> {p.target} ({p.tag})")
 
     failures = [t for t in report.tests if t.outcome == "failed"]
-    if failures:
-        out.append("")
-        out.append("Failing tests:")
-        for t in failures:
-            out.append(f"  {t.canonical}")
-            for line in (t.detail or "").splitlines():
-                out.append(f"      {line}")
-
     errors = [t for t in report.tests if t.outcome == "error"]
-    if errors:
-        out.append("")
-        out.append("Errored tests (the suite could not run):")
-        for t in errors:
-            out.append(f"  {t.canonical}")
-            for line in (t.detail or "").splitlines():
-                out.append(f"      {line}")
+    if verbose:
+        if failures:
+            out.append("")
+            out.append("Failing tests:")
+            for t in failures:
+                out.append(f"  {t.canonical}")
+                for line in (t.detail or "").splitlines():
+                    out.append(f"      {line}")
+        if errors:
+            out.append("")
+            out.append("Errored tests (the suite could not run):")
+            for t in errors:
+                out.append(f"  {t.canonical}")
+                for line in (t.detail or "").splitlines():
+                    out.append(f"      {line}")
+    else:
+        found = findings.findings_for(
+            report.model_dump(mode="json"), findings.trait_names()
+        )
+        if found:
+            out.append("")
+            out.extend(render_findings(found))
+            out.append("")
+            out.append(f"Full test output: {LOG_NAME}")
 
     if report.unregistered:
         out.append("")

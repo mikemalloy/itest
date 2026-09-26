@@ -58,7 +58,9 @@ def test_verify_failing_test_exit_1(synced_project: Path) -> None:
     assert result.exit_code == 1, result.output
     assert "1 failing" in result.output
     assert "[FAIL] aws_security_group.alb -> aws_security_group.web" in result.output
-    assert "Failing tests:" in result.output
+    assert "Findings (1):" in result.output
+    assert "            boom" in result.output
+    assert "Failing tests:" not in result.output
 
 
 def test_verify_json_output(synced_project: Path) -> None:
@@ -109,9 +111,13 @@ def test_verify_collection_error_is_not_reported_as_stub(
     assert "[ERROR]" in result.output
     assert "[STUB]" not in result.output
     assert "3 errored" in result.output
-    # The error text is shown, so the cause is actionable.
-    assert "Errored tests" in result.output
+    # The cause is shown as a finding, so it is actionable; pytest's own
+    # text is in the log (and on the terminal with --verbose).
+    assert "Findings (3):" in result.output
+    assert "  ERROR " in result.output
     assert "itest_missing_dep_xyz" in result.output
+    assert "Errored tests" not in result.output
+    assert "Errored tests" in (synced_project / ".itest" / "verify.log").read_text()
 
 
 def test_verify_collection_error_in_json_output(synced_project: Path) -> None:

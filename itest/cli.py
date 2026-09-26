@@ -222,6 +222,14 @@ def verify(
         "--environment",
         help="Environment to run as; overrides the .itest/environment binding.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help=(
+            "Print the complete pytest output for failing and errored tests "
+            "(always written to .itest/verify.log)."
+        ),
+    ),
 ) -> None:
     """Run the test suite and report point-level coverage."""
     from itest.core import environments, verifier
@@ -240,6 +248,11 @@ def verify(
         echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
 
+    # The complete output — pytest's own text for every failing and errored
+    # test — goes to the log on every run; the terminal gets findings.
+    full = verifier.render_human(report, redacted=redact, verbose=True)
+    verifier.write_log(base_dir, full)
+
     if output == "json":
         typer.echo(report.to_json(indent=2))
     elif output == "junit":
@@ -247,6 +260,8 @@ def verify(
         # is for the human, so only that one is styled.
         typer.echo(f"Wrote JUnit XML to {verifier.JUNIT_NAME}")
         echo(render_verify_line(report))
+    elif verbose:
+        echo(full)
     else:
         # `run_verify` already pseudonymized the report when --redact was
         # given, so this styles text that is safe to share, never before.
@@ -381,7 +396,10 @@ def report(
     typer.echo(f"Verdict: {answer.word} — {answer.sentence}")
     for finding in answer.findings:
         detail = f" — {finding.detail}" if finding.detail else ""
-        typer.echo(f"  {finding.severity}: {finding.tool} — {finding.check}{detail}")
+        typer.echo(
+            f"  {finding.severity}: {finding.source} -> {finding.target} — "
+            f"{finding.check}{detail}"
+        )
     for line in [answer.ran, *answer.not_run, *(r.text for r in answer.red_team)]:
         if line:
             typer.echo(line)
