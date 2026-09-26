@@ -28,6 +28,21 @@ TEMPLATE_RESOURCE = "templates/readiness.html"
 
 MARKER = "<!-- itest:data:{name} -->"
 
+#: A Terraform-side region of the template: kept, markers and all, for a
+#: project that reads Terraform; removed whole for a declarations-only one.
+#: The markers sit on lines of their own, and the substitution eats the line,
+#: so a page that keeps its regions is the template minus the two comments.
+_TERRAFORM_REGION = re.compile(
+    r"^[ \t]*<!-- itest:terraform -->\n(?P<body>.*?)"
+    r"^[ \t]*<!-- itest:terraform:end -->\n",
+    re.MULTILINE | re.DOTALL,
+)
+
+#: What the footer says instead of four empty Terraform-side sections.
+NO_TERRAFORM_NOTE = (
+    "No Terraform in this project; infrastructure sections are not shown."
+)
+
 #: The JS constant each marker declares. Names are the template's, not ours.
 BLOCKS = {
     "PAGE": "PAGE",
@@ -84,6 +99,12 @@ _CHECK_GLYPH = (
     '<path d="M20 6.5 9.4 17 4 11.6" stroke="currentColor" stroke-width="2.6" '
     'stroke-linecap="round" stroke-linejoin="round"/></svg>'
 )
+_PARTIAL_GLYPH = (
+    '<svg viewBox="0 0 24 24" width="26" height="26" fill="none">'
+    '<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2.2"/>'
+    '<path d="M8 12h8" stroke="currentColor" stroke-width="2.4" '
+    'stroke-linecap="round"/></svg>'
+)
 _WARN_GLYPH = (
     '<svg viewBox="0 0 24 24" width="26" height="26" fill="none">'
     '<path d="M12 3 2 20h20L12 3z" stroke="currentColor" stroke-width="2.2" '
@@ -92,7 +113,33 @@ _WARN_GLYPH = (
     '<circle cx="12" cy="17" r="1.2" fill="currentColor"/></svg>'
 )
 
-VERDICT_CLASS = {"VERIFIED": "", "AT RISK": "risk", "BLOCKED": "blocked"}
+#: Verdict word -> the CSS class of its band. PARTIAL has a band of its own
+#: (grey-blue): unchecked is neither a risk nor a pass.
+#: The banner's subtitle on the safe floor (a policy present, nothing bound).
+SAFE_FLOOR_SUBTITLE = "Ran in {where} without credentials — active checks not run"
+
+VERDICT_CLASS = {
+    "VERIFIED": "",
+    "NEEDS REVIEW": "risk",
+    "PARTIAL": "partial",
+    "BLOCKED": "blocked",
+}
+
+#: Verdict word -> the jump nav's pill class.
+VERDICT_PILL = {
+    "VERIFIED": "ok",
+    "NEEDS REVIEW": "warn",
+    "PARTIAL": "partial",
+    "BLOCKED": "warn",
+}
+
+#: Verdict word -> the agent-tools band's word.
+TOOL_BAND_WORD = {
+    "VERIFIED": "TOOLS VERIFIED",
+    "NEEDS REVIEW": "TOOLS NEED REVIEW",
+    "PARTIAL": "TOOLS PARTIAL",
+    "BLOCKED": "TOOLS BLOCKED",
+}
 
 _BLOCK_RE = re.compile(
     r"^const (?P<name>PAGE|TOOLS|toolPosture|SWEEP|posture|POINTS|CHAIN) = "
@@ -147,26 +194,46 @@ def _plural(count: int, noun: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+#: Finding severity -> the chip class beside the finding.
+_FINDING_CLASS = {"critical": "crit", "failing": "fail", "error": "fail"}
+
+
+def _answer_block(page: Page) -> dict:
+    """The plain-language layer. Every reader-visible string in the block —
+    the labels included — is data here, so the template's script carries no
+    words of its own and one test can read the whole block."""
+    answer = page.answer
+    block: dict = {
+        "word": answer.word,
+        "cls": VERDICT_CLASS.get(answer.word, ""),
+        "sentence": answer.sentence,
+        "findings": [
+            {
+                "severity": f.severity,
+                "cls": _FINDING_CLASS.get(f.severity, "fail"),
+                "text": f"{f.source} -> {f.target} — {f.check}"
+                + (f" — {f.detail}" if f.detail else ""),
+            }
+            for f in answer.findings
+        ],
+        "checkedLabel": "What was checked here",
+        "ran": answer.ran,
+        "notRun": list(answer.not_run),
+        "redTeam": [{"text": r.text, "warn": r.warning} for r in answer.red_team],
+        "divider": "Detail",
+        "dividerSub": "for the engineer",
+        "footer": answer.footer,
+    }
+    if answer.findings:
+        block["findingsLabel"] = "Findings"
+    return block
+
+
 def _verdict_block(page: Page) -> dict:
     verdict = page.verdict
+    # The two former hero tiles (agent tools verified, integrations verified)
+    # now lead the posture section's grids, where they have context.
     nums: list[dict] = []
-    if verdict.tools_total is not None:
-        nums.append(
-            {
-                "value": verdict.tools_verified,
-                "total": verdict.tools_total,
-                "label": "agent tools verified",
-                "cls": "tools",
-                "word": VERDICT_CLASS.get(verdict.word, ""),
-            }
-        )
-    nums.append(
-        {
-            "value": verdict.integrations_verified,
-            "total": verdict.integrations_total,
-            "label": "integrations verified",
-        }
-    )
     if verdict.endpoints_total:
         nums.append(
             {
@@ -196,14 +263,19 @@ def _verdict_block(page: Page) -> dict:
     for entry in nums[1:]:
         entry["sep"] = True
 
-    environment = (
-        f"<b>{_h(page.environment)}</b>"
-        if page.environment
-        else "<b>no environment bound</b>"
-    )
-    floor = " &nbsp;·&nbsp; safe floor (static, readonly)" if page.on_safe_floor else ""
-    points = _plural(verdict.integrations_total, "integration point")
-    sub = f"{environment} — {points}{floor}"
+    if page.on_safe_floor:
+        # The Answer's language: what happened, in words a reader without the
+        # method vocabulary can act on. The precise original string is in the
+        # footer (``bound``), where the engineer expects it.
+        sub = SAFE_FLOOR_SUBTITLE.format(where=page.environment or "CI")
+    else:
+        environment = (
+            f"<b>{_h(page.environment)}</b>"
+            if page.environment
+            else "<b>no environment bound</b>"
+        )
+        points = _plural(verdict.integrations_total, "integration point")
+        sub = f"{environment} — {points}"
 
     since = None
     if page.since:
@@ -221,12 +293,22 @@ def _verdict_block(page: Page) -> dict:
     return {
         "word": verdict.word,
         "cls": VERDICT_CLASS.get(verdict.word, ""),
-        "glyph": _CHECK_GLYPH if verdict.word == "VERIFIED" else _WARN_GLYPH,
+        "glyph": _verdict_glyph(verdict.word),
         "sub": sub,
         "nums": nums,
         "note": _verdict_note(page),
         "since": since,
     }
+
+
+def _verdict_glyph(word: str) -> str:
+    """A check for the one green word, a neutral mark for PARTIAL, and the
+    warning triangle for the two words that need a human."""
+    if word == "VERIFIED":
+        return _CHECK_GLYPH
+    if word == "PARTIAL":
+        return _PARTIAL_GLYPH
+    return _WARN_GLYPH
 
 
 def _verdict_note(page: Page) -> str:
@@ -262,15 +344,16 @@ def _verdict_note(page: Page) -> str:
 
 
 def _nav_block(page: Page) -> list[dict]:
-    pill = {"VERIFIED": "ok", "AT RISK": "warn", "BLOCKED": "warn"}.get(
-        page.verdict.word, "ok"
-    )
+    """The jump nav: one entry per section the page draws. No roadmap entry —
+    a release report advertises nothing — and no Terraform-side entry for a
+    declarations-only project, whose sections are not drawn."""
+    pill = VERDICT_PILL.get(page.verdict.word, "ok")
     tools_count = (
         f"{page.verdict.tools_total} · {page.verdict.tool_changes_to_review}"
         if page.tools is not None
         else None
     )
-    return [
+    nav = [
         {"id": "posture", "label": "Security Posture", "pill": pill, "count": None},
         {
             "id": "tools",
@@ -278,6 +361,10 @@ def _nav_block(page: Page) -> list[dict]:
             "pill": "soon" if page.tools is None else pill,
             "count": tools_count,
         },
+    ]
+    if page.declarations_only:
+        return nav
+    return nav + [
         {
             "id": "api",
             "label": "API access",
@@ -290,8 +377,6 @@ def _nav_block(page: Page) -> list[dict]:
             "pill": pill,
             "count": page.verdict.integrations_total or None,
         },
-        {"id": "database", "label": "Database", "pill": "soon", "count": "soon"},
-        {"id": "queue", "label": "Queue", "pill": "soon", "count": "soon"},
         {"id": "notanalyzed", "label": "Not analyzed", "pill": "soon", "count": None},
     ]
 
@@ -308,11 +393,7 @@ def _tool_band(page: Page) -> dict:
             "review": "",
         }
     verdict = page.verdict
-    word = {
-        "VERIFIED": "TOOLS VERIFIED",
-        "AT RISK": "TOOLS AT RISK",
-        "BLOCKED": "TOOLS BLOCKED",
-    }[verdict.word]
+    word = TOOL_BAND_WORD[verdict.word]
     return {
         "cls": VERDICT_CLASS.get(verdict.word, ""),
         "word": word,
@@ -897,6 +978,20 @@ def _footer_block(page: Page) -> list[dict]:
     if footer.commit:
         entries.append({"k": "commit", "v": footer.commit})
     entries.append({"k": "run", "v": footer.run})
+    if page.on_safe_floor:
+        # The exact line the subtitle carried before the Answer: the engineer's
+        # words, kept in the engineer's layer.
+        points = _plural(page.verdict.integrations_total, "integration point")
+        entries.append(
+            {
+                "k": "bound",
+                "v": f"no environment bound — {points} · safe floor (static, readonly)",
+            }
+        )
+    if page.declarations_only:
+        # The one line that stands in for the four Terraform-side sections:
+        # named, never silently skipped.
+        entries.append({"k": "note", "v": NO_TERRAFORM_NOTE})
     if footer.account:
         entries.append({"k": "account", "v": footer.account})
     if footer.region:
@@ -912,36 +1007,53 @@ def _footer_block(page: Page) -> list[dict]:
 
 
 def build_blocks(page: Page) -> dict[str, object]:
-    """The seven data blocks, keyed by marker name."""
+    """The seven data blocks, keyed by marker name.
+
+    For a declarations-only page the Terraform-side sections' labels are
+    absent and their row blocks empty: the sections are not drawn (see
+    :func:`render`), and words for a section nobody draws would be a claim
+    nobody can read. The posture tiles stay: they are counts of the run, and
+    the former hero tile leads them whatever the project reads.
+    """
     tools, tool_labels = _tools_blocks(page)
-    sweep, api_labels = _sweep_blocks(page)
-    points, chain, graph_labels = _graph_blocks(page)
-    return {
-        "PAGE": {
-            "verdict": _verdict_block(page),
-            "nav": _nav_block(page),
-            "posture": {
-                "infraMeta": _plural(page.verdict.integrations_total, "point"),
-                "toolsMeta": (
-                    tool_labels["eyebrow"] if page.tools is not None else "not declared"
-                ),
-                "since": f"since {page.since}" if page.since else "",
-            },
-            "toolBand": _tool_band(page),
-            "standards": _standards_block(page),
-            "tools": tool_labels,
-            "api": api_labels,
-            "graph": graph_labels,
-            "notAnalyzed": _not_analyzed_block(page),
-            "footer": _footer_block(page),
-        },
+    posture: dict = {
+        "toolsMeta": (
+            tool_labels["eyebrow"] if page.tools is not None else "not declared"
+        ),
+        "since": f"since {page.since}" if page.since else "",
+    }
+    page_block: dict = {
+        "answer": _answer_block(page),
+        "verdict": _verdict_block(page),
+        "nav": _nav_block(page),
+        "posture": posture,
+        "toolBand": _tool_band(page),
+        "standards": _standards_block(page),
+        "tools": tool_labels,
+        "footer": _footer_block(page),
+    }
+    blocks: dict[str, object] = {
+        "PAGE": page_block,
         "TOOLS": tools,
         "TOOLPOSTURE": [_tile(t) for t in page.tool_tiles],
-        "SWEEP": sweep,
-        "POSTURE": [_tile(t) for t in page.posture.tiles()],
-        "POINTS": points,
-        "CHAIN": chain,
+        "SWEEP": [],
+        "POSTURE": [_tile(page.integration_tile)]
+        + [_tile(t) for t in page.posture.tiles()],
+        "POINTS": [],
+        "CHAIN": [],
     }
+    if page.declarations_only:
+        return blocks
+    sweep, api_labels = _sweep_blocks(page)
+    points, chain, graph_labels = _graph_blocks(page)
+    posture["infraMeta"] = _plural(page.verdict.integrations_total, "point")
+    page_block["api"] = api_labels
+    page_block["graph"] = graph_labels
+    page_block["notAnalyzed"] = _not_analyzed_block(page)
+    blocks["SWEEP"] = sweep
+    blocks["POINTS"] = points
+    blocks["CHAIN"] = chain
+    return blocks
 
 
 def template_text() -> str:
@@ -951,11 +1063,20 @@ def template_text() -> str:
 
 
 def render(page: Page, template_path: Path | None = None) -> str:
-    """Render ``page`` into the template and return the self-contained HTML."""
+    """Render ``page`` into the template and return the self-contained HTML.
+
+    The template's Terraform-side regions (between ``<!-- itest:terraform -->``
+    and its ``:end``) are kept for a project that reads Terraform and removed
+    whole for a declarations-only one; either way the marker lines themselves
+    are gone from the output.
+    """
     if template_path is None:
         document = template_text()
     else:
         document = template_path.read_text(encoding="utf-8")
+    document = _TERRAFORM_REGION.sub(
+        "" if page.declarations_only else r"\g<body>", document
+    )
     for name, value in build_blocks(page).items():
         marker = MARKER.format(name=name)
         if marker not in document:

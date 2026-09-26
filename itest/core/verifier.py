@@ -21,7 +21,16 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from itest.core import environments, lifecycle, planner, points, redact, stubgen
+from itest.core import (
+    environments,
+    findings,
+    lifecycle,
+    planner,
+    points,
+    reasons,
+    redact,
+    stubgen,
+)
 from itest.core.manifest import (
     IntegrationPoint,
     Manifest,
@@ -32,6 +41,11 @@ from itest.core.manifest import (
 from itest.traits.ids import LEGACY_BY_TRAIT, trait_ident
 
 JUNIT_NAME = "itest-results.xml"
+
+#: Where the complete pytest output of the last run goes, relative to the
+#: project: what `itest verify` printed before it printed findings.
+#: Overwritten per run, gitignored with the rest of ``.itest/``.
+LOG_NAME = ".itest/verify.log"
 
 #: A generous ceiling on the pytest subprocess (seconds). A real integration
 #: suite can be slow; this only catches a genuine hang, which would otherwise
@@ -78,6 +92,10 @@ class PointResult(BaseModel):
     #: Carried here because a PointResult has no type, and rendering must not
     #: guess at attributes that only one point type has.
     tag: str = ""
+    #: Why the point was not verified, as a code from
+    #: :data:`itest.core.reasons.REASONS`: ``stub`` for a stub, the run's
+    #: held-out code for a gated point. ``None`` when it ran.
+    reason: str | None = None
 
 
 class VerifyReport(BaseModel):
@@ -344,6 +362,8 @@ def run_verify(
     _require_pytest()
 
     gated = _gated_canonicals(manifest, resolution)
+    # Why this run withholds a tier: stamped on every gated point and check.
+    gating = reasons.held_out_reason(resolution)
     # Gated (tier-disallowed) and disabled tests are both kept out of collection.
     # Gated is tracked separately below because a fully-gated point still
     # reports [GATED]; a disabled test simply does not run.
@@ -431,6 +451,7 @@ def run_verify(
                     attributes=point.attributes,
                     status="gated",
                     tag=points.summary(point),
+                    reason=gating,
                 )
             )
             gated_points += 1
@@ -452,6 +473,15 @@ def run_verify(
         else:
             status = "stub"
             stubs += 1
+        reason = None
+        if status == "stub":
+            # A stub whose test the manifest calls implemented verified
+            # nothing: stuck, and a reviewer's to look at — not a stub.
+            reason = (
+                reasons.STUCK
+                if any(t.status == "implemented" for t in allowed)
+                else reasons.STUB
+            )
         ranked_results.append(
             PointResult(
                 id=point.id,
@@ -460,6 +490,7 @@ def run_verify(
                 attributes=point.attributes,
                 status=status,
                 tag=points.summary(point),
+                reason=reason,
             )
         )
 
@@ -472,7 +503,7 @@ def run_verify(
         save_manifest(manifest, manifest_file)
 
     tools = build_tool_ledger(
-        manifest, base_dir, resolved, outcomes, resolution.environment
+        manifest, base_dir, resolved, outcomes, resolution.environment, gating
     )
 
     report = VerifyReport(
@@ -636,6 +667,18 @@ def _pick_entry(entries: list[TestEntry], kind: str) -> TestEntry | None:
     return preferred[0] if preferred else None
 
 
+def _not_run_reason(outcome: str, raw: dict, gating: str) -> str | None:
+    """The reason code for an outcome pytest decided (no CheckResult): held
+    out by the policy, a placeholder or plain skip, or no result at all."""
+    if outcome == "gated":
+        return gating
+    if outcome == "skipped":
+        return reasons.skip_reason(raw.get("reason") or "")
+    if outcome == "missing":
+        return reasons.MISSING
+    return None
+
+
 def _tool_checks(
     point: IntegrationPoint,
     manifest: Manifest,
@@ -644,6 +687,7 @@ def _tool_checks(
     resolved: dict[str, tuple[str, str]],
     outcomes: dict[str, dict],
     environment: str | None,
+    gating: str,
 ) -> tuple[list[dict], list[dict]]:
     """The ledger rows for one tool, and the exceptions they raise."""
     entries = [
@@ -675,15 +719,18 @@ def _tool_checks(
                 "status": "not_run",
                 "detail": "no test is registered for this check; run `itest sync`",
                 "test": "",
+                "reason": reasons.UNREGISTERED,
             }
         outcome, detail = resolved.get(entry.canonical, ("missing", ""))
         raw = outcomes.get(entry.canonical) or {}
         check = raw.get("check")
         if check and outcome not in ("gated", "not_applicable"):
             status, text = check.get("status", "fail"), check.get("detail", "")
+            reason = check.get("reason") if status == "not_verifiable" else None
         else:
             status = _OUTCOME_STATUS.get(outcome, "not_run")
             text = _short_detail(outcome, detail, raw, environment)
+            reason = _not_run_reason(outcome, raw, gating)
         state = check_state(
             base_dir=base_dir,
             path=entry.path,
@@ -700,6 +747,10 @@ def _tool_checks(
             "test": entry.canonical,
             "state": state,
         }
+        if reason is not None:
+            # Only a check that did not run says why; a check that ran has
+            # its status and detail, and no reason key at all.
+            result["reason"] = reason
         if state == "stale":
             file = base_dir / entry.path
             frozen = _docstring_schema(file, entry.test_name)
@@ -772,13 +823,17 @@ def build_tool_ledger(
     resolved: dict[str, tuple[str, str]],
     outcomes: dict[str, dict],
     environment: str | None,
+    gating: str = reasons.HELD_OUT_UNBOUND,
 ) -> dict | None:
     """The ``tools`` section of verify's JSON: one entry per declared server.
 
     Built only from what verify knows — the manifest's tool points and their
     ``traits_planned``, the test registered for each check, pytest's outcome
     and the ``CheckResult`` a check recorded — so nothing in it is illustrative:
-    a check that did not run says ``not_run``, never ``pass``. ``None`` when the
+    a check that did not run says ``not_run``, never ``pass``, and carries a
+    ``reason`` code (``itest.core.reasons``) saying why: the check's own for
+    ``not_verifiable``, ``gating`` (the run's held-out code) for a gated one,
+    and the skip / missing / unregistered codes for the rest. ``None`` when the
     manifest records no declared tool.
     """
     tools = [p for p in manifest.points if p.type == "mcp_tool"]
@@ -800,7 +855,14 @@ def build_tool_ledger(
         verified = 0
         for point in points_here:
             checks, raised = _tool_checks(
-                point, manifest, base_dir, table, resolved, outcomes, environment
+                point,
+                manifest,
+                base_dir,
+                table,
+                resolved,
+                outcomes,
+                environment,
+                gating,
             )
             counted = [c for c in checks if c.get("state") in _COUNTED]
             egress = point.attributes.get("egress")
@@ -921,7 +983,42 @@ def _gated_tag(environment: str | None) -> str:
     return f"GATED {environment}" if environment else "GATED"
 
 
-def render_human(report: VerifyReport, redacted: bool = False) -> str:
+def write_log(base_dir: Path, text: str) -> Path:
+    """Write the run's full output to :data:`LOG_NAME`, replacing the last."""
+    path = base_dir / LOG_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "\n", encoding="utf-8")
+    return path
+
+
+def render_findings(found: list[findings.Finding]) -> list[str]:
+    """The ``Findings (n):`` block: one entry per failed check, in verdict
+    order — status word, source -> target, the trait's title — and the plain
+    sentence on its own indented line. Empty when there is nothing to find."""
+    if not found:
+        return []
+    width = max(len(f"{f.source} -> {f.target}") for f in found)
+    out = [f"Findings ({len(found)}):"]
+    for finding in found:
+        status = {"critical": "CRITICAL", "failing": "FAIL", "error": "ERROR"}.get(
+            finding.severity, finding.severity.upper()
+        )
+        edge = f"{finding.source} -> {finding.target}"
+        out.append(f"  {status:<8}  {edge:<{width}}  {finding.check}".rstrip())
+        if finding.detail:
+            out.append(f"            {finding.detail}")
+    return out
+
+
+def render_human(
+    report: VerifyReport, redacted: bool = False, *, verbose: bool = False
+) -> str:
+    """What `itest verify` prints. The summary line, the points, then — for a
+    run with failures — a findings block that says what each failed check
+    found, in plain sentences; the complete pytest output is in
+    :data:`LOG_NAME`. ``verbose`` prints that complete output instead: the
+    failing and errored tests with pytest's own text, as before.
+    """
     out: list[str] = []
     # One line, only when a policy is committed but nothing is bound: name the
     # floor the run fell back to, so a green suite is not mistaken for coverage
@@ -971,22 +1068,31 @@ def render_human(report: VerifyReport, redacted: bool = False) -> str:
         out.append(f"  [{status}] {p.source} -> {p.target} ({p.tag})")
 
     failures = [t for t in report.tests if t.outcome == "failed"]
-    if failures:
-        out.append("")
-        out.append("Failing tests:")
-        for t in failures:
-            out.append(f"  {t.canonical}")
-            for line in (t.detail or "").splitlines():
-                out.append(f"      {line}")
-
     errors = [t for t in report.tests if t.outcome == "error"]
-    if errors:
-        out.append("")
-        out.append("Errored tests (the suite could not run):")
-        for t in errors:
-            out.append(f"  {t.canonical}")
-            for line in (t.detail or "").splitlines():
-                out.append(f"      {line}")
+    if verbose:
+        if failures:
+            out.append("")
+            out.append("Failing tests:")
+            for t in failures:
+                out.append(f"  {t.canonical}")
+                for line in (t.detail or "").splitlines():
+                    out.append(f"      {line}")
+        if errors:
+            out.append("")
+            out.append("Errored tests (the suite could not run):")
+            for t in errors:
+                out.append(f"  {t.canonical}")
+                for line in (t.detail or "").splitlines():
+                    out.append(f"      {line}")
+    else:
+        found = findings.findings_for(
+            report.model_dump(mode="json"), findings.trait_names()
+        )
+        if found:
+            out.append("")
+            out.extend(render_findings(found))
+            out.append("")
+            out.append(f"Full test output: {LOG_NAME}")
 
     if report.unregistered:
         out.append("")

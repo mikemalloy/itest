@@ -1,6 +1,21 @@
 {
   "CHAIN": [],
   "PAGE": {
+    "answer": {
+      "checkedLabel": "What was checked here",
+      "cls": "partial",
+      "divider": "Detail",
+      "dividerSub": "for the engineer",
+      "findings": [],
+      "footer": "Detail below.",
+      "notRun": [
+        "Not run here: Integrations \u2014 7 checks are waiting for a test to be written."
+      ],
+      "ran": null,
+      "redTeam": [],
+      "sentence": "No findings. 0 of 7 checks passed; 7 were not run here.",
+      "word": "PARTIAL"
+    },
     "api": {
       "attest": "<span class='b'>Access-control report.</span> Every row is a route ITest detected in Terraform, carrying the status verify recorded for it. Verify does not yet record which registered test was the anonymous probe, so this run shows one status column rather than an unauthenticated/authenticated pair holding the same value.",
       "bars": [
@@ -56,7 +71,7 @@
         "count": null,
         "id": "posture",
         "label": "Security Posture",
-        "pill": "warn"
+        "pill": "partial"
       },
       {
         "count": null,
@@ -68,25 +83,13 @@
         "count": 7,
         "id": "api",
         "label": "API access",
-        "pill": "warn"
+        "pill": "partial"
       },
       {
         "count": 7,
         "id": "graph",
         "label": "Integrations",
-        "pill": "warn"
-      },
-      {
-        "count": "soon",
-        "id": "database",
-        "label": "Database",
-        "pill": "soon"
-      },
-      {
-        "count": "soon",
-        "id": "queue",
-        "label": "Queue",
-        "pill": "soon"
+        "pill": "partial"
       },
       {
         "count": null,
@@ -130,18 +133,12 @@
       "eyebrow": "not declared in this run"
     },
     "verdict": {
-      "cls": "risk",
-      "glyph": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\" fill=\"none\"><path d=\"M12 3 2 20h20L12 3z\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linejoin=\"round\"/><path d=\"M12 10v4\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><circle cx=\"12\" cy=\"17\" r=\"1.2\" fill=\"currentColor\"/></svg>",
+      "cls": "partial",
+      "glyph": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\" fill=\"none\"><circle cx=\"12\" cy=\"12\" r=\"8.5\" stroke=\"currentColor\" stroke-width=\"2.2\"/><path d=\"M8 12h8\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"/></svg>",
       "note": "0 of 7 integration points verified against the live account, 7 awaiting an implemented test. 7 gateway routes detected; 0 verified. No agent tools declared.",
       "nums": [
         {
-          "label": "integrations verified",
-          "total": 7,
-          "value": 0
-        },
-        {
           "label": "endpoints verified",
-          "sep": true,
           "total": 7,
           "value": 0
         },
@@ -154,11 +151,16 @@
       ],
       "since": null,
       "sub": "<b>no environment bound</b> \u2014 7 integration points",
-      "word": "AT RISK"
+      "word": "PARTIAL"
     }
   },
   "POINTS": [],
   "POSTURE": [
+    {
+      "attn": true,
+      "lab": "integrations verified<br>of 7 points detected",
+      "n": 0
+    },
     {
       "lab": "cross-stack dependencies<br>resolved to other stacks",
       "n": 7

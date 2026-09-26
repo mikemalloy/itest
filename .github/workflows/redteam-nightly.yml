@@ -100,11 +100,13 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # The run page tells the story without a download.
+      # The run page tells the story without a download: the source line, the
+      # rollup, and the page's Answer — the verdict word, its sentence, any
+      # findings, what ran and why not, and the red-team line.
       - name: summary
         if: always()
         run: |
           echo "red team step: ${{ steps.red.outcome }}"
           grep -h '^evidence promptfoo-ci' "${{ github.workspace }}/sync.log" || echo "no source line: sync did not run"
           grep -h 'integration points:' "${{ github.workspace }}/verify.log" || echo "no rollup: verify did not run"
-          grep -h '^Verdict:' "${{ github.workspace }}/report.log" || echo "no verdict: report did not run"
+          grep -h -E '^(Verdict:|  (critical|failing|error):|Ran:|Not run here:|Red team)' "${{ github.workspace }}/report.log" || echo "no verdict: report did not run"

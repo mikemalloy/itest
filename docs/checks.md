@@ -29,6 +29,8 @@ from itest.checks import CheckResult, run_engine_check, run_generated_check
 @dataclass(frozen=True)
 class CheckResult:
     status: str          # "pass" | "fail" | "critical" | "changed" | "not_verifiable"
+    reason: str | None   # why it did not run: a code from itest.core.reasons,
+                         # set on every not_verifiable result (see below)
     detail: str          # one line, human-readable, never a credential
     evidence: dict | None = None   # JSON-ready; what the report may show
 
@@ -71,7 +73,7 @@ The statuses:
 | `fail` | The check ran and the property does not hold. |
 | `critical` | A **demonstrated** finding, never an inference from a listing: today, a read-classified tool that changed observable state (`blast.mutation_class_observed`). The planned active anonymous-refusal check (see "Not in this library yet") will use it for an anonymous admission on a mutating tool. Stop and escalate. No readonly engine check produces it. |
 | `changed` | The live server differs from what the last sync recorded. Sync makes this drift. |
-| `not_verifiable` | The check could not run; the detail says why. **Never a pass.** |
+| `not_verifiable` | The check could not run; the detail says why in the engine's words, and `reason` says why as a code from `itest.core.reasons` (`unreachable`, `no_credential`, `undeclared`, `deferred`, `not_listed`, `unclassified`, `no_safe_call`, `already_mutating`, `stdio_boundary`, `unwritten`). The readiness page's Answer prints the code's plain sentence, never the detail. `not_verifiable(detail, evidence, reason=...)` requires the keyword, and a test walks every call in the library to make sure none is missing. **Never a pass.** |
 
 Neither entry point raises for anything a server did or for a target it cannot
 use (no url, a refused private host, an unreadable `.itest/.env`): each is

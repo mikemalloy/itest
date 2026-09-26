@@ -281,9 +281,12 @@ def test_the_band_renders_one_row_per_asi_entry_and_the_grid_is_untouched(
     assert by_id["ASI06"]["quiet"] is True and by_id["ASI03"]["quiet"] is False
     assert by_id["ASI06"]["note"]
     assert "ASI" in band["eyebrow"]
-    # The families grid is the skeleton and does not move.
-    assert len(before["TOOLPOSTURE"]) == 4
-    assert [t["lab"].split(" checks")[0] for t in before["TOOLPOSTURE"]] == [
+    # The families grid is the skeleton and does not move. The tile before
+    # it is the relocated "agent tools verified" count, not a family.
+    families = before["TOOLPOSTURE"][1:]
+    assert before["TOOLPOSTURE"][0]["lab"].startswith("agent tools verified")
+    assert len(families) == 4
+    assert [t["lab"].split(" checks")[0] for t in families] == [
         "Authority",
         "Blast radius",
         "Containment",

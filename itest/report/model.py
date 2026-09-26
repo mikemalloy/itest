@@ -16,28 +16,40 @@ the anonymous probe).
 
 Verdict rules
 -------------
-Evaluated in order; the first that matches wins.
+Four words, evaluated in this order; the first that matches wins. The one
+derivation is :func:`derive_verdict`, which also writes the plain sentence
+(``Verdict.reason``) the page shows beneath the word, so nothing downstream
+re-derives meaning from counts.
 
-**BLOCKED** — the release is not shippable on this evidence:
+**BLOCKED** — a finding. Red.
 
-* any tool check has status ``critical``, or a server's ``summary.critical``
-  is nonzero, or
+* any tool check has status ``critical`` or ``fail``, or a server's
+  ``summary.critical`` is nonzero, or
 * any integration point is ``failing`` or ``error``.
 
-**AT RISK** — something needs a human before this is a green release:
+**NEEDS REVIEW** — a human decision is pending. Amber.
 
 * any tool check has status ``changed`` (a declared property moved and no
   reviewer has confirmed it), or
-* any tool check is ``stale`` (hand-edited, and generated against a schema the
-  tool no longer has), or any declared tool is not verified — VERIFIED is a
-  coverage claim, and stale, not-applicable and orphaned checks do not count
-  toward it, or
+* any tool check is ``stale`` (generated against a schema the tool no longer
+  has, and nobody has re-read it since), or
 * a point reports ``stub`` while its manifest entry says ``implemented`` —
-  the test was written but did not verify anything this run, or
-* any point reports ``stub`` at all. A stub is not coverage, so a run with
-  unverified points cannot carry a green stamp however few they are.
+  the test was written but did not verify anything this run.
 
-**VERIFIED** — every point verified and no tool change is waiting on review.
+**PARTIAL** — nothing failed and nothing is pending, but the page cannot claim
+full coverage. Nothing is wrong that we know of; we did not look at
+everything. Grey-blue, never amber, never green.
+
+* any tool check is ``held_out`` (the environment policy withheld its tier),
+  ``not_verifiable`` (this server does not declare what it needs, or the
+  check is not written yet) or ``not_run``, or
+* any declared tool is not verified — VERIFIED is a coverage claim, and
+  stale, not-applicable and orphaned checks do not count toward it, or
+* any point reports ``stub`` or ``gated``. A stub is not coverage, so a run
+  with unverified points cannot carry a green stamp however few they are.
+
+**VERIFIED** — every declared property of every declared tool passed, every
+point verified, and nothing is waiting on review. Green. Never a bare green.
 
 Point statuses come from verify's own precedence (fail > error > pass > stub),
 so this never re-derives a status the verifier already decided.
@@ -50,7 +62,8 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from itest.core import lifecycle
+from itest.core import findings as core_findings
+from itest.core import lifecycle, reasons
 from itest.core.manifest import EvidenceRecord, Manifest, SourceRecord
 from itest.traits.ids import migrate_family_id, migrate_trait_id
 
@@ -67,6 +80,10 @@ CHECK_STATUSES = (
     # A registered check that did not run: skipped, or not implemented yet.
     "not_run",
 )
+
+#: The verdict vocabulary, in precedence order. :func:`derive_verdict` is the
+#: one place a word is chosen.
+VERDICT_WORDS = ("BLOCKED", "NEEDS REVIEW", "PARTIAL", "VERIFIED")
 
 #: A check's lifecycle state, and the ones that do not count toward VERIFIED.
 #: Defined once in ``itest.core.lifecycle``; re-exported here for the page.
@@ -132,6 +149,10 @@ class ToolCheck(_Strict):
     code: str | None = None
     #: The published ids the trait answers (``ASI03``, ``semgrep-server-4``).
     standards: list[str] = Field(default_factory=list)
+    #: Why the check did not run, as a code from ``itest.core.reasons``. Set
+    #: by the engine on every not-run cell; a ledger written before the codes
+    #: existed carries none, and the Answer then reads the detail it knows.
+    reason: str | None = None
 
     @field_validator("trait", mode="before")
     @classmethod
@@ -322,8 +343,37 @@ class Tile(BaseModel):
     attn: bool = False
 
 
+class Tally(BaseModel):
+    """The counts the verdict's sentence is built from.
+
+    A *check* is one :class:`ToolCheck` cell — the unit the tools grid counts
+    — plus one integration point that is not itself a declared tool (a tool
+    point's checks are its cells, so the point is not counted twice). Retired
+    and orphaned cells are not checks on a tool as it is today and are left
+    out of the total.
+    """
+
+    total: int = 0
+    passed: int = 0
+    #: Held out, not verifiable or not run: cells nobody looked at here, and
+    #: points still at stub or gated.
+    not_run: int = 0
+    #: Critical and failing cells; failing and errored points.
+    findings: int = 0
+    #: Changed and stale cells; points stuck at stub though implemented. The
+    #: three are counted apart below, so the sentence can name each.
+    pending: int = 0
+    pending_changes: int = 0
+    pending_stale: int = 0
+    pending_stuck: int = 0
+
+
 class Verdict(BaseModel):
+    #: One of :data:`VERDICT_WORDS`.
     word: str
+    #: The plain sentence beneath the word, written by :func:`derive_verdict`.
+    reason: str = ""
+    tally: Tally = Field(default_factory=Tally)
     integrations_verified: int
     integrations_total: int
     #: route_edge points verify verified, over route_edge points detected.
@@ -455,10 +505,59 @@ class Footer(BaseModel):
     generated_at: str
 
 
+class Finding(BaseModel):
+    """One line of the Answer's findings list: a critical or failing check,
+    or a failing or errored point — the same entry `itest verify` prints,
+    from :func:`itest.core.findings.findings_for`. The check is named by the
+    trait's human name from the trait table, never its slug, and the detail
+    is the plain sentence: no state hash, no sentinel, no test node id."""
+
+    #: ``critical``, ``failing`` or ``error``.
+    severity: str
+    #: The server (a tool check) or the edge's source (a point).
+    source: str
+    #: The tool, or the edge's target.
+    target: str
+    #: The trait's title, or the point's tag.
+    check: str
+    detail: str | None = None
+
+
+class RedTeamLine(BaseModel):
+    """The Answer's one line per red-team source. Never a verdict input."""
+
+    source: str
+    text: str
+    #: A write or destructive tool was called.
+    warning: bool = False
+
+
+class Answer(BaseModel):
+    """The plain-language layer at the top of the page: is there a security
+    problem? Derived from the same data as everything below the divider and
+    written in none of the method vocabulary the detail layer relies on.
+    """
+
+    word: str
+    sentence: str
+    findings: list[Finding] = Field(default_factory=list)
+    #: ``Ran: Change — 24 of 24 passed.`` or ``None`` when nothing ran.
+    ran: str | None = None
+    #: ``Not run here: Authority, … — <why>.``: one line per reason.
+    not_run: list[str] = Field(default_factory=list)
+    red_team: list[RedTeamLine] = Field(default_factory=list)
+    footer: str = "Detail below."
+
+
 class Page(BaseModel):
     verdict: Verdict
+    answer: Answer
     posture: PostureInfra
     tools: ToolLedger | None = None
+    #: The two former hero tiles, now in the posture section's grids: agent
+    #: tools verified leads ``tool_tiles``; this one leads the infrastructure
+    #: grid.
+    integration_tile: Tile = Field(default_factory=lambda: Tile(n=0, label=""))
     tool_tiles: list[Tile] = Field(default_factory=list)
     api: ApiSweep
     graph: Graph
@@ -474,11 +573,44 @@ class Page(BaseModel):
     #: Source lines naming no server the ledger has (a file that did not parse,
     #: a server the manifest does not inventory). Still shown, never dropped.
     unattached_sources: list[SourceLine] = Field(default_factory=list)
+    #: Integration points that are not declared tools: what a detector read
+    #: out of Terraform. Zero for a project that declares tools and reads none.
+    infrastructure_points: int = 0
+    #: The project declares tools and reads no Terraform, so the Terraform-side
+    #: sections (infrastructure tiles, API sweep, integration graph, not
+    #: analyzed) are not drawn and one footer line says so. **Derived**, by
+    #: :func:`is_declarations_only`: nothing verify or plan records says
+    #: whether a run read Terraform, so the page decides it from the absence
+    #: of every kind of Terraform data at once.
+    declarations_only: bool = False
 
 
 # ---------------------------------------------------------------------------
 # Derivation.
 # ---------------------------------------------------------------------------
+
+
+def is_declarations_only(page: Page) -> bool:
+    """Whether the page is a declarations-only project's: tools declared and
+    no Terraform read.
+
+    Derived, not recorded: neither verify JSON nor the plan says whether a run
+    read any Terraform, so this is decided conservatively from the absence of
+    every Terraform-side datum at once — no integration point that is not a
+    declared tool, no API route, no graph edge, and no not-analyzed census —
+    on a page that does have a tool ledger. A run with nothing at all is not
+    declarations-only: it may be a Terraform project whose state was empty,
+    and its sections stay, empty but named.
+    """
+    return (
+        page.tools is not None
+        and page.infrastructure_points == 0
+        and page.api.total == 0
+        and not page.graph.points
+        and not page.graph.chain
+        and page.not_analyzed is None
+    )
+
 
 #: What the lane says when no row of the run declared a target tool.
 TARGETING_NOT_DECLARED = "targeting not declared by the harness"
@@ -541,6 +673,467 @@ def _attach_evidence(ledger: ToolLedger, manifest: Manifest) -> list[SourceLine]
     return unattached
 
 
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+#: Cell statuses by what they mean for the tally. ``n/a`` is a retired check
+#: and is left out of the total; anything unknown is treated as not run.
+_FINDING_STATUSES = ("critical", "fail")
+_PENDING_STATUSES = ("changed",)
+_PASSED_STATUSES = ("pass",)
+
+
+def tally_checks(
+    points: list[dict],
+    types: dict[str, str],
+    ledger: ToolLedger | None,
+    implemented: set[str],
+) -> Tally:
+    """Count every check on the page into the five buckets of :class:`Tally`."""
+    tally = Tally()
+    if ledger is not None:
+        critical_cells = 0
+        changed_cells = 0
+        for server in ledger.servers:
+            for tool in server.tools:
+                for check in tool.checks:
+                    if check.state in ("not_applicable", "orphan") or (
+                        check.status == "n/a"
+                    ):
+                        continue
+                    tally.total += 1
+                    if check.status in _FINDING_STATUSES:
+                        tally.findings += 1
+                        critical_cells += check.status == "critical"
+                    elif check.status in _PENDING_STATUSES or check.state == "stale":
+                        tally.pending += 1
+                        changed_cells += check.status == "changed"
+                        if check.status == "changed":
+                            tally.pending_changes += 1
+                        else:
+                            tally.pending_stale += 1
+                    elif check.status in _PASSED_STATUSES:
+                        tally.passed += 1
+                    else:
+                        tally.not_run += 1
+        # A summary can record what its cells do not list (an older ledger).
+        summary_critical = sum(s.summary.critical for s in ledger.servers)
+        tally.findings += max(0, summary_critical - critical_cells)
+        tally.pending += max(0, ledger.changed - changed_cells)
+        tally.pending_changes += max(0, ledger.changed - changed_cells)
+    for point in points:
+        if types.get(point["id"]) == "mcp_tool":
+            continue  # its checks are the cells above
+        tally.total += 1
+        status = point["status"]
+        if status == "passing":
+            tally.passed += 1
+        elif status in ("failing", "error"):
+            tally.findings += 1
+        elif status == "stub" and point["id"] in implemented:
+            tally.pending += 1
+            tally.pending_stuck += 1
+        else:
+            tally.not_run += 1
+    return tally
+
+
+def derive_verdict(
+    points: list[dict],
+    types: dict[str, str],
+    ledger: ToolLedger | None,
+    implemented: set[str],
+) -> tuple[str, str, Tally]:
+    """The verdict word, its plain sentence, and the counts behind them.
+
+    The four words, in precedence order — the first that applies wins:
+
+    ``BLOCKED``       a finding: a critical or failing check, a failing or
+                      errored point. Nothing else matters until it is fixed.
+    ``NEEDS REVIEW``  a human decision is pending: a declared property changed
+                      and no reviewer confirmed it, a check is stale, or a
+                      point reports stub while its manifest entry says
+                      implemented.
+    ``PARTIAL``       nothing failed and nothing is pending, but the page
+                      cannot claim full coverage: checks were held out by the
+                      environment policy, are not verifiable for this server,
+                      or are not written yet; or a declared tool is not
+                      verified. Nothing is wrong that we know of; we did not
+                      look at everything. Never amber, never green.
+    ``VERIFIED``      every declared property of every declared tool passed,
+                      every point verified, nothing waiting on review. The
+                      only word that is ever green.
+
+    The sentence is chosen by the word and nothing else; the page shows it
+    verbatim rather than rebuilding meaning from the numbers.
+    """
+    tally = tally_checks(points, types, ledger, implemented)
+    if tally.findings:
+        word = "BLOCKED"
+        verb = "needs" if tally.findings == 1 else "need"
+        reason = f"{_count(tally.findings, 'finding')} {verb} attention before release."
+    elif tally.pending:
+        word = "NEEDS REVIEW"
+        # Each kind of pending item named for what it is: a tool change, a
+        # stale check, a test marked implemented that verified nothing.
+        parts = [
+            _count(n, noun)
+            for n, noun in (
+                (tally.pending_changes, "tool change"),
+                (tally.pending_stale, "stale check"),
+                (tally.pending_stuck, "test marked implemented that verified nothing"),
+            )
+            if n
+        ]
+        named = " and ".join(parts) if parts else _count(tally.pending, "item")
+        verb = "is" if tally.pending == 1 else "are"
+        reason = f"No findings. {named} {verb} waiting for a reviewer."
+    elif tally.not_run or (ledger is not None and ledger.verified < ledger.declared):
+        word = "PARTIAL"
+        passed = f"{tally.passed} of {_count(tally.total, 'check')} passed"
+        if tally.not_run:
+            verb = "was" if tally.not_run == 1 else "were"
+            reason = f"No findings. {passed}; {tally.not_run} {verb} not run here."
+        else:
+            # Every cell passed, yet a tool is not fully checked: a planned
+            # trait with no counted cell. Say that, never "0 were not run".
+            unverified = ledger.declared - ledger.verified  # type: ignore[union-attr]
+            verb = "is" if unverified == 1 else "are"
+            reason = (
+                f"No findings. {passed}; {_count(unverified, 'tool')} {verb} not "
+                "fully checked."
+            )
+    else:
+        word = "VERIFIED"
+        reason = f"No findings. All {_count(tally.total, 'check')} passed."
+    return word, reason, tally
+
+
+class UnknownReason(ValueError):
+    """A not-run reason the Answer has no sentence for. Raised at render time:
+    the page prints a plain sentence or nothing, never an engine string."""
+
+
+#: One plain sentence per reason code, as (one check, several checks) — a
+#: count, a family list, and nothing else. The engine's detail never reaches
+#: a line; the code chooses the words, and a code not in this table fails
+#: loudly (:class:`UnknownReason`). Keyed by ``itest.core.reasons``; a test
+#: pins that the two vocabularies are the same set, and that every sentence
+#: is free of the detail layer's vocabulary.
+REASON_SENTENCES: dict[str, tuple[str, str]] = {
+    reasons.HELD_OUT_UNBOUND: (
+        "needs a non-production copy of this server where trying a write is "
+        "safe, and this run was not pointed at one.",
+        "need a non-production copy of this server where trying a write is "
+        "safe, and this run was not pointed at one.",
+    ),
+    reasons.HELD_OUT_PRODUCTION: (
+        "only runs against a non-production copy of this server, and this run "
+        "was pointed at production.",
+        "only run against a non-production copy of this server, and this run "
+        "was pointed at production.",
+    ),
+    reasons.HELD_OUT_WITHHELD: (
+        "only runs where the policy allows trying a write, and it does not "
+        "allow that where this run was pointed.",
+        "only run where the policy allows trying a write, and it does not "
+        "allow that where this run was pointed.",
+    ),
+    reasons.DEFERRED: (
+        "stops short of calling a tool that changes data without credentials, "
+        "and the check that would is not written yet.",
+        "stop short of calling a tool that changes data without credentials, "
+        "and the check that would is not written yet.",
+    ),
+    reasons.UNDECLARED: (
+        "needs a fact this server does not declare.",
+        "need a fact this server does not declare.",
+    ),
+    reasons.NEEDS_FACTS: (
+        "needs facts only you can supply, in the server's conftest.",
+        "need facts only you can supply, in the server's conftest.",
+    ),
+    reasons.UNWRITTEN: (
+        "ITest cannot perform yet.",
+        "ITest cannot perform yet.",
+    ),
+    reasons.UNREGISTERED: (
+        "has no test in this project yet.",
+        "have no test in this project yet.",
+    ),
+    reasons.STUB: (
+        "is waiting for a test to be written.",
+        "are waiting for a test to be written.",
+    ),
+    reasons.STUCK: (
+        "is marked implemented but verified nothing.",
+        "are marked implemented but verified nothing.",
+    ),
+    reasons.STDIO_BOUNDARY: (
+        "does not apply to a server run as a local process, which has no "
+        "anonymous caller to refuse.",
+        "do not apply to a server run as a local process, which has no "
+        "anonymous caller to refuse.",
+    ),
+    reasons.ALREADY_MUTATING: (
+        "does not apply, because the tool already says it changes data.",
+        "do not apply, because the tool already says it changes data.",
+    ),
+    reasons.UNCLASSIFIED: (
+        "could not tell what kind of tool this is.",
+        "could not tell what kind of tool this is.",
+    ),
+    reasons.NO_SAFE_CALL: (
+        "could not set up a safe call to the tool, so it made none.",
+        "could not set up a safe call to the tool, so they made none.",
+    ),
+    reasons.NOT_LISTED: (
+        "found that the server no longer lists the tool.",
+        "found that the server no longer lists the tool.",
+    ),
+    reasons.UNREACHABLE: (
+        "could not get an answer from the server.",
+        "could not get an answer from the server.",
+    ),
+    reasons.NO_CREDENTIAL: (
+        "had no credential to use.",
+        "had no credential to use.",
+    ),
+    reasons.SKIPPED: (
+        "was skipped before it ran.",
+        "were skipped before they ran.",
+    ),
+    reasons.MISSING: (
+        "produced no result in this run.",
+        "produced no result in this run.",
+    ),
+}
+
+
+def not_run_sentence(reason: str, n: int) -> str:
+    """``3 checks could not get an answer from the server.`` — the plain
+    sentence for ``n`` checks not run for ``reason``."""
+    try:
+        one, many = REASON_SENTENCES[reason]
+    except KeyError:
+        raise UnknownReason(
+            f"no plain sentence for not-run reason {reason!r}; the Answer knows "
+            f"{', '.join(REASON_SENTENCES)}."
+        ) from None
+    return f"{_count(n, 'check')} {one if n == 1 else many}"
+
+
+#: How a ledger written before reason codes is read: the engine's detail
+#: strings at that time, by the prefix each began with. Anything else is an
+#: :class:`UnknownReason`, never raw text.
+_LEGACY_DETAILS: tuple[tuple[str, str], ...] = (
+    ("no engine check for", reasons.UNWRITTEN),
+    ("no generated check for", reasons.UNWRITTEN),
+    ("stdio transport:", reasons.STDIO_BOUNDARY),
+    ("anonymous session admitted; this tool mutates", reasons.DEFERRED),
+    ("anonymous session admitted; the class of", reasons.UNCLASSIFIED),
+    ("anonymous session admitted, but", reasons.NOT_LISTED),
+    ("declare observation.snapshot_tool", reasons.UNDECLARED),
+    ("no sentinels.nonexistent_id", reasons.UNDECLARED),
+    ("the manifest records no", reasons.UNDECLARED),
+    ("the anonymous session could not be attempted", reasons.UNREACHABLE),
+    ("could not snapshot through", reasons.UNREACHABLE),
+    ("tools/call failed", reasons.UNREACHABLE),
+    ("mutation class unknown", reasons.UNCLASSIFIED),
+    ("only the declaration states a class", reasons.UNCLASSIFIED),
+    ("the class of", reasons.UNCLASSIFIED),
+    ("observation.snapshot_tool", reasons.NO_SAFE_CALL),
+    ("an authenticated listing was asked for", reasons.NO_CREDENTIAL),
+    ("the server refused the anonymous tool listing", reasons.NO_CREDENTIAL),
+    ("no test is registered", reasons.UNREGISTERED),
+    ("registered, but pytest reported no result", reasons.MISSING),
+)
+
+
+def _legacy_reason(status: str, detail: str, environment: str | None) -> str:
+    if status == "held_out":
+        if environment is None:
+            return reasons.HELD_OUT_UNBOUND
+        if environment in ("prod", "production"):
+            return reasons.HELD_OUT_PRODUCTION
+        return reasons.HELD_OUT_WITHHELD
+    if status == "not_verifiable" and " could not run: " in detail:
+        return reasons.UNREACHABLE
+    if status == "not_verifiable" and "is not in tools/list" in detail:
+        return reasons.NOT_LISTED
+    if status == "not_verifiable" and "it already declares that it mutates" in detail:
+        return reasons.ALREADY_MUTATING
+    if status == "not_verifiable" and "was not called:" in detail:
+        return reasons.UNREACHABLE
+    if status == "not_verifiable" and "has no sentinel" in detail:
+        return reasons.NO_SAFE_CALL
+    for prefix, reason in _LEGACY_DETAILS:
+        if detail.startswith(prefix):
+            return reason
+    if status == "not_run":
+        return reasons.skip_reason(detail)
+    raise UnknownReason(
+        f"a {status} check carries no reason code and its detail is not one the "
+        f"Answer knows: {detail!r}. The Answer prints a plain sentence or nothing."
+    )
+
+
+def _reason_of(check: ToolCheck, environment: str | None) -> str:
+    """The reason code for a cell nobody looked at: the engine's, or — for a
+    ledger written before codes — read from the detail it emitted then."""
+    if check.reason:
+        if check.reason not in REASON_SENTENCES:
+            raise UnknownReason(
+                f"not-run reason {check.reason!r} on {check.trait} has no plain "
+                f"sentence; the Answer knows {', '.join(REASON_SENTENCES)}."
+            )
+        return check.reason
+    return _legacy_reason(check.status, check.detail or "", environment)
+
+
+def _point_reason(point: dict, environment: str | None, implemented: set[str]) -> str:
+    reason = point.get("reason")
+    if reason == reasons.STUB and point.get("id") in implemented:
+        # The manifest says implemented and the run reported stub: stuck,
+        # and named as such whether or not this verify knew to say so.
+        reason = reasons.STUCK
+    if reason:
+        if reason not in REASON_SENTENCES:
+            raise UnknownReason(
+                f"not-run reason {reason!r} on point {point.get('id')} has no "
+                f"plain sentence; the Answer knows {', '.join(REASON_SENTENCES)}."
+            )
+        return reason
+    if point["status"] == "gated":
+        return _legacy_reason("held_out", "", environment)
+    return reasons.STUCK if point.get("id") in implemented else reasons.STUB
+
+
+#: Family id -> human name, when the ledger did not carry one.
+FAMILY_NAMES = {
+    "authority": "Authority",
+    "blast": "Blast radius",
+    "containment": "Containment",
+    "change": "Change",
+}
+
+#: The Answer's family for integration points that are not declared tools.
+INTEGRATIONS_FAMILY = "Integrations"
+
+
+def build_answer(
+    verify_points: list[dict],
+    types: dict[str, str],
+    ledger: ToolLedger | None,
+    manifest: Manifest,
+    verdict: Verdict,
+    verify: dict | None = None,
+) -> Answer:
+    """The Answer block, from the same data as the rest of the page.
+
+    Findings are every critical or failing cell and every failing or errored
+    point, critical first — the same entries, from the same function, that
+    `itest verify` prints (:func:`itest.core.findings.findings_for`, over the
+    verify document). "Ran" and "Not run here" count the same cells the grid
+    counts, by family; a cell nobody looked at is counted under its reason
+    code, and each code becomes one line in the code's own plain sentence —
+    never the engine's detail, and never two reasons on one line.
+    The red-team line is one sentence per source that was read, in the
+    template the source's data supports — and it is read from the evidence
+    lane only, never from a check, so it can inform the sentence and never
+    the word.
+    """
+    environment = ledger.servers[0].environment if ledger and ledger.servers else None
+    implemented = {
+        t.point_id
+        for t in manifest.tests
+        if t.status == "implemented" and not t.disabled and not t.retired
+    }
+    document = verify if verify is not None else {"points": verify_points}
+    if ledger is not None and "tools" not in document:
+        document = {**document, "tools": ledger.model_dump(mode="json")}
+    findings = [
+        Finding(
+            severity=f.severity,
+            source=f.source,
+            target=f.target,
+            check=f.check,
+            detail=f.detail or None,
+        )
+        for f in core_findings.findings_for(document, core_findings.trait_names())
+    ]
+    ran: dict[str, list[int]] = {}  # family -> [passed, ran]
+    # reason code -> family -> count, in the vocabulary's order.
+    not_run: dict[str, dict[str, int]] = {code: {} for code in reasons.REASONS}
+    # Families are listed in the ledger's own order, integrations last.
+    order: list[str] = []
+
+    if ledger is not None:
+        for server in ledger.servers:
+            family_names = {f.id: f.name for f in server.families}
+            order.extend(n for n in family_names.values() if n not in order)
+            for tool in server.tools:
+                for check in tool.checks:
+                    if check.state in ("not_applicable", "orphan") or (
+                        check.status == "n/a"
+                    ):
+                        continue
+                    family_id = check.trait.partition(".")[0]
+                    family = family_names.get(family_id) or FAMILY_NAMES.get(
+                        family_id, family_id.capitalize()
+                    )
+                    if check.status in ("critical", "fail"):
+                        ran.setdefault(family, [0, 0])[1] += 1
+                    elif check.status in ("pass", "changed"):
+                        counts = ran.setdefault(family, [0, 0])
+                        counts[1] += 1
+                        counts[0] += check.status == "pass" and check.state != "stale"
+                    else:
+                        why = _reason_of(check, environment)
+                        not_run[why][family] = not_run[why].get(family, 0) + 1
+
+    for point in verify_points:
+        if types.get(point["id"]) == "mcp_tool":
+            continue
+        status = point["status"]
+        if status == "passing":
+            counts = ran.setdefault(INTEGRATIONS_FAMILY, [0, 0])
+            counts[0] += 1
+            counts[1] += 1
+        elif status in ("failing", "error"):
+            ran.setdefault(INTEGRATIONS_FAMILY, [0, 0])[1] += 1
+        else:
+            bucket = not_run[_point_reason(point, environment, implemented)]
+            bucket[INTEGRATIONS_FAMILY] = bucket.get(INTEGRATIONS_FAMILY, 0) + 1
+
+    def in_order(families: dict[str, int]) -> str:
+        rank = {name: i for i, name in enumerate(order)}
+        return ", ".join(sorted(families, key=lambda n: rank.get(n, len(rank))))
+
+    ran_line = None
+    if ran:
+        passed = sum(v[0] for v in ran.values())
+        total = sum(v[1] for v in ran.values())
+        ran_line = f"Ran: {in_order(ran)} — {passed} of {total} passed."
+    not_run_lines = []
+    for why in reasons.REASONS:
+        families = not_run[why]
+        if not families:
+            continue
+        sentence = not_run_sentence(why, sum(families.values()))
+        not_run_lines.append(f"Not run here: {in_order(families)} — {sentence}")
+
+    return Answer(
+        word=verdict.word,
+        sentence=verdict.reason,
+        findings=findings,
+        ran=ran_line,
+        not_run=not_run_lines,
+        red_team=_red_team_lines(ledger, manifest),
+    )
+
+
 def _trend(delta: int) -> tuple[str, str]:
     """The trend caption and direction for a delta against the prior release."""
     if delta > 0:
@@ -549,6 +1142,80 @@ def _trend(delta: int) -> tuple[str, str]:
         # A minus sign, not a hyphen: this is prose, and it sits next to ↓.
         return f"−{abs(delta)}", "down"
     return "steady", "flat"
+
+
+def _red_team_lines(ledger: ToolLedger | None, manifest: Manifest) -> list[RedTeamLine]:
+    """One line per source that was read. Template (a) when the harness
+    declared what it was aiming at (any record carries ``targeted``);
+    template (b) otherwise, where the last clause is computed from the
+    called tools' mutation classes and never claims intent."""
+    tool_of = {p.id: p.target for p in manifest.points}
+    mutation_of = {p.id: (p.attributes or {}).get("mutation") for p in manifest.points}
+    if ledger is not None:
+        for server in ledger.servers:
+            for tool in server.tools:
+                mutation_of[tool.point_id] = tool.mutation
+    lines: list[RedTeamLine] = []
+    for line in manifest.sources:
+        if line.status != "read":
+            continue
+        records = sorted(
+            (r for r in manifest.evidence if r.source_name == line.name),
+            key=lambda r: tool_of.get(r.point_id, r.point_id),
+        )
+        run_at = line.run_at or ""
+        date = run_at[:10] if len(run_at) >= 10 else "undated"
+        text = f"Red team ({date}): {_count(line.rows, 'attempt')}."
+        warning = False
+        targeted = [r for r in records if r.targeted]
+        if targeted:
+            # Rows throughout, and only targeted rows: a call on a row aimed
+            # elsewhere is not induced, and a row refused twice is one row.
+            clauses = []
+            for record in targeted:
+                name = tool_of.get(record.point_id, record.point_id)
+                induced = record.targeted_rows_with_call or 0
+                clause = f"{record.targeted} targeted {name}; {induced} induced a call"
+                if induced:
+                    refused = record.targeted_rows_refused or 0
+                    clause += f"; {refused} of those were refused by the tool"
+                    if record.targeted_rows_succeeded:
+                        # The row that matters most: refused or not, a call
+                        # got through. Said, and styled as a warning — and
+                        # still never a verdict input.
+                        clause += f"; {record.targeted_rows_succeeded} succeeded"
+                        warning = True
+                clauses.append(clause)
+            text += " " + "; ".join(clauses) + "."
+        else:
+            called = [r for r in records if r.calls > 0]
+            exercised = len(called) + len(line.unmatched_tools)
+            text += f" {_count(exercised, 'tool')} exercised."
+            bad = [
+                tool_of.get(r.point_id, r.point_id)
+                for r in called
+                if mutation_of.get(r.point_id) in ("write", "destructive")
+            ]
+            if bad:
+                verb = "was" if len(bad) == 1 else "were"
+                text += (
+                    f" {_count(len(bad), 'write/destructive tool')} {verb} called: "
+                    f"{', '.join(bad)}."
+                )
+                warning = True
+            else:
+                text += " No write or destructive tool was called."
+            if line.unmatched_tools:
+                unknown = len(line.unmatched_tools)
+                verb = "is" if unknown == 1 else "are"
+                text += (
+                    f" {_count(unknown, 'called tool')} {verb} not in the tool list "
+                    "and could not be classified."
+                )
+        if line.stale:
+            text += f" (stale — from {date})"
+        lines.append(RedTeamLine(source=line.name, text=text, warning=warning))
+    return lines
 
 
 def _short_target(label: str) -> str:
@@ -688,6 +1355,14 @@ def build(
                 for entry in rollup_for_ledger(verify["tools"])
             ]
         unattached = _attach_evidence(ledger, manifest)
+        # The former hero tile, now leading the agent-tools grid.
+        tool_tiles.append(
+            Tile(
+                n=ledger.verified,
+                label=f"agent tools verified<br>of {ledger.declared} declared",
+                attn=ledger.verified < ledger.declared,
+            )
+        )
         for family in (s for server in ledger.servers for s in server.families):
             tool_tiles.append(
                 Tile(
@@ -775,25 +1450,14 @@ def build(
         for t in manifest.tests
         if t.status == "implemented" and not t.disabled and not t.retired
     }
-    statuses = [p["status"] for p in verify_points]
-    stuck = any(
-        p["status"] == "stub" and p["id"] in implemented_points for p in verify_points
+    word, reason, tally = derive_verdict(
+        verify_points, types, ledger, implemented_points
     )
-    if (ledger and ledger.critical) or any(s in ("failing", "error") for s in statuses):
-        word = "BLOCKED"
-    elif (
-        (ledger and ledger.has_changed_check())
-        or (ledger and ledger.has_stale_check())
-        or (ledger and ledger.verified < ledger.declared)
-        or stuck
-        or any(s == "stub" for s in statuses)
-    ):
-        word = "AT RISK"
-    else:
-        word = "VERIFIED"
 
     verdict = Verdict(
         word=word,
+        reason=reason,
+        tally=tally,
         integrations_verified=int(verify.get("passing", 0)),
         integrations_total=int(verify.get("total_points", 0)),
         endpoints_verified=api.verified,
@@ -823,10 +1487,22 @@ def build(
         generated_at=generated_at.strftime("%Y-%m-%d %H:%M UTC"),
     )
 
-    return Page(
+    # The other former hero tile, now leading the infrastructure grid.
+    integration_tile = Tile(
+        n=verdict.integrations_verified,
+        label=(
+            "integrations verified<br>of "
+            f"{_count(verdict.integrations_total, 'point')} detected"
+        ),
+        attn=verdict.integrations_verified < verdict.integrations_total,
+    )
+
+    page = Page(
         verdict=verdict,
+        answer=build_answer(verify_points, types, ledger, manifest, verdict, verify),
         posture=posture,
         tools=ledger,
+        integration_tile=integration_tile,
         tool_tiles=tool_tiles,
         api=api,
         graph=graph,
@@ -837,4 +1513,9 @@ def build(
         new_points=new_points,
         removed_points=removed_points,
         unattached_sources=unattached,
+        infrastructure_points=sum(
+            1 for p in verify_points if types.get(p["id"]) != "mcp_tool"
+        ),
     )
+    page.declarations_only = is_declarations_only(page)
+    return page

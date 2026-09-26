@@ -26,7 +26,7 @@ import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from itest.core import points
+from itest.core import points, reasons
 from itest.core.manifest import IntegrationPoint
 from itest.traits.ids import trait_ident
 
@@ -294,7 +294,7 @@ def render_conftest(server: str, generated: list[Trait]) -> str:
             f"def {name}(itest_point):",
             f'    """{trait.id} {trait.name}: what recipe {trait.recipe} asks for."""',
             "    pytest.skip(",
-            f'        "{trait.id} ({trait.name}) needs facts only you can supply: "',
+            f'        "{trait.id} ({trait.name}) {reasons.NEEDS_FACTS_MARKER}: "',
             f'        "fill in {name} in {path}"',
             "    )",
         ]

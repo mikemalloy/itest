@@ -72,10 +72,13 @@ def test_registered_test_outside_itest_tests_actually_runs(
 
     result = runner.invoke(app, ["verify"])
 
-    # The registered outside test ran and failed, so the suite fails.
+    # The registered outside test ran and failed, so the suite fails: the
+    # finding is on the terminal, the node id in the log.
     assert result.exit_code == 1, result.output
-    assert "tests_scratch/test_alb.py::test_alb_health" in result.output
     assert "1 failing" in result.output
+    assert "boom: the guard did not hold" in result.output
+    log = (synced_project / ".itest" / "verify.log").read_text(encoding="utf-8")
+    assert "tests_scratch/test_alb.py::test_alb_health" in log
 
     # And it is reflected as a real outcome, not "missing".
     payload = json.loads(runner.invoke(app, ["verify", "--output", "json"]).output)

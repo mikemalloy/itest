@@ -106,12 +106,12 @@ def test_tool_ledger_rejects_an_unknown_field() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_verdict_stub_only_run_is_at_risk(alex_s7) -> None:
+def test_verdict_stub_only_run_is_partial(alex_s7) -> None:
     """A run with no verified coverage never carries a green stamp."""
     verify, manifest = alex_s7
     page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
 
-    assert page.verdict.word == "AT RISK"
+    assert page.verdict.word == "PARTIAL"
     assert page.verdict.integrations_verified == 0
     assert page.verdict.integrations_total == 12
 
@@ -144,7 +144,7 @@ def test_verdict_verified_when_every_point_passes(alex_s7) -> None:
     assert page.verdict.integrations_verified == page.verdict.integrations_total
 
 
-def test_verdict_at_risk_when_an_implemented_test_is_stuck_at_stub(alex_s7) -> None:
+def test_verdict_needs_review_when_implemented_test_stuck_at_stub(alex_s7) -> None:
     """The manifest says implemented, the point reports stub: not verified."""
     verify, manifest = alex_s7
     for point in verify["points"]:
@@ -157,7 +157,7 @@ def test_verdict_at_risk_when_an_implemented_test_is_stuck_at_stub(alex_s7) -> N
         if entry.point_id == stuck:
             entry.status = "implemented"
     page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
-    assert page.verdict.word == "AT RISK"
+    assert page.verdict.word == "NEEDS REVIEW"
 
 
 def test_verdict_blocked_by_a_critical_tool_check(alex_s7) -> None:
@@ -172,7 +172,7 @@ def test_verdict_blocked_by_a_critical_tool_check(alex_s7) -> None:
     assert page.verdict.word == "BLOCKED"
 
 
-def test_verdict_at_risk_when_a_tool_change_awaits_review(alex_s7) -> None:
+def test_verdict_needs_review_when_a_tool_change_awaits_review(alex_s7) -> None:
     verify, manifest = alex_s7
     for point in verify["points"]:
         point["status"] = "passing"
@@ -180,7 +180,7 @@ def test_verdict_at_risk_when_a_tool_change_awaits_review(alex_s7) -> None:
     verify["tools"] = json.loads(TOOL_LEDGER.read_text(encoding="utf-8"))["tools"]
     page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
 
-    assert page.verdict.word == "AT RISK"
+    assert page.verdict.word == "NEEDS REVIEW"
     assert page.verdict.tool_changes_to_review == 1
     assert page.verdict.tools_verified == 5
     assert page.verdict.tools_total == 6
@@ -395,12 +395,14 @@ def test_rendered_numbers_trace_to_verify_json(alex_s7) -> None:
     data = blocks(render_module.render(page))
 
     nums = {n["label"]: n for n in data["PAGE"]["verdict"]["nums"]}
-    assert nums["integrations verified"]["value"] == verify["passing"]
-    assert nums["integrations verified"]["total"] == verify["total_points"]
+    integrations = data["POSTURE"][0]
+    assert integrations["n"] == verify["passing"]
+    assert integrations["lab"].startswith("integrations verified")
+    assert f"of {verify['total_points']} points" in integrations["lab"]
     assert nums["drift"]["value"] == verify["orphaned_tests"] + len(
         verify["unregistered"]
     )
-    assert data["PAGE"]["verdict"]["word"] == "AT RISK"
+    assert data["PAGE"]["verdict"]["word"] == "PARTIAL"
     assert len(data["POINTS"]) == sum(
         1 for p in manifest.points if p.type == "iam_edge"
     )
@@ -466,8 +468,8 @@ def test_tool_ledger_renders_groups_rows_and_exceptions(alex_s7) -> None:
     exception = data["PAGE"]["tools"]["exceptions"][0]
     assert exception["tag"] == "changed"
     assert "update_record" in exception["title"]
-    assert data["PAGE"]["toolBand"]["word"] == "TOOLS AT RISK"
-    assert len(data["TOOLPOSTURE"]) == 4
+    assert data["PAGE"]["toolBand"]["word"] == "TOOLS NEED REVIEW"
+    assert len(data["TOOLPOSTURE"]) == 5  # agent tools verified, then the families
 
 
 def test_since_toggles_trend_markup(tmp_path, monkeypatch) -> None:
@@ -573,7 +575,7 @@ def test_snapshot_alex_stub_only_run(tmp_path, monkeypatch) -> None:
     project = synced(tmp_path, monkeypatch, ALEX_S7)
     data = render_project(project)
 
-    assert data["PAGE"]["verdict"]["word"] == "AT RISK"
+    assert data["PAGE"]["verdict"]["word"] == "PARTIAL"
     snapshot("alex-s7", data)
 
 
@@ -600,7 +602,7 @@ def test_snapshot_tool_ledger_page(tmp_path, monkeypatch) -> None:
     page = report_model.build(verify, manifest, generated_at=GENERATED_AT)
     data = blocks(render_module.render(page))
 
-    assert data["PAGE"]["toolBand"]["word"] == "TOOLS AT RISK"
+    assert data["PAGE"]["toolBand"]["word"] == "TOOLS NEED REVIEW"
     assert len(data["TOOLS"]) == 2
     snapshot("tool-ledger", data)
 
@@ -615,7 +617,7 @@ def test_cli_report_writes_a_page(tmp_path, monkeypatch) -> None:
     assert out.exists()
     assert "Wrote" in result.output
     # The verdict never becomes an exit code; that is verify's job.
-    assert "AT RISK" in result.output
+    assert "PARTIAL" in result.output
     assert "itest:data:" not in out.read_text(encoding="utf-8")
 
 
@@ -788,3 +790,52 @@ def test_report_environment_and_from_are_one_or_the_other(
     assert result.exit_code == 2
     assert "--from" in result.output
     assert not (tmp_path / "readiness.html").exists()
+
+
+# --- the subtitle and the CLI speak the Answer's language ---------------------------
+
+
+def test_safe_floor_subtitle_speaks_the_answers_language(tmp_path, monkeypatch) -> None:
+    """A policy present and nothing bound is the safe floor. The banner's
+    subtitle says so in the Answer's words; the exact string the engineer
+    knows moves to the footer."""
+    from itest.report.render import extract_blocks
+
+    project = synced(tmp_path, monkeypatch, ALEX_S7)
+    _with_policy(project)
+    out = tmp_path / "floor.html"
+    result = runner.invoke(app, ["report", "--html", "--out", str(out)])
+    assert result.exit_code == 0, result.output
+    page = extract_blocks(out.read_text(encoding="utf-8"))["PAGE"]
+    assert page["verdict"]["sub"] == (
+        "Ran in CI without credentials — active checks not run"
+    )
+    footer = {f["k"]: f["v"] for f in page["footer"]}
+    assert footer["bound"] == (
+        "no environment bound — 12 integration points · safe floor (static, readonly)"
+    )
+
+
+def test_without_a_policy_the_subtitle_is_unchanged(rendered_s7: str) -> None:
+    page = blocks(rendered_s7)["PAGE"]
+    assert (
+        page["verdict"]["sub"] == "<b>no environment bound</b> — 12 integration points"
+    )
+    assert "bound" not in {f["k"] for f in page["footer"]}
+
+
+def test_cli_report_prints_the_answer(tmp_path, monkeypatch) -> None:
+    """What the html says above the divider, the terminal says after `Wrote`."""
+    synced(tmp_path, monkeypatch, ALEX_S7)
+    result = runner.invoke(app, ["report", "--html", "--out", "a.html"])
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert (
+        "Verdict: PARTIAL — No findings. 0 of 12 checks passed; 12 were not run here."
+        in lines
+    )
+    assert (
+        "Not run here: Integrations — 12 checks are waiting for a test to be written."
+        in lines
+    )
+    assert "0 of 12 integration points verified." in lines

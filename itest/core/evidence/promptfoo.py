@@ -69,6 +69,16 @@ class ToolEvidence:
     #: Rows whose harness declared this tool as the target; ``None`` when the
     #: harness declared no targeting anywhere in the run.
     targeted: int | None
+    #: Of the rows that targeted this tool, how many called it at all. Rows,
+    #: not entries, and only targeted rows: a call on a row aimed elsewhere is
+    #: a benign call, not an induced one. ``None`` with ``targeted``.
+    targeted_rows_with_call: int | None = None
+    #: Of THOSE rows, how many had at least one refused (``is_error``) call to
+    #: it. A row refused twice counts once.
+    targeted_rows_refused: int | None = None
+    #: Of those rows, how many had at least one call to it that went through.
+    #: A row that was refused and then admitted counts here and above both.
+    targeted_rows_succeeded: int | None = None
 
 
 @dataclass
@@ -95,6 +105,9 @@ class _Tally:
     refused: int = 0
     succeeded: int = 0
     targeted: int = 0
+    targeted_rows_with_call: int = 0
+    targeted_rows_refused: int = 0
+    targeted_rows_succeeded: int = 0
 
 
 def _load_document(path: Path) -> dict:
@@ -191,7 +204,10 @@ def read_results(path: Path, *, source_name: str, agent: str | None) -> RunEvide
             tallies.setdefault(target, _Tally()).targeted += 1
 
         shape = _row_shape(row_metadata)
-        named: set[str] = set()
+        # Per row: which tools it called, and whether each was refused or
+        # admitted at least once on this row.
+        refused_here: set[str] = set()
+        succeeded_here: set[str] = set()
         if shape == "agent":
             for call in row_metadata["toolCalls"]:
                 if not isinstance(call, dict):
@@ -203,24 +219,34 @@ def read_results(path: Path, *, source_name: str, agent: str | None) -> RunEvide
                 tally.calls += 1
                 if call.get("is_error"):
                     tally.refused += 1
+                    refused_here.add(name)
                 else:
                     tally.succeeded += 1
-                named.add(name)
+                    succeeded_here.add(name)
         elif shape == "direct":
             name = row_metadata["toolName"]
             tally = tallies.setdefault(name, _Tally())
             tally.calls += 1
             if row.get("success"):
                 tally.succeeded += 1
+                succeeded_here.add(name)
             else:
                 tally.refused += 1
-            named.add(name)
+                refused_here.add(name)
         if shape is not None:
             shapes.add(shape)
+        named = refused_here | succeeded_here
         if not named:
             no_tool += 1
         for name in named:
             tallies[name].rows_with_call += 1
+        # The targeted reading counts this row once, and only for the tool
+        # the harness aimed it at.
+        if target and target in named:
+            tally = tallies[target]
+            tally.targeted_rows_with_call += 1
+            tally.targeted_rows_refused += target in refused_here
+            tally.targeted_rows_succeeded += target in succeeded_here
 
     notes: list[str] = []
     if no_tool:
@@ -240,6 +266,15 @@ def read_results(path: Path, *, source_name: str, agent: str | None) -> RunEvide
             succeeded=tally.succeeded,
             rows_total=len(rows),
             targeted=tally.targeted if targeting_declared else None,
+            targeted_rows_with_call=(
+                tally.targeted_rows_with_call if targeting_declared else None
+            ),
+            targeted_rows_refused=(
+                tally.targeted_rows_refused if targeting_declared else None
+            ),
+            targeted_rows_succeeded=(
+                tally.targeted_rows_succeeded if targeting_declared else None
+            ),
         )
         for name, tally in sorted(tallies.items())
     }

@@ -11,6 +11,7 @@
     --ok:#0f9d58; --ok-soft:#e6f4ec; --ok-line:#8fd3ac;
     --warn:#c77700; --warn-soft:#f8efdd;
     --bad:#d64550; --bad-soft:#f8e5e6;
+    --partial:#5b7fa6; --partial-soft:#e8eef6;
     --shadow:0 1px 2px rgba(20,30,50,.04),0 6px 20px rgba(20,30,50,.06);
     --navh:52px;
     color-scheme:light;
@@ -24,6 +25,7 @@
       --ok:#35c07e; --ok-soft:#122a1f; --ok-line:#2f6f4f;
       --warn:#e5a13a; --warn-soft:#2c2312;
       --bad:#ef6b74; --bad-soft:#2e1a1c;
+      --partial:#8fb0d6; --partial-soft:#172232;
       --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.34);
       color-scheme:dark;
     }
@@ -36,6 +38,7 @@
     --ok:#35c07e; --ok-soft:#122a1f; --ok-line:#2f6f4f;
     --warn:#e5a13a; --warn-soft:#2c2312;
     --bad:#ef6b74; --bad-soft:#2e1a1c;
+    --partial:#8fb0d6; --partial-soft:#172232;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.34);
     color-scheme:dark;
   }
@@ -103,6 +106,7 @@
   nav.jump a.active .c{color:var(--accent)}
   nav.jump .pill{width:7px;height:7px;border-radius:50%}
   .pill.ok{background:var(--ok)} .pill.soon{background:var(--faint)} .pill.warn{background:var(--warn)}
+  .pill.partial{background:var(--partial)}
 
   section{margin-top:30px;scroll-margin-top:calc(var(--navh) + 14px)}
   .eyebrow{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600;
@@ -113,7 +117,7 @@
   .sub-eyebrow.first{margin-top:0}
   .sub-eyebrow .mono{text-transform:none;letter-spacing:0;color:var(--faint);font-weight:500;font-size:11.5px}
 
-  .posture{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .posture{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
   @media(max-width:720px){.posture{grid-template-columns:repeat(2,1fr)}}
   .pcard{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:14px 15px;display:flex;flex-direction:column;gap:6px}
   .pcard .top{display:flex;align-items:center;justify-content:space-between}
@@ -284,15 +288,6 @@
   .row .ev{text-align:right;font-family:"IBM Plex Mono";font-size:11.5px}
   .row .ev a{color:var(--accent);text-decoration:none} .row .ev a:hover{text-decoration:underline}
 
-  .tier{background:var(--surface);border:1px dashed var(--hair);border-radius:14px;padding:18px 20px;
-    display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center}
-  @media(max-width:640px){.tier{grid-template-columns:1fr}}
-  .tier .ic{width:44px;height:44px;border-radius:11px;background:var(--surface-2);border:1px solid var(--hair);display:grid;place-items:center;color:var(--faint)}
-  .tier h3{font-family:"Archivo";font-size:16px;font-weight:700}
-  .tier .q{font-size:13px;color:var(--muted);margin-top:5px;max-width:60ch} .tier .q b{color:var(--ink)}
-  .tier .state{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);
-    border:1px solid var(--hair);border-radius:999px;padding:5px 12px;white-space:nowrap;justify-self:end}
-
   .blind{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px dashed var(--hair);border-radius:12px;padding:15px 18px}
   .blind .i{color:var(--faint);flex:none;margin-top:1px}
   .blind p{margin:0;font-size:13px;color:var(--muted)} .blind b{color:var(--ink)}
@@ -309,6 +304,13 @@
   .verdict.risk .band{background:var(--warn)}
   .verdict.risk .stamp .glyph{background:var(--warn-soft)}
   .verdict.risk .stamp .word{color:var(--warn)}
+  /* PARTIAL: unchecked, so neither the warning amber nor the pass green */
+  .verdict.partial .band{background:var(--partial)}
+  .verdict.partial .stamp .glyph{background:var(--partial-soft)}
+  .verdict.partial .stamp .word{color:var(--partial)}
+  .hn.tools .v.partial{color:var(--partial)}
+  .toolband.partial{border-color:color-mix(in srgb,var(--partial) 45%,transparent)}
+  .toolband.partial .glyph{background:var(--partial-soft)} .toolband.partial .word{color:var(--partial)}
   .verdict.blocked .band{background:var(--bad)}
   .verdict.blocked .stamp .glyph{background:var(--bad-soft)}
   .verdict.blocked .stamp .word{color:var(--bad)}
@@ -322,6 +324,25 @@
   .empty{background:var(--surface);border:1px dashed var(--hair);border-radius:12px;
     padding:16px 18px;color:var(--muted);font-size:13px}
   .empty b{color:var(--ink);font-weight:600;display:block;margin-bottom:3px}
+
+  /* --- the Answer: the plain-language layer above the divider --- */
+  .answer{background:var(--surface);border:1px solid var(--hair);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:22px}
+  .answer .band{height:6px;background:var(--ok)}
+  .answer.risk .band{background:var(--warn)} .answer.partial .band{background:var(--partial)} .answer.blocked .band{background:var(--bad)}
+  .answer .abody{padding:24px 28px 18px}
+  .answer .aword{font-family:"Archivo";font-weight:800;font-size:44px;letter-spacing:-.03em;line-height:1;color:var(--ok)}
+  .answer.risk .aword{color:var(--warn)} .answer.partial .aword{color:var(--partial)} .answer.blocked .aword{color:var(--bad)}
+  .answer .asentence{font-size:18px;margin:10px 0 0;color:var(--ink)}
+  .answer .alabel{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600;margin:18px 0 6px}
+  .answer .afind{list-style:none;margin:0;padding:0}
+  .answer .afind li{padding:8px 0;border-top:1px solid var(--hair-2);font-size:14px}
+  .answer .sev{font-family:"IBM Plex Mono";font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;color:var(--bad);background:var(--bad-soft);margin-right:8px;text-transform:uppercase}
+  .answer .aline{font-size:14px;color:var(--ink);margin-top:4px}
+  .answer .aline.red{margin-top:14px;color:var(--muted)}
+  .answer .aline.warn{color:var(--bad);font-weight:600}
+  .answer .afoot{margin-top:18px;font-size:12.5px;color:var(--faint)}
+  .divider{display:flex;align-items:baseline;gap:10px;margin:8px 0 14px;padding-top:14px;border-top:2px solid var(--hair);font-family:"Archivo";font-weight:700;font-size:15px}
+  .divider small{font-family:"IBM Plex Sans";font-weight:400;font-size:12.5px;color:var(--faint)}
 </style>
 
 <div class="wrap">
@@ -329,6 +350,9 @@
     <div class="brand"><span class="d" aria-hidden="true"></span><b>ITest</b><span>· production readiness</span></div>
     <div class="right"><span class="preview">Release readiness</span><button class="toggle" id="tog">Theme</button></div>
   </div>
+
+  <div class="answer" id="answer"></div>
+  <div class="divider" id="divider"></div>
 
   <div class="verdict" id="verdict"></div>
 
@@ -341,8 +365,10 @@
     <div class="posture" id="toolPostureGrid"></div>
     <div class="sub-eyebrow">Standards <span class="mono" id="standardsMeta"></span></div>
     <div id="standardsBand"></div>
+    <!-- itest:terraform -->
     <div class="sub-eyebrow">Infrastructure <span class="mono" id="infraMeta"></span></div>
     <div class="posture" id="postureGrid"></div>
+    <!-- itest:terraform:end -->
   </section>
 
   <section id="tools">
@@ -350,6 +376,7 @@
     <div id="toolsBody"></div>
   </section>
 
+  <!-- itest:terraform -->
   <section id="api">
     <div class="eyebrow">API access sweep <span class="n" id="apiEyebrow"></span></div>
     <div id="apiBody"></div>
@@ -360,30 +387,11 @@
     <div id="graphBody"></div>
   </section>
 
-  <section id="database">
-    <div class="eyebrow">Database probes</div>
-    <div class="tier">
-      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" stroke-width="1.6"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" stroke="currentColor" stroke-width="1.6"/></svg></div>
-      <div><h3>Database — read/write round-trip</h3>
-        <p class="q">Designed on the same probe framework as the API sweep, and gated by the same environments policy. Comes online once a project answers one question: <b>which CRUD operations may a probe perform, and against which table?</b></p></div>
-      <span class="state">Designed · not yet built</span>
-    </div>
-  </section>
-
-  <section id="queue">
-    <div class="eyebrow">Queue delivery probes</div>
-    <div class="tier">
-      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="17" y="7" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.6"/></svg></div>
-      <div><h3>Queue → function — marked-message delivery</h3>
-        <p class="q">Event-source mappings and dead-letter redrives are verified as <b>wiring</b> today (see the integration graph). The active probe would send a <b>marked, self-cleaning message</b> and observe it arrive — proving delivery, not just configuration. Opt-in per environment; refuses production.</p></div>
-      <span class="state">Designed · not yet built</span>
-    </div>
-  </section>
-
   <section id="notanalyzed">
     <div class="eyebrow">Not analyzed <span class="n">named, never silently skipped</span></div>
     <div id="notAnalyzed"></div>
   </section>
+  <!-- itest:terraform:end -->
 
   <div class="foot" id="foot"></div>
 </div>
@@ -413,6 +421,32 @@ const cell = c => c ? `<span class="res ${c.cls}"${c.title ? ` title="${esc(c.ti
 const plain = t => `<span class="res none">${esc(t)}</span>`;
 const el = id => document.getElementById(id);
 const emptyState = (title, body) => `<div class="empty"><b>${esc(title)}</b>${esc(body)}</div>`;
+
+/* ---- answer ---- */
+(function(){
+  const a = PAGE.answer;
+  const box = el("answer");
+  box.className = "answer" + (a.cls ? " " + a.cls : "");
+  const found = a.findings.length
+    ? `<div class="alabel">${esc(a.findingsLabel)}</div><ul class="afind">${a.findings.map(f =>
+        `<li><span class="sev ${esc(f.cls)}">${esc(f.severity)}</span>${esc(f.text)}</li>`).join("")}</ul>`
+    : "";
+  const checked = [a.ran, ...a.notRun].filter(Boolean).map(l => `<div class="aline">${esc(l)}</div>`).join("");
+  const red = a.redTeam.map(r => `<div class="aline red${r.warn ? " warn" : ""}">${esc(r.text)}</div>`).join("");
+  box.innerHTML = `
+    <div class="band"></div>
+    <div class="abody">
+      <div class="aword">${esc(a.word)}</div>
+      <p class="asentence">${esc(a.sentence)}</p>
+      ${found}
+      <div class="alabel">${esc(a.checkedLabel)}</div>
+      ${checked}
+      ${red}
+      <div class="afoot">${esc(a.footer)}</div>
+    </div>`;
+  el("divider").innerHTML = `<span>${esc(a.divider)}</span><small>${esc(a.dividerSub)}</small>`;
+})();
+/* ---- answer:end ---- */
 
 /* ---- verdict banner ---- */
 (function(){
@@ -453,8 +487,10 @@ const tileHtml = p => `
       p.trend ? `<span class="trend ${esc(p.dir)}">${esc(p.sym)} ${esc(p.trend)}</span>` : ""}</div>
     <span class="lab">${p.lab}</span>
   </div>`;
-el("postureGrid").innerHTML = posture.map(tileHtml).join("");
-el("infraMeta").textContent = PAGE.posture.infraMeta;
+if(el("postureGrid")){
+  el("postureGrid").innerHTML = posture.map(tileHtml).join("");
+  el("infraMeta").textContent = PAGE.posture.infraMeta;
+}
 el("postureSince").textContent = PAGE.posture.since || "";
 el("toolsMeta").textContent = PAGE.posture.toolsMeta;
 
@@ -581,8 +617,9 @@ function wireExpand(id, selector){
   });
 }
 
-/* ---- API access sweep ---- */
+/* ---- api sweep (a Terraform-side section: absent on a declarations-only page) ---- */
 (function(){
+  if(!el("api")) return;
   el("apiEyebrow").textContent = PAGE.api.eyebrow;
   if(!SWEEP.length){
     el("apiBody").innerHTML = emptyState(PAGE.api.emptyTitle, PAGE.api.emptyBody);
@@ -624,8 +661,9 @@ function wireExpand(id, selector){
   wireExpand("expandAll", "#sweepGroups .grp");
 })();
 
-/* ---- integration graph + coverage list ---- */
+/* ---- integration graph + coverage list (Terraform-side, like the sweep) ---- */
 (function(){
+  if(!el("graph")) return;
   el("graphEyebrow").textContent = PAGE.graph.eyebrow;
   if(!POINTS.length && !CHAIN.length){
     el("graphBody").innerHTML = emptyState(PAGE.graph.emptyTitle, PAGE.graph.emptyBody);
@@ -708,8 +746,8 @@ function drawGraph(){
 }
 drawGraph();
 
-/* ---- not analyzed ---- */
-el("notAnalyzed").innerHTML = PAGE.notAnalyzed.present
+/* ---- not analyzed (Terraform-side, like the sweep) ---- */
+if(el("notAnalyzed")) el("notAnalyzed").innerHTML = PAGE.notAnalyzed.present
   ? `<div class="blind">
       <span class="i" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.4" r="1.1" fill="currentColor"/></svg></span>
       <div><p><b>${esc(PAGE.notAnalyzed.headline)}</b> ${esc(PAGE.notAnalyzed.body)}</p>

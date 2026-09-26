@@ -19,6 +19,7 @@ from itest.checks._base import (
     server_of,
     tool_of,
 )
+from itest.core import reasons
 from itest.probes.mcp import McpTarget
 
 
@@ -54,7 +55,9 @@ def check_change__inventory(
         tools = reference_listing(target, authenticated=authenticated)
     except ListingUnavailable as exc:
         return not_verifiable(
-            str(exc), {"server": server, "tool": tool, "listing": listing}
+            str(exc),
+            {"server": server, "tool": tool, "listing": listing},
+            reason=exc.reason,
         )
 
     recorded = manifest_tools(server)
@@ -82,16 +85,21 @@ def _hash_check(
     try:
         tools = reference_listing(target, authenticated=authenticated)
     except ListingUnavailable as exc:
-        return not_verifiable(str(exc), base)
+        return not_verifiable(str(exc), base, reason=exc.reason)
     info = find_tool(tools, tool)
     if info is None:
         return not_verifiable(
             f"{tool!r} is not in tools/list, so its {what} cannot be compared "
             "(change.inventory reports the orphan)",
             base,
+            reason=reasons.NOT_LISTED,
         )
     if not recorded:
-        return not_verifiable(f"the manifest records no {field} for {tool!r}", base)
+        return not_verifiable(
+            f"the manifest records no {field} for {tool!r}",
+            base,
+            reason=reasons.UNDECLARED,
+        )
     live = getattr(info, field)
     evidence = {**base, "recorded": recorded, "live": live}
     if live == recorded:

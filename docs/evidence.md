@@ -80,6 +80,19 @@ zero row. The join key is `(server, tool name)` and nothing else.
 row's `testCase.metadata.target_tool` names a tool; without it the lane reads
 "targeting not declared by the harness".
 
+**Two readings of one tool.** The run-wide counts (`rows_with_call`, `calls`,
+`refused`, `succeeded`) see every row and count call entries, which is what
+the detail lane shows as its rate. The targeted reading counts **rows, and
+only targeted rows**: of the rows that targeted the tool,
+`targeted_rows_with_call` called it at all; of those, `targeted_rows_refused`
+had at least one refused call to it and `targeted_rows_succeeded` at least
+one that went through — a row refused twice is one row, and a row refused
+and then admitted counts in both. A tool called on a row the harness aimed
+elsewhere raises `rows_with_call` and nothing else: that is a benign call,
+not an induced one. All three are `None` when the tool was never targeted.
+The Answer's red-team line reads only the targeted counts, so it cannot say
+"2 induced; 3 refused".
+
 ## Reading a row with both lanes
 
 The rate is shown as its parts — `calls N · refused R · of T rows` — never as

@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from test_reference_mcp_example import copy_example
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "redteam-nightly.yml"
@@ -181,7 +182,11 @@ def test_the_last_step_prints_the_story_to_the_log() -> None:
     assert "summary" in last["name"].lower()
     assert last.get("if") == "always()"
     assert "evidence promptfoo-ci" in last["run"]
+    # The verdict word, the Answer's sentence, and its lines: the run page
+    # reads the way the html does.
     assert "Verdict:" in last["run"]
+    assert "Not run here:" in last["run"]
+    assert "Red team" in last["run"]
 
 
 # --- the itest commands, executed -------------------------------------------------
@@ -232,11 +237,10 @@ def job_run(tmp_path_factory: pytest.TempPathFactory) -> dict:
     file standing in for promptfoo's output. The key is not needed: promptfoo
     is the one step this fixture does not run."""
     workspace = tmp_path_factory.mktemp("workspace")
-    shutil.copytree(
-        EXAMPLE_DIR,
-        workspace / "examples" / "reference-mcp",
-        ignore=shutil.ignore_patterns("__pycache__", "itest_tests", "manifest.yaml"),
-    )
+    # The same copy `copy_example` makes: a clean clone, without the output a
+    # local run of the example may have left behind (plan.json included — a
+    # stale plan would make the join step sync a run this job never made).
+    copy_example(workspace / "examples" / "reference-mcp")
     results = workspace / "redteam-results.json"
     results.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
     env = {
@@ -317,5 +321,10 @@ def test_the_summary_step_tells_the_story_from_the_logs(job_run: dict) -> None:
     assert lines[0] == "red team step: skipped"
     assert lines[1].startswith("evidence promptfoo-ci (promptfoo): run eval-zyk-")
     assert lines[2].startswith("8 integration points: 8 passing")
-    assert lines[3].startswith("Verdict: ")
+    assert lines[3].startswith("Verdict: PARTIAL — No findings. ")
+    assert any(line.startswith("Ran: ") for line in lines[4:])
+    assert any(line.startswith("Not run here: ") for line in lines[4:])
+    assert any(
+        line.startswith("Red team (2026-09-23): 12 attempts.") for line in lines[4:]
+    )
     assert "did not run" not in job_run["summary"]

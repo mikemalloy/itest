@@ -1,6 +1,21 @@
 {
   "CHAIN": [],
   "PAGE": {
+    "answer": {
+      "checkedLabel": "What was checked here",
+      "cls": "risk",
+      "divider": "Detail",
+      "dividerSub": "for the engineer",
+      "findings": [],
+      "footer": "Detail below.",
+      "notRun": [
+        "Not run here: Integrations \u2014 7 checks are waiting for a test to be written."
+      ],
+      "ran": "Ran: Authority, Blast radius, Change \u2014 5 of 6 passed.",
+      "redTeam": [],
+      "sentence": "No findings. 1 tool change is waiting for a reviewer.",
+      "word": "NEEDS REVIEW"
+    },
     "api": {
       "attest": "<span class='b'>Access-control report.</span> Every row is a route ITest detected in Terraform, carrying the status verify recorded for it. Verify does not yet record which registered test was the anonymous probe, so this run shows one status column rather than an unauthenticated/authenticated pair holding the same value.",
       "bars": [
@@ -75,18 +90,6 @@
         "id": "graph",
         "label": "Integrations",
         "pill": "warn"
-      },
-      {
-        "count": "soon",
-        "id": "database",
-        "label": "Database",
-        "pill": "soon"
-      },
-      {
-        "count": "soon",
-        "id": "queue",
-        "label": "Queue",
-        "pill": "soon"
       },
       {
         "count": null,
@@ -252,7 +255,7 @@
       "cls": "risk",
       "review": "1 change to review",
       "sub": "<b>5 of 6</b> tools verified against every declared property",
-      "word": "TOOLS AT RISK"
+      "word": "TOOLS NEED REVIEW"
     },
     "tools": {
       "attention": [
@@ -302,21 +305,7 @@
       "note": "0 of 7 integration points verified against the live account, 7 awaiting an implemented test. 7 gateway routes detected; 0 verified. 5 of 6 declared agent tools verified, 1 change waiting on a reviewer.",
       "nums": [
         {
-          "cls": "tools",
-          "label": "agent tools verified",
-          "total": 6,
-          "value": 5,
-          "word": "risk"
-        },
-        {
-          "label": "integrations verified",
-          "sep": true,
-          "total": 7,
-          "value": 0
-        },
-        {
           "label": "endpoints verified",
-          "sep": true,
           "total": 7,
           "value": 0
         },
@@ -329,11 +318,16 @@
       ],
       "since": null,
       "sub": "<b>no environment bound</b> \u2014 7 integration points",
-      "word": "AT RISK"
+      "word": "NEEDS REVIEW"
     }
   },
   "POINTS": [],
   "POSTURE": [
+    {
+      "attn": true,
+      "lab": "integrations verified<br>of 7 points detected",
+      "n": 0
+    },
     {
       "lab": "cross-stack dependencies<br>resolved to other stacks",
       "n": 7
@@ -469,6 +463,11 @@
     }
   ],
   "TOOLPOSTURE": [
+    {
+      "attn": true,
+      "lab": "agent tools verified<br>of 6 declared",
+      "n": 5
+    },
     {
       "lab": "Authority checks passed<br>6 checked \u00b7 0 not verifiable",
       "n": 6

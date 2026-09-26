@@ -103,11 +103,11 @@ def test_verify_json_parses_and_is_stub_only(example_run: dict) -> None:
     assert document["gated"] == 0
 
 
-def test_rendered_page_is_at_risk_with_named_empty_states(example_run: dict) -> None:
+def test_rendered_page_is_partial_with_named_empty_states(example_run: dict) -> None:
     page = (example_run["dir"] / "readiness.html").read_text(encoding="utf-8")
-    # docs/report.md: a stub-only run is AT RISK, never VERIFIED — a stub is
+    # docs/report.md: a stub-only run is PARTIAL, never VERIFIED — a stub is
     # not coverage, so a green stamp over "0 of 14 verified" must never print.
-    assert "AT RISK" in page
+    assert "PARTIAL" in page
     assert "VERIFIED" not in page
     assert "0 of 14 integration points verified" in example_run["report"]
     # An absent source renders empty-but-named, never as sample data.

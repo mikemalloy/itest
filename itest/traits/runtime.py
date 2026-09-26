@@ -39,7 +39,7 @@ MANIFEST_REL = Path(".itest") / "manifest.yaml"
 
 #: CheckResult statuses that are findings, not failures: ``changed`` waits on a
 #: reviewer, ``not_verifiable`` could not be judged. The engine records them and
-#: skips, so the page shows them (AT RISK) without pytest failing the point.
+#: skips, so the page shows them (never BLOCKED) without pytest failing the point.
 NOT_A_FAILURE = ("changed", "not_verifiable")
 
 #: The frozen docstring line of a generated binding.
@@ -180,6 +180,7 @@ def run_engine_case(case: EngineCase, target, *, authenticated: bool, record=Non
                 "status": result.status,
                 "detail": result.detail,
                 "evidence": result.evidence,
+                "reason": result.reason,
             },
         )
     if result.status in NOT_A_FAILURE:

@@ -55,6 +55,15 @@ integration points, generates test stubs, and verifies deployed infrastructure.
     [STUB] aws_security_group.alb -> aws_security_group.web (tcp:80 ingress)
     [STUB] aws_security_group.web -> aws_security_group.db (tcp:5432 ingress)
   ```
+
+  A run with failures prints a `Findings (n):` block after the points — one
+  entry per failed check in verdict order (critical, failing, errored):
+  status word, `source -> target`, the trait's title, and the plain sentence
+  on its own line — and names `.itest/verify.log`, where the complete pytest
+  output goes on every run. `--verbose` prints that output to the terminal
+  instead. Never a traceback, a test node id or pytest's failure
+  representation on the terminal by default: to anyone watching, that reads
+  as the tool crashing. Exit codes are unchanged.
 - `itest add`: registers an **existing** test function in the manifest against
   an **existing** point (`--point`/`--file`/`--function`/`--tier`). It never
   declares a new point — detection reads Terraform, not a filename — so an
@@ -336,7 +345,7 @@ regenerates the owned ones), `not_applicable` (retired), `orphan` (the tool is g
 and `recipe_newer` (defined, not yet emitted: nothing records a recipe version).
 VERIFIED is a coverage claim — every planned trait needs a counted check that
 passed — and stale, not-applicable and orphaned checks do not count; any stale
-check makes the page AT RISK and leads the exceptions. `docs/traits.md` is the
+check makes the page NEEDS REVIEW and leads the exceptions. `docs/traits.md` is the
 reference.
 
 ### Evidence sources (the judgment lane)
@@ -475,7 +484,7 @@ Shipped:
   manifest, or a fixed label, and a section whose source is absent renders
   empty-but-named ("No agent tools declared") rather than as sample data — a
   test asserts none of the design artifact's example data can reach output. A
-  stub-only run is AT RISK, never VERIFIED: a stub is not coverage, so a green
+  stub-only run is PARTIAL, never VERIFIED: a stub is not coverage, so a green
   stamp over "0 of 26 verified" is the one thing the page must never print.
   Trends and the since-line appear only with `--since <prior manifest>`, never
   as "steady"; `--redact` reuses verify's own scrubber rather than adding a
@@ -627,6 +636,63 @@ Shipped:
   source, the *external evidence* lane under each tool row and the source
   lines on the readiness page, and the standards view's separate external
   evidence heading. Never counts: pinned by `tests/test_evidence_never_counts.py`.
+- The verdict vocabulary (`docs/report.md`): the former AT RISK is split in
+  two, because "unchecked" must never read as "danger". BLOCKED (a finding),
+  NEEDS REVIEW (a human decision is pending: changed, stale, or stuck at stub
+  though implemented), PARTIAL (nothing failed, nothing pending, but held-out,
+  not-verifiable or unwritten checks mean the page cannot claim full coverage;
+  grey-blue, never amber), VERIFIED (unchanged: every declared property of
+  every declared tool passed and nothing waits on review). One derivation,
+  `itest.report.model.derive_verdict`, which also writes the plain sentence
+  under the word.
+- The Answer (`docs/report.md`): a plain-language layer rendered first on the
+  readiness page — the verdict word, its sentence, findings (severity, tool,
+  the trait's human name, the recorded detail), "Ran" and "Not run here" by
+  family with exactly three reasons, and one red-team line per source (two
+  templates, chosen by whether the harness declared `target_tool`; never a
+  verdict input) — with everything the page showed before below a "Detail"
+  divider, unchanged, for the engineer. A jargon test pins that the block
+  uses none of the detail layer's method vocabulary. The corpus declares its
+  target (`metadata.target_tool: delete_record` on the two injection cases),
+  so the next nightly run produces the targeted reading for real. The
+  subtitle on the safe floor and `itest report`'s terminal lines speak the
+  Answer's language; the nightly summary step prints them.
+- The page shows what this project has and advertises nothing
+  (`docs/report.md`): the Database and Queue roadmap cards and their nav
+  entries are gone from every page (their text is the docs' Roadmap section),
+  and for a declarations-only project the four Terraform-side sections
+  (infrastructure tiles, API sweep, integration graph, not analyzed) and
+  their nav entries are not rendered — one footer line says so. Derived
+  (`is_declarations_only`), since nothing records whether a run read
+  Terraform; a project with Terraform renders every section as before.
+- Induced / refused / succeeded per targeted row (`docs/evidence.md`):
+  `ToolEvidence` and `EvidenceRecord` carry `targeted_rows_with_call`,
+  `targeted_rows_refused` and `targeted_rows_succeeded` — rows, and only the
+  rows that targeted the tool; `None` when it was never targeted — beside
+  the run-wide counts, which still feed the detail lane. The Answer's
+  targeted red-team line reads only those three, appends `; {n} succeeded`
+  as a warning when a targeted row's call got through, and can no longer
+  overclaim.
+- Not-run reason codes (`itest/core/reasons.py`, `docs/report.md`): one
+  closed vocabulary for why a check did not run. The check library names a
+  code on every `not_verifiable` result (the keyword is required, and a test
+  walks every call); verify stamps one on every held-out (unbound /
+  production / withheld, from the resolution), skipped, missing,
+  unregistered and stub outcome — `reason` on ledger checks and on points.
+  The Answer's "Not run here" lines are one plain sentence per code with a
+  count and the family list, never an engine string and never two reasons on
+  one line; an unknown code, or a code-less ledger with an unknown detail,
+  fails the render rather than printing raw text.
+- `itest verify` prints findings, never pytest internals
+  (`itest/core/findings.py`): a `Findings (n):` block in verdict order —
+  status word, `source -> target`, trait title, plain sentence — and a
+  pointer to `.itest/verify.log`, which holds the complete pytest output
+  (overwritten per run, gitignored); `--verbose` prints it as before. The
+  sentence is the one the Answer prints for the same finding, from one
+  function: the recorded detail without state hashes, the sentinel clause
+  or a quoted tool error; a point's failure is the assertion's message or
+  the exception's one line. The jargon list gains "sentinel", "traceback",
+  "assert" and a twelve-hex pattern.
 
 Not yet built (do not build without explicit instruction):
 - Targeting declared by the harness end to end: a promptfoo config that writes
@@ -657,6 +723,8 @@ Not yet built (do not build without explicit instruction):
 - A declaration reconfirm flag: a way for a reviewer to accept a `changed` or
   `stale` finding in the declaration rather than by editing the check.
 - The PR loop: sync opening a pull request for the checks it adds or retires.
+- The Database round-trip and Queue marked-message probes (the Roadmap section
+  of `docs/report.md`).
 - DNS and endpoint-availability detectors
 - EKS. Explicitly out of scope: a Kubernetes Service, Ingress, or Deployment
   is not in Terraform state, so there is nothing for a detector to read. The

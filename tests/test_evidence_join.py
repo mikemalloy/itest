@@ -114,6 +114,30 @@ def test_matched_tools_land_on_their_point_ids(fixture_run) -> None:
     assert guide.recorded_at == NOW
 
 
+def test_the_record_carries_the_per_targeted_row_counts() -> None:
+    """The three targeted-row counts ride on the record beside the run-wide
+    ones, None when the tool was never targeted, so the page can read the
+    targeted sentence from the manifest alone."""
+    synthetic = FIXTURE.parent / "promptfoo-targeted-synthetic.json"
+    run = read_results(synthetic, source_name="promptfoo-lab", agent=None)
+    records, _source = join_evidence(
+        run, loaded(results=synthetic), reference_manifest(), now=NOW
+    )
+    by_point = {r.point_id: r for r in records}
+    delete = by_point[tool_point_id("reference-mcp", "delete_record")]
+    assert (delete.targeted, delete.rows_with_call, delete.refused) == (8, 3, 3)
+    assert delete.targeted_rows_with_call == 2
+    assert delete.targeted_rows_refused == 2
+    assert delete.targeted_rows_succeeded == 0
+    plain = read_results(FIXTURE, source_name="promptfoo-lab", agent=None)
+    records, _source = join_evidence(plain, loaded(), reference_manifest(), now=NOW)
+    for record in records:
+        assert record.targeted is None
+        assert record.targeted_rows_with_call is None
+        assert record.targeted_rows_refused is None
+        assert record.targeted_rows_succeeded is None
+
+
 def test_a_tool_the_manifest_does_not_inventory_is_unmatched(fixture_run) -> None:
     manifest = reference_manifest()
     manifest.points = [p for p in manifest.points if p.target != "search_records"]

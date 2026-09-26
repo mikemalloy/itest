@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from itest.core import redact
+from itest.core import reasons, redact
 
 # ``_load_one`` validates one declaration file against the schema without the
 # environment-policy cross-check ``load_declarations`` adds. A check reads the
@@ -50,6 +50,10 @@ class CheckResult:
     status: str  # "pass" | "fail" | "critical" | "changed" | "not_verifiable"
     detail: str
     evidence: dict | None = None
+    #: Why the check did not run, as a code from :data:`itest.core.reasons.REASONS`.
+    #: Set on every ``not_verifiable`` result and on nothing else: the Answer
+    #: reads the code, never the detail, so no engine string reaches the page.
+    reason: str | None = None
 
 
 EngineCheck = Callable[..., CheckResult]
@@ -63,8 +67,18 @@ ENGINE_CHECKS: dict[str, EngineCheck] = {}
 GENERATED_CHECKS: dict[str, Callable[..., CheckResult]] = {}
 
 
-def not_verifiable(detail: str, evidence: dict | None = None) -> CheckResult:
-    return CheckResult(status="not_verifiable", detail=detail, evidence=evidence)
+def not_verifiable(
+    detail: str, evidence: dict | None = None, *, reason: str
+) -> CheckResult:
+    """A check that could not run. ``reason`` is required and must be a code
+    from :data:`itest.core.reasons.REASONS`: the detail says why in the
+    engine's words, the code says why in one the page can translate."""
+    return CheckResult(
+        status="not_verifiable",
+        detail=detail,
+        evidence=evidence,
+        reason=reasons.check(reason),
+    )
 
 
 # --- scrubbing ----------------------------------------------------------------
@@ -129,8 +143,14 @@ def engine_check(trait_id: str) -> Callable[[EngineCheck], EngineCheck]:
         def wrapped(point: dict, target: McpTarget, *, authenticated: bool):
             try:
                 result = check(point, target, authenticated=authenticated)
-            except (McpProbeError, CredentialError) as exc:
-                result = not_verifiable(f"{trait_id} could not run: {exc}")
+            except McpProbeError as exc:
+                result = not_verifiable(
+                    f"{trait_id} could not run: {exc}", reason=reasons.UNREACHABLE
+                )
+            except CredentialError as exc:
+                result = not_verifiable(
+                    f"{trait_id} could not run: {exc}", reason=reasons.NO_CREDENTIAL
+                )
             return scrub_result(result, target)
 
         ENGINE_CHECKS[trait_id] = wrapped
@@ -191,11 +211,15 @@ def _target_key(target: McpTarget) -> tuple:
 
 
 class ListingUnavailable(Exception):
-    """A live listing could not be obtained. The message is the reason."""
+    """A live listing could not be obtained. The message is the reason in the
+    engine's words; ``reason`` is the code a check reports it under."""
 
-    def __init__(self, message: str, *, refused: bool = False) -> None:
+    def __init__(
+        self, message: str, *, refused: bool = False, reason: str = reasons.UNREACHABLE
+    ) -> None:
         super().__init__(message)
         self.refused = refused
+        self.reason = reasons.check(reason)
 
 
 def live_listing(target: McpTarget, *, anonymous: bool) -> list[ToolInfo]:
@@ -239,7 +263,8 @@ def reference_listing(target: McpTarget, *, authenticated: bool) -> list[ToolInf
         if not resolve_credential(target.credential_env, Path.cwd()):
             raise ListingUnavailable(
                 f"an authenticated listing was asked for, but {target.credential_env}"
-                " is unset or empty"
+                " is unset or empty",
+                reason=reasons.NO_CREDENTIAL,
             )
     try:
         return live_listing(target, anonymous=not authenticated)
@@ -254,6 +279,7 @@ def reference_listing(target: McpTarget, *, authenticated: bool) -> list[ToolInf
         raise ListingUnavailable(
             f"the server refused the anonymous tool listing ({exc}); {unlock}",
             refused=True,
+            reason=reasons.NO_CREDENTIAL,
         ) from None
 
 

@@ -167,6 +167,13 @@ def _plan_new_spans(line: str, match: re.Match[str]) -> Iterable[tuple[int, int,
             yield open_at, end, "green"
 
 
+def _finding_status_refine(match: re.Match[str]) -> Iterable[tuple[str, str]]:
+    """The status word of a findings entry: red for a check that failed,
+    magenta for one that could not run."""
+    status = match.group("status")
+    yield "status", "bold magenta" if status == "ERROR" else "bold red"
+
+
 def _verify_rollup_refine(match: re.Match[str]) -> Iterable[tuple[str, str]]:
     """Red the failing count when nonzero; green the passing count when earned.
 
@@ -261,6 +268,15 @@ RULES: tuple[Rule, ...] = (
         refine=_point_status_refine,
     ),
     Rule("verify_failures", re.compile(r"^Failing tests:$"), {LINE: "bold red"}),
+    Rule("verify_findings", re.compile(r"^Findings \(\d+\):$"), {LINE: "bold red"}),
+    Rule(
+        "verify_finding",
+        re.compile(r"^  (?P<status>CRITICAL|FAIL|ERROR) "),
+        {},
+        refine=_finding_status_refine,
+    ),
+    # A finding's sentence: the twelve-space indent under the status word.
+    Rule("verify_finding_detail", re.compile(r"^ {12}\S"), {LINE: "dim"}),
     Rule(
         "verify_errors",
         re.compile(r"^Errored tests \(the suite could not run\):$"),
