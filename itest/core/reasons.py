@@ -41,6 +41,9 @@ UNWRITTEN = "unwritten"
 UNREGISTERED = "unregistered"
 #: A point whose test is still the generated stub.
 STUB = "stub"
+#: A point whose manifest entry says its test is implemented, yet the run
+#: reported stub: the test verified nothing. Pending a reviewer, not a stub.
+STUCK = "stuck"
 #: authority.anonymous on a stdio server that checks no credential of its
 #: own: the process boundary is the authentication boundary.
 STDIO_BOUNDARY = "stdio_boundary"
@@ -73,6 +76,7 @@ REASONS = (
     UNWRITTEN,
     UNREGISTERED,
     STUB,
+    STUCK,
     STDIO_BOUNDARY,
     ALREADY_MUTATING,
     UNCLASSIFIED,

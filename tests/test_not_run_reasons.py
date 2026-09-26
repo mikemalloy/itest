@@ -77,6 +77,7 @@ STATUS_FOR = {
     reasons.SKIPPED: "not_run",
     reasons.MISSING: "not_run",
     reasons.STUB: "stub",  # a point's status, never a cell's
+    reasons.STUCK: "stub",  # the same status, with an implemented test behind it
 }
 
 
@@ -115,7 +116,8 @@ def test_each_code_reads_as_a_plain_sentence_with_a_count(code: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "code", [code for code in reasons.REASONS if code != reasons.STUB]
+    "code",
+    [code for code in reasons.REASONS if code not in (reasons.STUB, reasons.STUCK)],
 )
 def test_the_answer_renders_each_code_and_never_the_engine_detail(code: str) -> None:
     """The line is the code's sentence and the family, and nothing of the
@@ -390,7 +392,16 @@ def test_a_stub_point_and_a_gated_point_carry_their_reason_in_verify_json(
     assert {p["status"] for p in payload["points"]} == {"stub"}
     assert {p["reason"] for p in payload["points"]} == {reasons.STUB}
 
+    # A stub whose test the manifest calls implemented is stuck, not a stub.
     manifest_file = tmp_path / ".itest" / "manifest.yaml"
+    manifest = load_manifest(manifest_file)
+    manifest.tests[0].status = "implemented"
+    save_manifest(manifest, manifest_file)
+    payload = json.loads(cli.invoke(app, ["verify", "--output", "json"]).output)
+    stuck = next(p for p in payload["points"] if p["id"] == manifest.tests[0].point_id)
+    assert stuck["reason"] == reasons.STUCK
+    assert sum(1 for p in payload["points"] if p["reason"] == reasons.STUB) == 2
+
     manifest = load_manifest(manifest_file)
     manifest.tests[0].tier = "active"
     save_manifest(manifest, manifest_file)

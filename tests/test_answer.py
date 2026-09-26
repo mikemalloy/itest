@@ -32,6 +32,7 @@ from itest.core.manifest import (
     EvidenceRecord,
     IntegrationPoint,
     Manifest,
+    TestEntry,
     load_manifest,
 )
 from itest.report import model as report_model
@@ -143,10 +144,93 @@ def test_one_changed_check_and_nothing_failing_is_needs_review() -> None:
     )
 
 
-def test_a_stale_check_is_needs_review() -> None:
+def test_a_stale_check_is_needs_review_and_is_called_stale() -> None:
+    """A stale check is pending, and the sentence names what it is: not a
+    tool change, which is a different thing waiting on the same reviewer."""
     ledger = _green()
     _first_check(ledger)["state"] = "stale"
-    assert _build(ledger).verdict.word == "NEEDS REVIEW"
+    page = _build(ledger)
+    assert page.verdict.word == "NEEDS REVIEW"
+    assert page.verdict.reason == (
+        "No findings. 1 stale check is waiting for a reviewer."
+    )
+
+
+def test_pending_items_are_named_for_what_they_are() -> None:
+    ledger = _green()
+    checks = ledger["servers"][0]["tools"][0]["checks"]
+    checks[0]["status"] = "changed"
+    checks[1]["state"] = "stale"
+    checks[2]["state"] = "stale"
+    page = _build(ledger)
+    assert page.verdict.reason == (
+        "No findings. 1 tool change and 2 stale checks are waiting for a reviewer."
+    )
+
+
+def test_an_implemented_test_stuck_at_stub_is_not_a_tool_change() -> None:
+    """A Terraform point whose manifest entry says implemented but whose
+    test verified nothing is pending — and there is no tool anywhere, so the
+    sentence must not say "tool change". The Answer's not-run line for it
+    says the same thing, so the page cannot contradict itself."""
+    manifest = Manifest(
+        generated_at=NOW,
+        points=[
+            IntegrationPoint(
+                id="p1",
+                type="sg_edge",
+                source="a",
+                target="b",
+                hcl_address="x",
+                first_seen=NOW,
+                last_seen=NOW,
+            )
+        ],
+        tests=[
+            TestEntry(
+                id="t1",
+                point_id="p1",
+                path="itest_tests/test_sg_edges.py",
+                test_name="test_a_to_b",
+                ownership_hash="0" * 64,
+                status="implemented",
+            )
+        ],
+    )
+    verify = {
+        "points": [
+            {
+                "id": "p1",
+                "status": "stub",
+                "source": "a",
+                "target": "b",
+                "reason": "stub",
+            }
+        ]
+    }
+    page = report_model.build(verify, manifest, generated_at=NOW)
+    assert page.verdict.word == "NEEDS REVIEW"
+    assert page.verdict.reason == (
+        "No findings. 1 test marked implemented that verified nothing is waiting "
+        "for a reviewer."
+    )
+    assert page.answer.not_run == [
+        "Not run here: Integrations — 1 check is marked implemented but verified "
+        "nothing."
+    ]
+
+
+def test_partial_for_an_unverified_tool_never_says_zero_not_run() -> None:
+    """Every cell passed, but a tool is not fully checked (a planned trait
+    with no counted cell): PARTIAL, and the sentence says what holds it
+    back rather than "0 were not run here"."""
+    ledger = _green()
+    ledger["servers"][0]["summary"]["verified"] = 5
+    page = _build(ledger)
+    assert page.verdict.word == "PARTIAL"
+    assert page.verdict.reason == (
+        "No findings. 6 of 6 checks passed; 1 tool is not fully checked."
+    )
 
 
 def test_one_critical_is_blocked_even_if_everything_else_is_held_out() -> None:

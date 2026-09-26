@@ -360,8 +360,12 @@ class Tally(BaseModel):
     not_run: int = 0
     #: Critical and failing cells; failing and errored points.
     findings: int = 0
-    #: Changed and stale cells; points stuck at stub though implemented.
+    #: Changed and stale cells; points stuck at stub though implemented. The
+    #: three are counted apart below, so the sentence can name each.
     pending: int = 0
+    pending_changes: int = 0
+    pending_stale: int = 0
+    pending_stuck: int = 0
 
 
 class Verdict(BaseModel):
@@ -705,6 +709,10 @@ def tally_checks(
                     elif check.status in _PENDING_STATUSES or check.state == "stale":
                         tally.pending += 1
                         changed_cells += check.status == "changed"
+                        if check.status == "changed":
+                            tally.pending_changes += 1
+                        else:
+                            tally.pending_stale += 1
                     elif check.status in _PASSED_STATUSES:
                         tally.passed += 1
                     else:
@@ -713,6 +721,7 @@ def tally_checks(
         summary_critical = sum(s.summary.critical for s in ledger.servers)
         tally.findings += max(0, summary_critical - critical_cells)
         tally.pending += max(0, ledger.changed - changed_cells)
+        tally.pending_changes += max(0, ledger.changed - changed_cells)
     for point in points:
         if types.get(point["id"]) == "mcp_tool":
             continue  # its checks are the cells above
@@ -724,6 +733,7 @@ def tally_checks(
             tally.findings += 1
         elif status == "stub" and point["id"] in implemented:
             tally.pending += 1
+            tally.pending_stuck += 1
         else:
             tally.not_run += 1
     return tally
@@ -765,18 +775,35 @@ def derive_verdict(
         reason = f"{_count(tally.findings, 'finding')} {verb} attention before release."
     elif tally.pending:
         word = "NEEDS REVIEW"
+        # Each kind of pending item named for what it is: a tool change, a
+        # stale check, a test marked implemented that verified nothing.
+        parts = [
+            _count(n, noun)
+            for n, noun in (
+                (tally.pending_changes, "tool change"),
+                (tally.pending_stale, "stale check"),
+                (tally.pending_stuck, "test marked implemented that verified nothing"),
+            )
+            if n
+        ]
+        named = " and ".join(parts) if parts else _count(tally.pending, "item")
         verb = "is" if tally.pending == 1 else "are"
-        reason = (
-            f"No findings. {_count(tally.pending, 'tool change')} {verb} waiting "
-            "for a reviewer."
-        )
+        reason = f"No findings. {named} {verb} waiting for a reviewer."
     elif tally.not_run or (ledger is not None and ledger.verified < ledger.declared):
         word = "PARTIAL"
-        verb = "was" if tally.not_run == 1 else "were"
-        reason = (
-            f"No findings. {tally.passed} of {_count(tally.total, 'check')} passed; "
-            f"{tally.not_run} {verb} not run here."
-        )
+        passed = f"{tally.passed} of {_count(tally.total, 'check')} passed"
+        if tally.not_run:
+            verb = "was" if tally.not_run == 1 else "were"
+            reason = f"No findings. {passed}; {tally.not_run} {verb} not run here."
+        else:
+            # Every cell passed, yet a tool is not fully checked: a planned
+            # trait with no counted cell. Say that, never "0 were not run".
+            unverified = ledger.declared - ledger.verified  # type: ignore[union-attr]
+            verb = "is" if unverified == 1 else "are"
+            reason = (
+                f"No findings. {passed}; {_count(unverified, 'tool')} {verb} not "
+                "fully checked."
+            )
     else:
         word = "VERIFIED"
         reason = f"No findings. All {_count(tally.total, 'check')} passed."
@@ -838,6 +865,10 @@ REASON_SENTENCES: dict[str, tuple[str, str]] = {
     reasons.STUB: (
         "is waiting for a test to be written.",
         "are waiting for a test to be written.",
+    ),
+    reasons.STUCK: (
+        "is marked implemented but verified nothing.",
+        "are marked implemented but verified nothing.",
     ),
     reasons.STDIO_BOUNDARY: (
         "does not apply to a server run as a local process, which has no "
@@ -961,8 +992,12 @@ def _reason_of(check: ToolCheck, environment: str | None) -> str:
     return _legacy_reason(check.status, check.detail or "", environment)
 
 
-def _point_reason(point: dict, environment: str | None) -> str:
+def _point_reason(point: dict, environment: str | None, implemented: set[str]) -> str:
     reason = point.get("reason")
+    if reason == reasons.STUB and point.get("id") in implemented:
+        # The manifest says implemented and the run reported stub: stuck,
+        # and named as such whether or not this verify knew to say so.
+        reason = reasons.STUCK
     if reason:
         if reason not in REASON_SENTENCES:
             raise UnknownReason(
@@ -972,7 +1007,7 @@ def _point_reason(point: dict, environment: str | None) -> str:
         return reason
     if point["status"] == "gated":
         return _legacy_reason("held_out", "", environment)
-    return reasons.STUB
+    return reasons.STUCK if point.get("id") in implemented else reasons.STUB
 
 
 #: Family id -> human name, when the ledger did not carry one.
@@ -1010,6 +1045,11 @@ def build_answer(
     the word.
     """
     environment = ledger.servers[0].environment if ledger and ledger.servers else None
+    implemented = {
+        t.point_id
+        for t in manifest.tests
+        if t.status == "implemented" and not t.disabled and not t.retired
+    }
     document = verify if verify is not None else {"points": verify_points}
     if ledger is not None and "tools" not in document:
         document = {**document, "tools": ledger.model_dump(mode="json")}
@@ -1064,7 +1104,7 @@ def build_answer(
         elif status in ("failing", "error"):
             ran.setdefault(INTEGRATIONS_FAMILY, [0, 0])[1] += 1
         else:
-            bucket = not_run[_point_reason(point, environment)]
+            bucket = not_run[_point_reason(point, environment, implemented)]
             bucket[INTEGRATIONS_FAMILY] = bucket.get(INTEGRATIONS_FAMILY, 0) + 1
 
     def in_order(families: dict[str, int]) -> str:

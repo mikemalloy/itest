@@ -473,6 +473,15 @@ def run_verify(
         else:
             status = "stub"
             stubs += 1
+        reason = None
+        if status == "stub":
+            # A stub whose test the manifest calls implemented verified
+            # nothing: stuck, and a reviewer's to look at — not a stub.
+            reason = (
+                reasons.STUCK
+                if any(t.status == "implemented" for t in allowed)
+                else reasons.STUB
+            )
         ranked_results.append(
             PointResult(
                 id=point.id,
@@ -481,7 +490,7 @@ def run_verify(
                 attributes=point.attributes,
                 status=status,
                 tag=points.summary(point),
-                reason=reasons.STUB if status == "stub" else None,
+                reason=reason,
             )
         )
 

@@ -49,8 +49,8 @@ Top to bottom:
    | Word | Sentence |
    | --- | --- |
    | BLOCKED | `{n} finding(s) need attention before release.` |
-   | NEEDS REVIEW | `No findings. {n} tool change(s) are waiting for a reviewer.` |
-   | PARTIAL | `No findings. {passed} of {total} checks passed; {held} were not run here.` |
+   | NEEDS REVIEW | `No findings. {pending} are waiting for a reviewer.` — `{pending}` names each kind: `1 tool change`, `2 stale checks`, `1 test marked implemented that verified nothing`, joined with "and" |
+   | PARTIAL | `No findings. {passed} of {total} checks passed; {held} were not run here.` — or, when every cell passed and a tool is still not fully checked, `…; {n} tool(s) not fully checked.` |
    | VERIFIED | `No findings. All {total} checks passed.` |
 
    A *check* is one cell of the tools grid — the same unit it counts — plus
@@ -94,6 +94,7 @@ Top to bottom:
    | `unwritten` | ITest cannot perform yet. |
    | `unregistered` | have no test in this project yet. |
    | `stub` | are waiting for a test to be written. |
+   | `stuck` | are marked implemented but verified nothing. |
    | `stdio_boundary` | do not apply to a server run as a local process, which has no anonymous caller to refuse. |
    | `already_mutating` | do not apply, because the tool already says it changes data. |
    | `unclassified` | could not tell what kind of tool this is. |
