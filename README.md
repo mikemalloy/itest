@@ -456,6 +456,9 @@ the scope ledger.
 
 ## Contributing
 
+Start with the [contributor guide](CONTRIBUTING.md) for setup, required gates,
+scope discipline, and safe artifact sharing.
+
 The extension point is the detector interface in
 [`itest/core/detectors/base.py`](itest/core/detectors/base.py): implement
 `detect(plan_json) -> list[IntegrationPoint]`, declare the resource types you
