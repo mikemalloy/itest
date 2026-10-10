@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -18,10 +19,22 @@ import yaml
 from test_declarations_plan_sync import _sync, make_workdir
 from test_evidence_promptfoo import FIXTURE
 
+from itest.core import clock
 from itest.core.manifest import SourceRecord, load_manifest
 from itest.core.syncer import render_evidence_line
 
 RUN = "run eval-zyk-2026-09-23T18:26:29 at 2026-09-23T18:26:29.565Z"
+
+#: The sync's clock, pinned the day after the fixture's run so the run is
+#: fresh under the default window. No test here reads the wall clock.
+NOW = datetime(2026, 9, 24, 9, 0, tzinfo=UTC)
+#: Far past the window: the same run, read months later.
+MUCH_LATER = datetime(2026, 12, 1, 9, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _pinned_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(clock, "now", lambda: NOW)
 
 
 def _source(workdir: Path, name: str, document: dict | str) -> Path:
@@ -100,6 +113,31 @@ def test_a_stale_run_says_so_on_the_line(workdir: Path) -> None:
     manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
     assert manifest.sources[0].stale is True
     assert all(r.stale for r in manifest.evidence)
+
+
+def test_a_run_older_than_the_window_is_stale_on_a_later_day(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default window, and the clock moved past it: the same results file
+    that is fresh the day after its run is STALE months later. Staleness is
+    the sync's clock against the run's time, not a property of the file."""
+    _source(workdir, "promptfoo-lab", _promptfoo(workdir))
+    assert _sync().exit_code == 0
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    assert manifest.sources[0].stale is False
+    assert not any(r.stale for r in manifest.evidence)
+
+    monkeypatch.setattr(clock, "now", lambda: MUCH_LATER)
+    result = _sync()
+    assert result.exit_code == 0, result.output
+    (line,) = _lines(result.output)
+    assert line == (
+        f"evidence promptfoo-lab (promptfoo): {RUN}, 12 rows, 2 tools matched, "
+        "0 unmatched, STALE"
+    )
+    manifest = load_manifest(workdir / ".itest" / "manifest.yaml")
+    assert manifest.sources[0].stale is True
+    assert manifest.evidence and all(r.stale for r in manifest.evidence)
 
 
 def test_a_missing_results_file_is_unreadable_and_sync_goes_on(

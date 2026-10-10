@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -23,10 +24,15 @@ from test_reference_mcp_example import copy_example
 from typer.testing import CliRunner
 
 from itest.cli import app
+from itest.core import clock
 from itest.core.manifest import load_manifest
 from itest.report import model as report_model
 
 runner = CliRunner()
+
+#: The sync's clock, the day after the fixture's run: fresh under the
+#: default window, so the stale leg below is the window, not the calendar.
+NOW = datetime(2026, 9, 24, 9, 0, tzinfo=UTC)
 
 
 def _sync() -> None:
@@ -86,6 +92,7 @@ def test_evidence_never_changes_verified_the_verdict_or_the_rollup(
     # variable). With the variable unset it is unreadable, joins nothing, and
     # is one more thing this test proves never counts.
     monkeypatch.delenv("ITEST_PROMPTFOO_RESULTS", raising=False)
+    monkeypatch.setattr(clock, "now", lambda: NOW)
 
     _sync()
     without = _observe(example)
