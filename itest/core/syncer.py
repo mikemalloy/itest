@@ -24,13 +24,13 @@ from __future__ import annotations
 
 import ast
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from pydantic import BaseModel
 
-from itest.core import planner, stubgen
+from itest.core import clock, planner, stubgen
 from itest.core.manifest import (
     IntegrationPoint,
     Manifest,
@@ -183,7 +183,7 @@ def is_noop(changeset: Changeset) -> bool:
 
 def apply(changeset: Changeset, base_dir: Path) -> SyncResult:
     """Apply the changeset: generate stubs, flag orphans, rewrite the manifest."""
-    now = datetime.now(UTC)
+    now = clock.now()
     manifest_file = planner.manifest_path(base_dir)
     if manifest_file.exists():
         manifest = load_manifest(manifest_file)
@@ -278,7 +278,9 @@ def regenerate(base_dir: Path) -> int:
     return regenerated
 
 
-def record_evidence(base_dir: Path) -> list[SourceRecord]:
+def record_evidence(
+    base_dir: Path, *, now: datetime | None = None
+) -> list[SourceRecord]:
     """Read every declared evidence source, join it, and write the lane.
 
     Runs **last** in every sync, after the manifest's own work is done and
@@ -291,6 +293,9 @@ def record_evidence(base_dir: Path) -> list[SourceRecord]:
     recorded before to clear, so a project with no source is untouched (and a
     no-op sync there stays a no-op). Returns the source lines, one per file
     under ``.itest/sources/``, for the CLI to print.
+
+    ``now`` is the sync's clock — what staleness is decided against and what
+    every record's ``recorded_at`` carries. Defaults to :func:`clock.now`.
     """
     manifest_file = planner.manifest_path(base_dir)
     if not manifest_file.exists():
@@ -308,7 +313,8 @@ def record_evidence(base_dir: Path) -> list[SourceRecord]:
             save_manifest(manifest, manifest_file)
         return []
 
-    now = datetime.now(UTC)
+    if now is None:
+        now = clock.now()
     records = []
     lines: list[SourceRecord] = [
         SourceRecord(name=error.name, status="unreadable", reason=error.message)

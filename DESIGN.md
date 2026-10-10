@@ -364,7 +364,9 @@ changes `verified()`, the verdict or coverage, and its standards ids never
 enter the rollup's covered count — the never-counts test runs the same
 project with and without a source and asserts all three identical. The rate
 is shown as its parts (`calls N · refused R · of T rows`), never a percentage
-alone; staleness is decided at sync with the sync's clock and stored; a tool
+alone; staleness is decided at sync with the sync's clock (read through
+`itest/core/clock.py`, which a test pins — no test reads the wall clock, so a
+dated fixture never goes stale by ageing) and stored; a tool
 never called is absent, never a zero row; targeting is recorded only when the
 harness declares it. Best-effort and never blocking: an unreadable file, an
 undeclared server or an unmatched tool is a line with its reason, and sync
